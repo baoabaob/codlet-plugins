@@ -65,7 +65,7 @@ test('GUI details explain self/provider removal in both locales and link to a dr
   const f=await gui(t);
   for(const label of ['Codlet 管理界面 的详情','Codex 界面适配器 的详情']){
     await f.click(label);assert.match(f.document.querySelector('.codlet-removal-notice').textContent,/无法在GUI插件中卸载自己（及其依赖）/);
-    assert.equal(f.control('移除插件'),undefined);await f.click('使用Codex');assert.match(f.demo.state.draft,/通过当前 Codlet 实例的 CLI/);await f.click('返回');
+    assert.equal(f.control('移除插件'),undefined);await f.click('使用 Codex');assert.match(f.demo.state.draft,/通过当前 Codlet 实例的 CLI/);await f.click('返回');
   }
   await f.locale('en');await f.click('Details for Codex UI Adapter');assert.match(f.document.querySelector('.codlet-removal-notice').textContent,/cannot uninstall itself/);assert.ok(f.control('use Codex'));
   await f.click('Back');await f.click('Details for Local Notes');assert.equal(f.document.querySelector('.codlet-removal-notice'),null);assert.ok(f.control('Remove Local Notes'));

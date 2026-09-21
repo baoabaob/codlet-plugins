@@ -108,7 +108,8 @@
 [data-codlet-official-ui] .codlet-inline-link:disabled { opacity:.5; cursor:default; }
 [data-codlet-official-ui] .codlet-inline-link svg { width:15px; height:15px; }
 [data-codlet-panel] .codlet-removal-notice { display:flex; flex-direction:column; gap:4px; padding-top:12px; border-top:1px solid var(--color-border); }
-[data-codlet-panel] .codlet-removal-notice .codlet-inline-link { font-size:13px; }
+[data-codlet-panel] .codlet-removal-actions { display:flex; flex-wrap:wrap; align-items:baseline; column-gap:4px; }
+[data-codlet-panel] .codlet-removal-actions .codlet-inline-link { align-self:auto; font:inherit; white-space:nowrap; }
 @media(max-width:520px) { [data-codlet-panel] .codlet-plugin-summary { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 @media(max-width:700px) { [data-codlet-panel] .codlet-plugin-row { column-gap:12px; } [data-codlet-panel] .codlet-plugin-actions { gap:4px; } }
 @media(max-width:440px) { [data-codlet-panel] .codlet-plugin-row { grid-template-columns:minmax(0,1fr); row-gap:8px; } [data-codlet-panel] .codlet-plugin-actions { justify-content:flex-end; } [data-codlet-panel] .codlet-setting-row { flex-wrap:wrap; gap:12px; } [data-codlet-panel] .codlet-setting-control { max-width:100%; } }

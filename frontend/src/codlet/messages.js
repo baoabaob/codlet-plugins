@@ -38,7 +38,7 @@ export function createMessages(context) {
         'Installation notice':'安装须知','Got it':'知道了','Let Codex check':'让 Codex 检查',
         'Codlet does not guarantee the safety of any unofficial plugin. Third-party plugins may access your data or modify the client. Only install plugins you trust.':'Codlet不为任何非官方插件的安全性作保障。第三方插件可能访问你的数据或修改客户端，请仅安装你信任的插件。',
         'The GUI plugin cannot uninstall itself or its dependencies':'无法在GUI插件中卸载自己（及其依赖）',
-        'To uninstall, use the CLI or ':'如需卸载可以使用CLI或','use Codex':'使用Codex',
+        'To uninstall, use the CLI or ':'如需卸载，可以使用 CLI 或','use Codex':'使用 Codex',
         'The new task could not be opened.':'暂时无法打开新任务，请稍后重试',
         'Plugins that will also be disabled':'将一并停用的插件','Plugins that will also stop':'将一并停止运行的插件',
         'Includes indirect dependencies. These plugins and their files will be kept.':'包含间接依赖此插件的项目，它们的安装记录和文件会保留',
