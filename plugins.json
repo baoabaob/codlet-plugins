@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "sourceRepository": "baoabaob/codlet-plugins",
+  "plugins": [
+    {
+      "id": "codex.ui.adapter",
+      "directory": "codex-ui-adapter",
+      "entry": "src/adapter/entry.js",
+      "repository": "baoabaob/codlet-ui-adapter",
+      "description": "Official Codlet plugin for Codex sidebar and plugin page integration",
+      "topics": ["codlet-plugin", "codlet-official", "codlet-adapter", "ui"],
+      "dependencies": []
+    },
+    {
+      "id": "codex.desktop.adapter",
+      "directory": "codex-desktop-adapter",
+      "entry": "src/desktop/entry.js",
+      "repository": "baoabaob/codlet-desktop-adapter",
+      "description": "Official Codlet plugin for Codex desktop, task and transport integration",
+      "topics": ["codlet-plugin", "codlet-official", "codlet-adapter"],
+      "dependencies": []
+    },
+    {
+      "id": "codlet-gui",
+      "directory": "codlet",
+      "entry": "src/codlet/app.jsx",
+      "repository": "baoabaob/codlet-gui",
+      "description": "Official Codlet plugin for graphical plugin and runtime management",
+      "topics": ["codlet-plugin", "codlet-official", "ui", "plugin-manager"],
+      "dependencies": ["codex.ui.adapter"]
+    }
+  ]
+}
