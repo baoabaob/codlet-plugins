@@ -1,6 +1,5 @@
-import { Cube, CodeSquareSlash } from '@openai/apps-sdk-ui/components/Icon';
+import { Cube, CodeSquareSlash, PluginPuzzle } from '@openai/apps-sdk-ui/components/Icon';
 import { clientProfile } from '../../../compatibility/client-profiles.js';
-import { createCodletIcon } from '../brand.js';
 
 // Host internals belong only to this optional adapter. Never run these imports
 // outside the reviewed Desktop build, or create another app-host connection.
@@ -94,7 +93,7 @@ function pageOwner(args, invocation) {
 
 export function createNavigation(context, native, host) {
   const { React, DOM, Client, SidebarItem, Header, HeaderToolbar } = native;
-  const icons = { Cube, CodeSquareSlash, Codlet: createCodletIcon(React,{compact:true}) };
+  const icons = { Cube, CodeSquareSlash, Codlet: PluginPuzzle };
   const entries = new Map(), h = React.createElement;
   let alive = true, navContainer, navRoot, pending = false;
   const hostLive = () => document.getElementById('root') === host.rootNode && host.rootNode.isConnected;

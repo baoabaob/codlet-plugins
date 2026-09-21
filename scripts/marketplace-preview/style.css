@@ -2,13 +2,14 @@
 [data-codlet-panel] .market-breadcrumb h2 { font-size:19px;line-height:28px; }
 [data-codlet-panel] .market-search { margin-bottom:16px; }
 [data-codlet-panel] .market-filterbar { display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding-bottom:8px; }
+[data-codlet-panel] .market-filter-actions { display:flex;align-items:center;gap:12px;flex-wrap:wrap; }
 [data-codlet-panel] .market-device { display:flex;align-items:center;gap:6px;font-size:12px;color:var(--color-text-secondary); }
 [data-codlet-panel] .market-row { padding-block:20px; }
 [data-codlet-panel] .market-meta { display:flex;align-items:center;flex-wrap:wrap;gap:5px 10px;margin-top:8px;color:var(--color-text-secondary);font-size:12px;line-height:18px; }
 [data-codlet-panel] .market-meta .market-origin { display:inline-flex;align-items:center;gap:6px; }
 [data-codlet-panel] .market-official { font-size:10px;line-height:15px;padding:0 4px;border-radius:4px;color:var(--color-text-secondary);background:var(--color-surface-secondary,light-dark(#f1f2f3,#303030)); }
-[data-codlet-panel] .market-systems { display:inline-flex;gap:8px;flex-wrap:wrap; }
-[data-codlet-panel] .market-systems span+span:before { content:'·';margin-right:8px;opacity:.6; }
+[data-codlet-panel] .market-meta>time,[data-codlet-panel] .market-meta>span { white-space:nowrap; }
+[data-codlet-panel] .market-inherited { display:block;color:var(--color-text-secondary);font-size:12px;margin-top:4px; }
 [data-codlet-panel] .market-platform-note { display:inline-flex;align-items:center;gap:4px; }
 [data-codlet-panel] .market-platform-note svg { width:14px;height:14px; }
 [data-codlet-panel] .market-unknown { color:light-dark(#967023,#dfba77); }

@@ -249,7 +249,7 @@ function Page({s,toolbar}){
   const navigation=<div className="codlet-top-toolbar"><nav className="codlet-top-navigation" aria-label={t('Codlet pages')}>{[['plugins','Plugin management'],['settings','Settings']].map(([page,label])=><C.Button key={page} color="secondary" variant={(settings?'settings':'plugins')===page?'soft':'ghost'} size="sm" aria-label={t(label)} aria-current={(settings?'settings':'plugins')===page?'page':undefined} disabled={!!s.confirmation} onClick={()=>page==='settings'?manager.settingsPage():manager.pluginsPage()}>{t(label)}</C.Button>)}</nav>
     {s.page==='plugins'&&!s.confirmation&&<div className="codlet-toolbar-actions"><IconAction icon={I.Regenerate} label="Refresh plugins" disabled={s.loading&&!manager.pending} loading={s.loading} onClick={()=>manager.refresh()}/>
       {s.localManagement?.available&&<C.Menu><C.Menu.Trigger><C.Button color="primary" variant="solid" size="sm" aria-label={t('Add')} disabled={mutationBusy(s)||s.loading||s.listStale}>{t('Add')}<I.ChevronDown/></C.Button></C.Menu.Trigger>
-        <C.Menu.Content align="end" minWidth={180}><C.Menu.Item disabled={s.createBusy} onSelect={()=>manager.createPlugin()}><I.Cube/>{t('Create plugin')}</C.Menu.Item><C.Menu.Item onSelect={()=>manager.importPage()}><I.Plus/>{t('Import plugin')}</C.Menu.Item></C.Menu.Content>
+        <C.Menu.Content align="end" minWidth={180}><C.Menu.Item disabled={s.createBusy} onSelect={()=>manager.createPlugin()}><I.Cube className="codlet-add-menu-icon"/>{t('Create plugin')}</C.Menu.Item><C.Menu.Item onSelect={()=>manager.importPage()}><I.Plus className="codlet-add-menu-icon"/>{t('Import plugin')}</C.Menu.Item></C.Menu.Content>
       </C.Menu>}
     </div>}
   </div>;
@@ -279,6 +279,6 @@ export async function activate(context){
       ui=context.ui.create();({React,components:C,icons:I}=ui);h=React.createElement;manager=new Manager(context);
       Settings=createSettingsView({React,C,I,manager,t,Copy,mutationBusy});CodletIcon=createCodletIcon(React);
       const owned=manager;
-      await ui.page({label:'Codlet',icon:'Cube',toolbar:true,render:({toolbar})=> <App toolbar={toolbar}/>,onActivate:()=>owned.open(document.visibilityState!=='hidden'),onDeactivate:()=>owned.close()});
+      await ui.page({label:'Codlet',icon:'Codlet',toolbar:true,render:({toolbar})=> <App toolbar={toolbar}/>,onActivate:()=>owned.open(document.visibilityState!=='hidden'),onDeactivate:()=>owned.close()});
     }catch(error){if(current===epoch){ui?.dispose();manager?.dispose();context.reportDiagnostic?.({code:'gui_ui_unavailable',message:String(error?.message??error)});}}
 }
