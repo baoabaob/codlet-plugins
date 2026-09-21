@@ -82,6 +82,6 @@ export async function activate(context){
   settingsManager=new Manager({pluginId:'codlet-gui',i18n:{locale:'zh'},rpc:{request:demo.request}});
   const t=settingsManager.messages.t;
   Settings=createSettingsView({React,C,I,manager:settingsManager,t,Copy,mutationBusy:()=>false});
-  ProjectLinks=createProjectLinks({React,C,t});
+  ProjectLinks=createProjectLinks({React,C,I,t});
   await ui.page({label:'Codlet',icon:'Codlet',toolbar:true,render:({toolbar})=><App toolbar={toolbar}/>});
 }

@@ -280,7 +280,7 @@ export async function activate(context){
       if(context.ui?.api!==2)throw new Error('Update the renderer runtime for official UI components');
       ui=context.ui.create();({React,components:C,icons:I}=ui);h=React.createElement;I=createCodletIcons(React,I);manager=new Manager(context);
       Settings=createSettingsView({React,C,I,manager,t,Copy,mutationBusy});CodletIcon=createCodletIcon(React);
-      ProjectLinks=createProjectLinks({React,C,t});
+      ProjectLinks=createProjectLinks({React,C,I,t});
       const owned=manager;
       await ui.page({label:'Codlet',icon:'Codlet',toolbar:true,render:({toolbar})=> <App toolbar={toolbar}/>,onActivate:()=>owned.open(document.visibilityState!=='hidden'),onDeactivate:()=>owned.close()});
     }catch(error){if(current===epoch){ui?.dispose();manager?.dispose();context.reportDiagnostic?.({code:'gui_ui_unavailable',message:String(error?.message??error)});}}
