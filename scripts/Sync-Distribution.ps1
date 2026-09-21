@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-  [string]$Plan=(Join-Path $PSScriptRoot '../dist/distribution-plan.json'),
+  [string]$Plan,
   [switch]$Apply,
   [switch]$Publish,
   [switch]$AllowPublic
@@ -10,6 +10,7 @@ $ErrorActionPreference='Stop'
 $ProgressPreference='SilentlyContinue'
 $script:token=$null
 $script:utf8=[Text.UTF8Encoding]::new($false)
+if(-not $Plan){$Plan=Join-Path $PSScriptRoot '../dist/distribution-plan.json'}
 
 function Get-Sha256([byte[]]$Bytes){
   $digest=[Security.Cryptography.SHA256]::Create()
