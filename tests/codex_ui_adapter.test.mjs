@@ -95,6 +95,19 @@ test('provider teardown removes native navigation roots without leaving a top-ba
   const f=fixture(t),original=[...f.shell.routes];register(f);await tick();f.navigation.dispose();await tick();
   assert.equal(f.shell.routes.length,original.length);original.forEach((route,i)=>assert.equal(f.shell.routes[i],route));assert.equal(f.control('Codlet'),undefined);assert.equal(f.document.querySelector('[data-codlet-titlebar-button]'),null);assert.equal(f.document.querySelector('[data-codlet-ui-adapter-style]'),null);
 });
+test('message streaming does not rescan the sidebar; native sidebar replacement and lease retirement still reconcile',async t=>{
+  const f=fixture(t),{lease}=register(f);await tick();
+  const original=f.document.querySelectorAll.bind(f.document);let scans=0;
+  f.document.querySelectorAll=(selector,...args)=>{if(selector==='nav button.sidebar-item')scans++;return original(selector,...args);};
+  const stream=f.document.createElement('article');f.document.querySelector('main').append(stream);await tick();scans=0;
+  for(let i=0;i<30;i++){stream.textContent=String(i);await Promise.resolve();await Promise.resolve();}
+  assert.equal(scans,0,'unrelated text changes must not trigger document-wide sidebar queries');
+  const nav=f.document.querySelector('#root nav'),parent=nav.parentNode;
+  nav.remove();await tick();assert.equal(f.document.querySelector('[data-codlet-native-navigation]'),null);
+  parent.prepend(nav);await tick();assert.ok(f.control('Codlet'));assert.ok(scans>0);
+  lease.remove();await tick();assert.equal(f.document.querySelector('[data-codlet-native-navigation]'),null);
+  f.document.querySelectorAll=original;
+});
 test('the reviewed avatar window declines pages without errors, observers or route mutations',async t=>{
   const f=fixture(t),original=[...f.shell.routes];f.navigation.dispose();f.shell.navigator.push('/avatar-overlay');await tick();
   const before=f.observers.size,host=f.adapter.locateHost();assert.equal(host.auxiliary,true);

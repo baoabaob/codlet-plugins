@@ -262,7 +262,8 @@ function createNavigation(context, native, host) {
   let alive = true, navContainer, navRoot, pending = false;
   const hostLive = () => document.getElementById("root") === host.rootNode && host.rootNode.isConnected;
   const check = () => {
-    if (!alive || locateHost().tree !== host.tree || locateHost().navigator !== host.navigator)
+    const current2 = alive ? locateHost() : null;
+    if (!current2 || current2.tree !== host.tree || current2.navigator !== host.navigator)
       throw fail("ui_host_drift", "Desktop route ownership changed; reload the UI adapter");
   };
   const renderNav = () => {
@@ -321,6 +322,12 @@ function createNavigation(context, native, host) {
   };
   const schedule = (records) => {
     if (!alive || pending || records.every((record) => navContainer?.contains(record.target) || record.target.closest?.("[data-codlet-official-ui]"))) return;
+    const selector = "nav, button.sidebar-item";
+    const navigationChanged = records.some((record) => {
+      if (record.target.closest?.("nav")) return true;
+      return [...record.addedNodes, ...record.removedNodes].some((node) => node.nodeType === 1 && (node.matches(selector) || node.querySelector(selector)));
+    });
+    if (hostLive() && [...entries.values()].every((entry) => entry.lease.isConnected) && (!navContainer || navContainer.isConnected || !entries.size) && !navigationChanged) return;
     pending = true;
     queueMicrotask(() => {
       pending = false;
