@@ -1,4 +1,4 @@
-import { Cube, CodeSquareSlash, PluginPuzzle } from '@openai/apps-sdk-ui/components/Icon';
+import { createCodletIcons } from '../icons.js';
 import { clientProfile } from '../../../compatibility/client-profiles.js';
 
 // Host internals belong only to this optional adapter. Never run these imports
@@ -93,6 +93,7 @@ function pageOwner(args, invocation) {
 
 export function createNavigation(context, native, host) {
   const { React, DOM, Client, SidebarItem, Header, HeaderToolbar } = native;
+  const { Cube, CodeSquareSlash, PluginPuzzle } = createCodletIcons(React);
   const icons = { Cube, CodeSquareSlash, Codlet: PluginPuzzle };
   const entries = new Map(), h = React.createElement;
   let alive = true, navContainer, navRoot, pending = false;

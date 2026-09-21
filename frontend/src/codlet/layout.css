@@ -14,6 +14,9 @@
 [data-codlet-official-ui] .codlet-toolbar-actions { display:flex; align-items:center; gap:4px; -webkit-app-region:no-drag; }
 [data-codlet-official-ui] .codlet-menu-note { margin-inline-start:auto; font-size:12px; color:var(--color-text-secondary); }
 [data-codlet-official-ui] svg.codlet-add-menu-icon { width:18px; height:18px; flex:0 0 18px; }
+[data-codlet-official-ui] .codlet-project-links { display:flex; align-items:center; gap:8px; flex-shrink:0; -webkit-app-region:no-drag; }
+[data-codlet-official-ui] .codlet-project-links a { font-weight:400; }
+[data-codlet-official-ui] .codlet-star-link { border-radius:8px; }
 [data-codlet-panel] .codlet-warning-icon { color:var(--color-text-warning); }
 [data-codlet-panel] .codlet-version { color:var(--color-text-secondary); font-size:12px; white-space:nowrap; }
 [data-codlet-panel] .codlet-search-sticky { position:sticky; top:0; z-index:2; background:var(--color-surface); }
@@ -73,6 +76,7 @@
 [data-codlet-panel] .codlet-sr-only { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
 [data-codlet-panel][data-codlet-view="confirmation"] .codlet-page { width:100%; max-width:560px; }
 [data-codlet-panel] .codlet-settings { display:flex; flex-direction:column; gap:32px; }
+[data-codlet-panel] .codlet-credits { padding:20px 0 8px; border-top:1px solid var(--color-border); color:var(--color-text-secondary); text-align:center; font-size:12px; line-height:20px; }
 [data-codlet-panel] .codlet-settings > section { display:flex; flex-direction:column; gap:12px; min-width:0; scroll-margin-block:24px; }
 [data-codlet-panel] .codlet-setting-row { display:flex; align-items:center; justify-content:space-between; gap:24px; padding:16px 0; border-bottom:1px solid var(--color-border); }
 [data-codlet-panel] .codlet-setting-copy { min-width:0; display:flex; flex-direction:column; gap:4px; }

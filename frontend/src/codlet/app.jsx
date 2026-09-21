@@ -5,8 +5,10 @@ import { versionWarnings } from './versions.js';
 import { createSettingsView } from './settings.jsx';
 import layout from './layout.css';
 import { createCodletIcon } from '../brand.js';
+import { createCodletIcons } from '../icons.js';
+import { createProjectLinks } from './project-links.jsx';
 import { tagCatalog, tagAtCaret, suggestTags, insertTag } from './tag-search.js';
-let React,h,C,I,ui,manager,Settings,CodletIcon,epoch=0;
+let React,h,C,I,ui,manager,Settings,CodletIcon,ProjectLinks,epoch=0;
 const t = value => manager.messages.t(value);
 const name = plugin => manager.messages.name(plugin);
 const description = plugin => manager.messages.description(plugin);
@@ -23,7 +25,7 @@ function Source({source,metadata}) {
   return <><Copy>{t(`Repository: ${source.repositoryUrl}\nRelease/tag: ${source.tag}\nAsset: ${source.assetName}\nSHA-256: ${source.sha256}\nGitHub digest: ${source.upstreamDigestVerified?'matched':'not available for verification'}`)}</Copy>
     <Copy>{t(`Runtime compatibility: ${metadata?.runtimeApi==null?'unknown (not declared)':`author declared API ${metadata.runtimeApi}`}\nPlatforms: ${metadata?.platforms?.length?`author declared ${metadata.platforms.join(', ')}`:'unknown (not declared)'}`)}</Copy></>;
 }
-function TagHash(){return <svg className="codlet-tag-hash" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" aria-hidden="true" focusable="false"><path d="M6.3 2.7L4.7 13.3 M11.3 2.7L9.7 13.3 M2.7 5.5H13.3 M2.7 10.5H13.3"/></svg>;}
+function TagHash(){return <svg className="codlet-tag-hash" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true" focusable="false"><path d="M6.3 2.7L4.7 13.3 M11.3 2.7L9.7 13.3 M2.7 5.5H13.3 M2.7 10.5H13.3"/></svg>;}
 function PluginTags({tags,show=true,query,onSelect}) {
   if(!show)return null;
   if(!tags?.length)return null;
@@ -252,6 +254,7 @@ function Page({s,toolbar}){
         <C.Menu.Content align="end" minWidth={180}><C.Menu.Item disabled={s.createBusy} onSelect={()=>manager.createPlugin()}><I.Cube className="codlet-add-menu-icon"/>{t('Create plugin')}</C.Menu.Item><C.Menu.Item onSelect={()=>manager.importPage()}><I.Plus className="codlet-add-menu-icon"/>{t('Import plugin')}</C.Menu.Item></C.Menu.Content>
       </C.Menu>}
     </div>}
+    {settings&&!s.confirmation&&<ProjectLinks/>}
   </div>;
   return <>{toolbar&&ui.createPortal(navigation,toolbar)}<section ref={panel}
     onFocusCapture={event=>{if(!s.confirmation)lastFocus.current=event.target.closest('[data-codlet-focus-key]')?.dataset.codletFocusKey??null;focusedRow.current=event.target.closest('[data-codlet-plugin]')?event.target:null;}}
@@ -276,8 +279,9 @@ export async function activate(context){
     deactivate();const current=epoch;context.onDeactivate(deactivate);
     try{
       if(context.ui?.api!==2)throw new Error('Update the renderer runtime for official UI components');
-      ui=context.ui.create();({React,components:C,icons:I}=ui);h=React.createElement;manager=new Manager(context);
+      ui=context.ui.create();({React,components:C,icons:I}=ui);h=React.createElement;I=createCodletIcons(React,I);manager=new Manager(context);
       Settings=createSettingsView({React,C,I,manager,t,Copy,mutationBusy});CodletIcon=createCodletIcon(React);
+      ProjectLinks=createProjectLinks({React,C,I,t});
       const owned=manager;
       await ui.page({label:'Codlet',icon:'Codlet',toolbar:true,render:({toolbar})=> <App toolbar={toolbar}/>,onActivate:()=>owned.open(document.visibilityState!=='hidden'),onDeactivate:()=>owned.close()});
     }catch(error){if(current===epoch){ui?.dispose();manager?.dispose();context.reportDiagnostic?.({code:'gui_ui_unavailable',message:String(error?.message??error)});}}

@@ -66,6 +66,7 @@ export function createSettingsView({React,C,I,manager,t,Copy,mutationBusy}){
           </C.Dialog.Content></C.Dialog.Portal>
         </C.Dialog.Root>
       </section>
+      <footer className="codlet-credits">Powered by Codex &amp; cccake</footer>
     </div>;
   };
 }
