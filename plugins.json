@@ -1,6 +1,7 @@
 {
   "schema": 1,
   "sourceRepository": "baoabaob/codlet-plugins",
+  "installerPlugins": ["codex.ui.adapter", "codex.desktop.adapter", "codlet-gui"],
   "plugins": [
     {
       "id": "codex.ui.adapter",

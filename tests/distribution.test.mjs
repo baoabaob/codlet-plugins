@@ -9,7 +9,7 @@ const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const config=JSON.parse(await readFile(resolve(root,'plugins.json'),'utf8'));
 test('distribution destinations and discovery metadata are unique and cannot point at the development repository',()=>{
   assert.equal(validateConfig(structuredClone(config)).plugins.length,3);
-  for(const edit of [c=>c.plugins.push(c.plugins[0]),c=>c.plugins[0].repository=c.sourceRepository,c=>c.plugins[0].repository='someone-else/plugin',c=>c.plugins[0].topics=[],c=>c.plugins[0].dependencies=['missing']]){
+  for(const edit of [c=>c.plugins.push(c.plugins[0]),c=>c.plugins[0].repository=c.sourceRepository,c=>c.plugins[0].repository='someone-else/plugin',c=>c.plugins[0].topics=[],c=>c.plugins[0].dependencies=['missing'],c=>c.installerPlugins=['missing'],c=>c.installerPlugins.push(c.installerPlugins[0])]){
     const copy=structuredClone(config);edit(copy);assert.throws(()=>validateConfig(copy));
   }
   for(const path of ['../secret','x/../../secret','.git/config','x\\secret','C:/secret','/secret','x//file','x/./file'])assert.throws(()=>safePath(path),path);

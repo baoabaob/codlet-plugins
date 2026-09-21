@@ -23,6 +23,7 @@ export function validateConfig(config){
     ids.add(p.id);repos.add(p.repository.toLowerCase());
   }
   for(const p of config.plugins)for(const id of p.dependencies)if(!ids.has(id))throw Error(`Unknown dependency ${id}`);
+  if(!Array.isArray(config.installerPlugins)||new Set(config.installerPlugins).size!==config.installerPlugins.length||config.installerPlugins.some(id=>!ids.has(id)))throw Error('Invalid installer plugin selection');
   return config;
 }
 

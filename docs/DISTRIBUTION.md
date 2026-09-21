@@ -42,6 +42,8 @@ powershell -NoProfile -File scripts/Sync-Distribution.ps1 -Apply
 
 在 `plugins.json` 增加 ID、bundle 目录、入口、分发仓库、说明、topics 和依赖；同时添加普通 `codlet.json` 与插件源码。修改某插件后，只调整它的版本。版本由 manifest 提供，同步器拒绝用同一标签替换已发布或已有草稿的内容。共享源码导致多个插件发生变化时，这些插件都应调整版本。
 
+`installerPlugins` 单独指定安装包携带的三个核心官方插件。新增普通官方插件默认只分发到自己的仓库，不自动扩大 MSI/便携包的预装集合；Core 构建器只读取这个预装子集。
+
 ## 当前私有预览与后续公开
 
 默认 `-Apply` 只生成草稿。现阶段普通用户不能通过社区入口发现这些私有仓库，当前未认证的 GitHub 导入器也不能安装私有或草稿 Release。

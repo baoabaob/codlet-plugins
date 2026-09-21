@@ -33,5 +33,5 @@ for(const plugin of config.plugins){
   const archive=zip(files),asset=`${manifest.id}-${manifest.version}.zip`;await writeFile(resolve(out,asset),archive);
   packages.push({id:manifest.id,name:manifest.name,version:manifest.version,repository:`https://github.com/${plugin.repository}`,tag:`v${manifest.version}`,dependencies,permissions:manifest.permissions,directory:`packages/${manifest.id}`,asset,sha256:hash(archive),bytes:archive.length,files:files.map(([path,bytes])=>({path,bytes:bytes.length,sha256:hash(bytes)}))});
 }
-await writeFile(resolve(out,'catalog.json'),JSON.stringify({schema:1,kind:'codlet-official-plugin-bundle',repository:'https://github.com/baoabaob/codlet-plugins',packages},null,2)+'\n');
+await writeFile(resolve(out,'catalog.json'),JSON.stringify({schema:1,kind:'codlet-official-plugin-bundle',repository:`https://github.com/${config.sourceRepository}`,installerPlugins:config.installerPlugins,packages},null,2)+'\n');
 console.log(packages.map(p=>`${p.id} ${p.version}: ${p.asset} ${p.sha256}`).join('\n'));
