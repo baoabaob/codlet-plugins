@@ -43,7 +43,7 @@ export function createMessages(context) {
         'Plugins that will also be disabled':'将一并停用的插件','Plugins that will also stop':'将一并停止运行的插件',
         'Includes indirect dependencies. These plugins and their files will be kept.':'包含间接依赖此插件的项目，它们的安装记录和文件会保留',
         'Files and troubleshooting':'文件与排障','Installation directory':'安装目录','Error logs':'错误日志',
-        'Open Codlet on GitHub':'在 GitHub 查看 Codlet','Star Codlet on GitHub':'在 GitHub 为 Codlet 点 Star',
+        'Open Codlet on GitHub':'在 GitHub 查看 Codlet','Leave a star~ ⭐️':'点个星吧~⭐️',
         'Open installation directory':'打开安装目录','Open error logs':'打开错误日志','Open folder':'打开文件夹',
         'Open the folder containing this Codlet installation.':'打开当前 Codlet 所在的文件夹',
         'Open this runtime’s local error logs for troubleshooting.':'打开当前运行环境的本地错误日志，便于排查问题',

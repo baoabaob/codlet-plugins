@@ -2,8 +2,8 @@
 [data-codlet-panel] { height:100%; min-height:0; color:var(--color-text); overflow:hidden; -webkit-app-region:no-drag; }
 [data-codlet-panel] .codlet-scroll { height:100%; min-height:0; overflow-x:hidden; overflow-y:auto; scrollbar-gutter:stable; overscroll-behavior:contain; }
 [data-codlet-panel] .codlet-width { width:100%; max-width:var(--codlet-content-width,48rem); margin-inline:auto; padding-inline:var(--codlet-panel-padding,20px); }
-[data-codlet-panel] .codlet-heading { padding-top:var(--codlet-panel-padding,20px); }
-[data-codlet-panel] .codlet-heading-inner { display:flex; flex-direction:column; gap:8px; }
+[data-codlet-panel] .codlet-heading { display:flex; align-items:center; justify-content:space-between; gap:24px; padding-top:var(--codlet-panel-padding,20px); }
+[data-codlet-panel] .codlet-heading-inner { display:flex; flex-direction:column; gap:8px; min-width:0; }
 [data-codlet-panel] [hidden] { display:none!important; }
 [data-codlet-panel] .codlet-brand { display:flex; align-items:center; flex-wrap:wrap; gap:4px 8px; min-width:0; }
 [data-codlet-panel] h1 { margin:0; font-size:28px; font-weight:var(--font-weight-medium); line-height:1.2; }
@@ -14,9 +14,8 @@
 [data-codlet-official-ui] .codlet-toolbar-actions { display:flex; align-items:center; gap:4px; -webkit-app-region:no-drag; }
 [data-codlet-official-ui] .codlet-menu-note { margin-inline-start:auto; font-size:12px; color:var(--color-text-secondary); }
 [data-codlet-official-ui] svg.codlet-add-menu-icon { width:18px; height:18px; flex:0 0 18px; }
-[data-codlet-official-ui] .codlet-project-links { display:flex; align-items:center; gap:8px; flex-shrink:0; -webkit-app-region:no-drag; }
-[data-codlet-official-ui] .codlet-project-links a { font-weight:400; }
-[data-codlet-official-ui] .codlet-star-link { border-radius:8px; }
+[data-codlet-panel] .codlet-project-links { display:flex; align-items:center; flex-shrink:0; -webkit-app-region:no-drag; }
+[data-codlet-panel] a.codlet-project-link { font-size:14px; line-height:24px; font-weight:400; white-space:nowrap; text-decoration:underline; text-decoration-thickness:1px; text-underline-offset:3px; }
 [data-codlet-panel] .codlet-warning-icon { color:var(--color-text-warning); }
 [data-codlet-panel] .codlet-version { color:var(--color-text-secondary); font-size:12px; white-space:nowrap; }
 [data-codlet-panel] .codlet-search-sticky { position:sticky; top:0; z-index:2; background:var(--color-surface); }

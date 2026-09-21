@@ -254,7 +254,6 @@ function Page({s,toolbar}){
         <C.Menu.Content align="end" minWidth={180}><C.Menu.Item disabled={s.createBusy} onSelect={()=>manager.createPlugin()}><I.Cube className="codlet-add-menu-icon"/>{t('Create plugin')}</C.Menu.Item><C.Menu.Item onSelect={()=>manager.importPage()}><I.Plus className="codlet-add-menu-icon"/>{t('Import plugin')}</C.Menu.Item></C.Menu.Content>
       </C.Menu>}
     </div>}
-    {settings&&!s.confirmation&&<ProjectLinks/>}
   </div>;
   return <>{toolbar&&ui.createPortal(navigation,toolbar)}<section ref={panel}
     onFocusCapture={event=>{if(!s.confirmation)lastFocus.current=event.target.closest('[data-codlet-focus-key]')?.dataset.codletFocusKey??null;focusedRow.current=event.target.closest('[data-codlet-plugin]')?event.target:null;}}
@@ -265,7 +264,7 @@ function Page({s,toolbar}){
       <header className="codlet-heading codlet-width"><div className="codlet-heading-inner">
         <div className="codlet-brand">{!settings&&<CodletIcon size={32}/>}<h1 data-codlet-page-heading="" tabIndex={-1}>{settings?t('Settings'):'Codlet'}</h1>{!settings&&<><span className="codlet-version">{s.runtimeVersion}</span>{s.page==='plugins'&&<SkillHelp s={s}/>} {notices.length>0&&<IconAction icon={I.ExclamationMarkCircle} iconClassName="codlet-warning-icon" label={notices.join('\n')+'\n'+t('View version information in settings')} onClick={()=>manager.settingsPage(true)} disabled={!!s.confirmation}/>}</>}</div>
         <p className="codlet-subtitle">{descriptionText(t(settings?'Manage Codlet preferences and version updates.':'Create or manage Codlet plugins'))}</p>
-      </div></header>
+      </div>{settings&&!s.confirmation&&<ProjectLinks/>}</header>
       {s.page==='plugins'&&!s.confirmation?<PluginList s={s}/>:<div className="codlet-body codlet-width">{s.confirmation?<Confirmation s={s}/>:s.page==='import'?<ImportPage s={s}/>:s.page==='details'?<Details s={s}/>:<Settings s={s} highlight={versionHighlight}/>}</div>}
     </div>
   </section></>;
@@ -281,7 +280,7 @@ export async function activate(context){
       if(context.ui?.api!==2)throw new Error('Update the renderer runtime for official UI components');
       ui=context.ui.create();({React,components:C,icons:I}=ui);h=React.createElement;I=createCodletIcons(React,I);manager=new Manager(context);
       Settings=createSettingsView({React,C,I,manager,t,Copy,mutationBusy});CodletIcon=createCodletIcon(React);
-      ProjectLinks=createProjectLinks({React,C,I,t});
+      ProjectLinks=createProjectLinks({React,C,t});
       const owned=manager;
       await ui.page({label:'Codlet',icon:'Codlet',toolbar:true,render:({toolbar})=> <App toolbar={toolbar}/>,onActivate:()=>owned.open(document.visibilityState!=='hidden'),onDeactivate:()=>owned.close()});
     }catch(error){if(current===epoch){ui?.dispose();manager?.dispose();context.reportDiagnostic?.({code:'gui_ui_unavailable',message:String(error?.message??error)});}}
