@@ -12,7 +12,7 @@ test('stdio MCP wrapper removes inherited launch values and preserves explicit M
     const environmentPatch = { set: { HTTPS_PROXY: 'http://codlet:fixture@127.0.0.1:9', CODEX_CA_CERTIFICATE: '/private/ca.pem' }, removeCaseInsensitive: ['https_proxy', 'codex_ca_certificate'] };
     const env = { ...process.env, ...environmentPatch.set, EXTRA: 'preserved' };
     if (explicit) env.HTTPS_PROXY = 'http://user-explicit.invalid';
-    const servers = { fixture: { command: process.execPath, args: ['-e', 'process.stdout.write(JSON.stringify({proxy:process.env.HTTPS_PROXY,trustAbsent:process.env.CODEX_CA_CERTIFICATE===undefined,extra:process.env.EXTRA}));'], env: explicit ? { HTTPS_PROXY: env.HTTPS_PROXY } : {} } };
+    const servers = { fixture: { enabled: false, command: process.execPath, args: ['-e', 'process.stdout.write(JSON.stringify({proxy:process.env.HTTPS_PROXY,trustAbsent:process.env.CODEX_CA_CERTIFICATE===undefined,extra:process.env.EXTRA}));'], env: explicit ? { HTTPS_PROXY: env.HTTPS_PROXY } : {} } };
     const wrapped = wrapMcpServers({ servers, originalEnvironment: { HTTPS_PROXY: 'http://corporate.invalid' }, environmentPatch, runtimeExecutable: process.execPath, directory }).fixture;
     const child = spawn(wrapped.command, wrapped.args, { env, cwd: directory, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
     t.after(() => child.kill()); const chunks = [];

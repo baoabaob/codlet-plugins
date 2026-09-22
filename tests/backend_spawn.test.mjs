@@ -6,7 +6,7 @@ import path from 'node:path';
 import { EventEmitter } from 'node:events';
 import { createRequire } from 'node:module';
 const { installBackendSpawn } = createRequire(import.meta.url)('../host/backend-spawn.cjs');
-test('main spawn hook restores parent env, changes only verified backend roots and gives code-mode original env', t => {
+test('main spawn hook restores parent env, changes only verified backend roots and gives code-mode original env', async t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'codlet-spawn-fixture-')); t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   const patch = { set: { HTTPS_PROXY: 'http://codlet:private@127.0.0.1:12345', CODEX_CA_CERTIFICATE: '/launch/ca.pem' }, removeCaseInsensitive: ['https_proxy', 'codex_ca_certificate'] };
   const environment = { ...patch.set, OTHER: 'unchanged' }, originalEnvironment = { HTTPS_PROXY: 'http://corporate.invalid:3128', OTHER: 'unchanged' }, dispatched = [];
@@ -23,8 +23,19 @@ test('main spawn hook restores parent env, changes only verified backend roots a
   const child = new EventEmitter(), executable = path.resolve(directory, 'codex.exe');
   const backend = { file: executable, args: [executable, 'app-server', '--stdio'], cwd: directory, envPairs: ['HTTPS_PROXY=http://corporate.invalid:3128', 'OTHER=explicit'] };
   prototype.spawn.call(child, backend);
+  assert.equal((await hook.ready()).backendRootsPrepared, 1);
   assert(dispatched[1].args.includes('--code-mode-host')); assert(dispatched[1].envPairs.includes(`HTTPS_PROXY=${patch.set.HTTPS_PROXY}`));
   assert.equal(sidecarEnvironment.HTTPS_PROXY, originalEnvironment.HTTPS_PROXY); assert.equal(sidecarEnvironment.CODEX_CA_CERTIFICATE, undefined);
   assert.equal(sidecarEnvironment.OTHER, 'explicit'); child.emit('exit'); assert.equal(sidecarStopped, true);
   hook.close(); assert.equal(prototype.spawn, spawn); assert.deepEqual(environment, originalEnvironment);
+});
+test('unverified backend never receives proxy secrets and cannot complete the launch readiness gate', async () => {
+  const options = { file: path.resolve('codex.exe'), args: ['codex.exe', 'app-server'], envPairs: ['HTTPS_PROXY=http://original.invalid'] };
+  let received;
+  const prototype = { spawn(value) { received = value; return 'original'; } };
+  const hook = installBackendSpawn({ environmentPatch: { set: { HTTPS_PROXY: 'private' }, removeCaseInsensitive: ['https_proxy'] }, originalEnvironment: {} }, {
+    environment: {}, prototype, prepare() { throw Object.assign(new Error('unverified'), { code: 'backend_build_unverified' }); },
+  });
+  assert.equal(prototype.spawn.call(new EventEmitter(), options), 'original'); assert.equal(received, options);
+  await assert.rejects(hook.ready(), { code: 'backend_tool_environment_unsupported' }); hook.close();
 });

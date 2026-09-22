@@ -28,7 +28,9 @@ function wrapMcpServers({ servers, environmentPatch, originalEnvironment, runtim
   const entry = path.join(directory, `mcp-entry-${randomBytes(16).toString('hex')}.cjs`);
   let written = false;
   for (const [name, server] of Object.entries(servers)) {
-    if (server.enabled === false || !server.command) continue;
+    // Desktop can enable an already-configured server per thread. Prepare its
+    // transport even while the startup snapshot says enabled:false.
+    if (!server.command) continue;
     if (!/^[a-zA-Z0-9_-]{1,128}$/u.test(name)) throw fail('mcp_configuration_unsupported');
     if (typeof server.command !== 'string' || server.args?.some(value => typeof value !== 'string')) throw fail('mcp_configuration_unsupported');
     const filename = path.join(directory, `mcp-${randomBytes(16).toString('hex')}.json`);
