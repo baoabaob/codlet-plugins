@@ -5,29 +5,47 @@ import fs from 'node:fs/promises';
 import { createRequire } from 'node:module';
 const { installElectronTraffic } = createRequire(import.meta.url)('../host/electron-traffic.cjs');
 const fixtures = new URL('./fixtures/traffic/', import.meta.url);
-test('Electron main hook limits trust to the launch CA/hostname and proxy authentication to its endpoint', async () => {
-  const [caPem, cert] = await Promise.all(['ca.pem', 'cert.pem'].map(name => fs.readFile(new URL(name, fixtures), 'utf8')));
-  const app = new EventEmitter(); let ready = false;
-  app.isReady = () => ready; app.whenReady = () => Promise.resolve();
+const [caPem, cert, unrelated] = await Promise.all(['ca.pem', 'cert.pem', 'unrelated-cert.pem'].map(name => fs.readFile(new URL(name, fixtures), 'utf8')));
+const configuration = { proxyUrl: 'http://codlet:fixture@127.0.0.1:12345', caPem };
+function fixture() {
+  const app = new EventEmitter(); app.started = false; app.isReady = () => app.started;
+  app.whenReady = () => app.started ? Promise.resolve() : new Promise(resolve => app.once('ready', resolve));
   const proxies = []; let verify;
   const session = { defaultSession: { setCertificateVerifyProc(value) { verify = value; }, async setProxy(value) { proxies.push(value); }, async closeAllConnections() {} } };
-  const hook = installElectronTraffic({ app, session }, { proxyUrl: 'http://codlet:fixture@127.0.0.1:12345', caPem });
-  ready = true; app.emit('ready'); await hook.ready();
-  assert.equal(proxies[0].proxyRules, 'http=127.0.0.1:12345;https=127.0.0.1:12345');
-  const checked = hostname => new Promise(resolve => verify({ hostname, certificate: { data: cert } }, resolve));
+  return { app, session, proxies, get verify() { return verify; }, start() { app.started = true; app.emit('ready'); } };
+}
+test('Session trust only overrides authority errors for the exact launch CA, name, EKU and dates', async () => {
+  const f = fixture(), hook = installElectronTraffic(f, configuration);
+  f.app.emit('session-created', {}, f.session.defaultSession); f.start(); await hook.ready();
+  const checked = (hostname, data = cert, errorCode = -202) => new Promise(resolve => f.verify({ hostname, certificate: { data }, errorCode }, resolve));
   assert.equal(await checked('codlet-probe.invalid'), 0);
-  assert.equal(await checked('attacker.invalid'), -3);
-  assert.equal(await new Promise(resolve => verify({ hostname: 'codlet-probe.invalid', certificate: { data: caPem } }, resolve)), -3);
-  let prevented = 0, credentials = null;
-  const event = { preventDefault() { prevented++; } }, receive = (...values) => { credentials = values; };
-  app.emit('login', event, null, {}, { isProxy: false, host: '127.0.0.1', port: 12345 }, receive);
-  assert.equal(credentials, null);
-  app.emit('login', event, null, {}, { isProxy: true, host: 'other.invalid', port: 12345 }, receive);
-  assert.equal(credentials, null);
-  app.emit('login', event, null, {}, { isProxy: true, host: '127.0.0.1', port: 12345 }, receive);
-  assert.deepEqual(credentials, ['codlet', 'fixture']); assert.equal(prevented, 1);
-  assert.equal(hook.inspect().available, false);
-  await hook.close(); assert.equal(verify, null); assert.deepEqual(proxies.at(-1), { mode: 'system' });
-  assert.equal(app.listenerCount('session-created'), 0); assert.equal(app.listenerCount('login'), 0);
-  assert.throws(() => installElectronTraffic({ app, session }, { proxyUrl: 'invalid', caPem }), { code: 'electron_bootstrap_too_late' });
+  for (const code of [-200, -201, -206, -208, -214, 0]) assert.equal(await checked('codlet-probe.invalid', cert, code), -3);
+  for (const [errorCode, verificationResult] of [[-201, 'CERT_AUTHORITY_INVALID'], [-202, 'CERT_REVOKED'], [-202, 'net::ERR_CERT_DATE_INVALID']]) {
+    assert.equal(await new Promise(resolve => f.verify({ hostname: 'codlet-probe.invalid', certificate: { data: cert }, errorCode, verificationResult }, resolve)), -3);
+  }
+  for (const [hostname, value] of [['wrong.invalid', cert], ['localhost', unrelated], ['localhost', caPem], ['localhost', 'invalid']]) assert.equal(await checked(hostname, value), -3);
+  const originalNow = Date.now; Date.now = () => 4102444800000;
+  try { assert.equal(await checked('codlet-probe.invalid'), -3); } finally { Date.now = originalNow; }
+  await hook.close(); assert.equal(f.verify, null); assert.equal(f.app.listenerCount('session-created'), 0);
+});
+test('real fork Session shape fails closed even with app.setProxy, without installing global fallbacks', async () => {
+  const f = fixture(); let globalProxy = 0;
+  f.app.setProxy = async () => { globalProxy++; };
+  f.session.defaultSession = { cookies: {}, protocol: {}, webRequest: {}, fetch() {} };
+  const request = () => {}; f.net = { request };
+  const hook = installElectronTraffic(f, configuration);
+  f.app.emit('session-created', f.session.defaultSession); f.start();
+  await assert.rejects(hook.ready(), { code: 'electron_transport_unverified' });
+  assert.equal(hook.inspect().configuredSessions, 0); assert.equal(globalProxy, 0);
+  assert.equal(f.net.request, request); assert.equal(f.app.listenerCount('certificate-error'), 0);
+  await hook.close();
+});
+test('proxy setup failure rejects readiness; newly created sessions cannot silently share an unverified route', async () => {
+  const f = fixture(), hook = installElectronTraffic(f, configuration);
+  f.app.emit('session-created', f.session.defaultSession);
+  const second = { setCertificateVerifyProc() {}, async setProxy() { throw new Error('failure'); }, async closeAllConnections() {} };
+  f.app.emit('session-created', {}, second); f.start();
+  await assert.rejects(hook.ready(), { code: 'electron_proxy_failed' });
+  assert.equal(hook.inspect().configuredSessions, 1); assert.equal(hook.inspect().available, false);
+  await hook.close().catch(() => {});
 });

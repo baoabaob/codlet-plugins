@@ -94,7 +94,8 @@ function installBackendSpawn(configuration, dependencies = {}) {
   prototype.spawn = wrapped;
   return Object.freeze({
     async ready() {
-      const deadline = Date.now() + 4000;
+      const deadline = configuration.deadlineUnixMs;
+      if (!Number.isSafeInteger(deadline) || deadline > Date.now() + 10000) throw fail('invalid_launch_deadline');
       while (!prepared) {
         if (closed || declined) throw fail('backend_tool_environment_unsupported');
         if (Date.now() >= deadline) throw fail('backend_launch_not_observed');

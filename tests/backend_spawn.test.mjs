@@ -12,7 +12,7 @@ test('main spawn hook restores parent env, changes only verified backend roots a
   const environment = { ...patch.set, OTHER: 'unchanged' }, originalEnvironment = { HTTPS_PROXY: 'http://corporate.invalid:3128', OTHER: 'unchanged' }, dispatched = [];
   const prototype = { spawn(options) { dispatched.push(options); return 'started'; } }; const spawn = prototype.spawn;
   let sidecarStopped = false, sidecarEnvironment;
-  const hook = installBackendSpawn({ environmentPatch: patch, originalEnvironment, runtimeExecutable: process.execPath, privateDirectory: directory }, {
+  const hook = installBackendSpawn({ environmentPatch: patch, originalEnvironment, runtimeExecutable: process.execPath, privateDirectory: directory, deadlineUnixMs: Date.now() + 10000 }, {
     environment, prototype, probe: () => ({ shellPolicy: { exclude: ['PRIVATE_*'] }, features: { code_mode_host: true }, mcpServers: {} }),
     prepare: plan => ({ arguments: plan.arguments, environment: { ...plan.originalEnvironment, ...patch.set } }),
     wrapServers: () => ({}), startSidecar(plan) { sidecarEnvironment = plan.environment; return { url: 'http://127.0.0.1:12346', close() { sidecarStopped = true; } }; },
@@ -33,11 +33,18 @@ test('unverified backend never receives proxy secrets and cannot complete the la
   const options = { file: path.resolve('codex.exe'), args: ['codex.exe', 'app-server'], envPairs: ['HTTPS_PROXY=http://original.invalid'] };
   let received;
   const prototype = { spawn(value) { received = value; return 'original'; } };
-  const hook = installBackendSpawn({ environmentPatch: { set: { HTTPS_PROXY: 'private' }, removeCaseInsensitive: ['https_proxy'] }, originalEnvironment: {} }, {
+  const hook = installBackendSpawn({ environmentPatch: { set: { HTTPS_PROXY: 'private' }, removeCaseInsensitive: ['https_proxy'] }, originalEnvironment: {}, deadlineUnixMs: Date.now() + 10000 }, {
     environment: {}, prototype, prepare() { throw Object.assign(new Error('unverified'), { code: 'backend_build_unverified' }); },
   });
   assert.equal(prototype.spawn.call(new EventEmitter(), options), 'original'); assert.equal(received, options);
   await assert.rejects(hook.ready(), { code: 'backend_tool_environment_unsupported' }); hook.close();
+});
+test('backend readiness uses the shared launch deadline without starting a fresh timeout budget', async () => {
+  const prototype = { spawn() {} };
+  const hook = installBackendSpawn({ environmentPatch: { set: {}, removeCaseInsensitive: [] }, originalEnvironment: {}, deadlineUnixMs: Date.now() - 1 }, { environment: {}, prototype });
+  const started = Date.now();
+  await assert.rejects(hook.ready(), { code: 'backend_launch_not_observed' });
+  assert(Date.now() - started < 250); hook.close();
 });
 for (const stage of ['mcp', 'sidecar']) test(`nine unsupported ${stage} preparations retain the original backend and release partial resources`, t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'codlet-spawn-rollback-'));

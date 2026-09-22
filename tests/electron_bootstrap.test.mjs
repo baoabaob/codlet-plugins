@@ -7,13 +7,14 @@ class Peer extends EventTarget {
   static mismatch = false;
   static commands = [];
   closed = false;
+  readyState = 1;
   constructor() { super(); queueMicrotask(() => this.dispatchEvent(new Event('open'))); }
   close() { if (this.closed) return; this.closed = true; this.dispatchEvent(new Event('close')); }
   send(encoded) {
     const { id, method, params } = JSON.parse(encoded); Peer.commands.push({ method, params });
     let result = {};
     if (method === 'Debugger.evaluateOnCallFrame') result = { result: { value: params.expression.includes('installElectronTraffic') ? { installed: true, pid: 1234 } : { pid: Peer.mismatch ? 9999 : 1234, executable: fs.realpathSync(process.execPath), type: 'browser', ready: false } } };
-    if (method === 'Runtime.evaluate') result = { result: { value: params.awaitPromise ? { configuredSessions: 1 } : true } };
+    if (method === 'Runtime.evaluate') result = { result: { value: params.expression.startsWith('globalThis[Symbol.for("codlet.private.main-traffic-result.') ? { value: { configuredSessions: 1 } } : true } };
     queueMicrotask(() => {
       this.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({ id, result }) }));
       if (method === 'Runtime.runIfWaitingForDebugger') this.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({ method: 'Debugger.paused', params: { callFrames: [{ callFrameId: 'first' }] } }) }));
@@ -31,5 +32,5 @@ test('main handshake validates exact new process before disclosing launch settin
   assert.equal(result.exactChildVerified, true); assert.equal(result.desktopTrafficVerified, false);
   const install = Peer.commands.findIndex(value => value.params?.expression?.includes('installElectronTraffic'));
   assert(install < Peer.commands.findIndex(value => value.method === 'Debugger.resume'));
-  assert(Peer.commands.at(-1).params.expression.includes("inspector').close()"));
+  assert(Peer.commands.at(-1).params.expression.includes('.closeInspector()'));
 });

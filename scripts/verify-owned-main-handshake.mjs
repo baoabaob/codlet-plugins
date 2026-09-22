@@ -23,6 +23,6 @@ try {
   const result = await attachClientLaunch({ inspectorUrl, expectedPid, executable: values['--executable'], traffic, originalEnvironment, signal });
   process.stdout.write(JSON.stringify({ installed: result.installed === true, exactChildVerified: result.exactChildVerified === true, configuredSessions: result.configuredSessions, actualTrafficObserved: false }) + '\n');
 } catch (error) {
-  const allowed = new Set(['invalid_main_bootstrap', 'main_bootstrap_cancelled', 'main_bootstrap_protocol_failed', 'main_bootstrap_timeout', 'main_bootstrap_connect_failed', 'main_bootstrap_not_paused', 'main_bootstrap_identity_mismatch', 'main_bootstrap_install_failed', 'main_bootstrap_session_failed']);
+  const allowed = new Set(['invalid_main_bootstrap', 'main_bootstrap_cancelled', 'main_bootstrap_protocol_failed', 'main_bootstrap_timeout', 'main_bootstrap_connect_failed', 'main_bootstrap_not_paused', 'main_bootstrap_identity_mismatch', 'main_bootstrap_install_failed', 'main_bootstrap_session_failed', 'main_bootstrap_detach_failed', 'electron_transport_unverified', 'electron_proxy_failed', 'backend_launch_not_observed', 'backend_tool_environment_unsupported']);
   process.stdout.write(JSON.stringify({ installed: false, reason: allowed.has(error.code) ? error.code : 'main_handshake_failed' }) + '\n'); process.exitCode = 1;
 }
