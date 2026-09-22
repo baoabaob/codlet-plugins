@@ -26,5 +26,6 @@ test('Codex HTTP JSON rewrites decode gzip/zstd with limits and remove stale rep
 test('semantic metadata uses verified endpoints and leaves associations unknown', () => {
   assert.deepEqual(classifyCodexTraffic({ method: 'POST', url: 'https://chatgpt.com/backend-api/codex/responses?thread_id=do-not-trust' }), { kind: 'model.responses', threadId: null, model: null });
   assert.equal(classifyCodexTraffic({ method: 'GET', url: 'wss://api.openai.com/v1/responses' }).kind, 'model.responses');
+  assert.equal(classifyCodexTraffic({ method: 'GET', url: 'https://chatgpt.com/backend-api/codex/models?client_version=fixture' }).kind, 'model.list');
   for (const url of ['https://api.openai.com.attacker.invalid/v1/responses', 'http://api.openai.com/v1/responses', 'https://chatgpt.com/attachments', 'https://api.openai.com:8443/v1/responses']) assert.equal(classifyCodexTraffic({ method: 'POST', url }).kind, 'unknown');
 });

@@ -14,7 +14,7 @@ function probeCodexTraffic({ platform = process.platform, binarySha256 } = {}) {
   const backend = VERIFIED_BACKENDS[platform];
   const fixtureVerified = !!backend && binarySha256?.toLowerCase() === backend.sha256;
   return Object.freeze({ available: false, fixtureVerified, restartRequired: true, officialOAuth: false, existingLoadedThreads: false, desktop: false, attachments: false,
-    fixtureProtocols: fixtureVerified ? ['http', 'https', 'sse', 'wss'] : [],
+    fixtureProtocols: fixtureVerified ? ['http', 'https', 'sse', 'ws', 'wss'] : [],
     reason: fixtureVerified ? 'native_process_ingress_not_attached' : 'backend_build_unverified' });
 }
 async function prepareCodexBackendTraffic({ core, executable, platform = process.platform, environment, directory, proxyUrl, additionalCaPem, systemProxyFeature = null }) {
@@ -41,6 +41,7 @@ function classifyCodexTraffic({ url, method }) {
   const trusted = protocol === 'https:' && !target.username && !target.password && !target.port;
   let kind = 'unknown';
   if (trusted && (target.hostname === 'chatgpt.com' && target.pathname === '/backend-api/codex/responses' || target.hostname === 'api.openai.com' && target.pathname === '/v1/responses') && ['POST', 'GET'].includes(method)) kind = 'model.responses';
+  if (trusted && target.hostname === 'chatgpt.com' && target.pathname === '/backend-api/codex/models' && method === 'GET') kind = 'model.list';
   // Correlation requires separate verified protocol evidence. Never infer thread
   // IDs from a URL query, timing, whichever task is visible, or a model name.
   return Object.freeze({ kind, threadId: null, model: null });
