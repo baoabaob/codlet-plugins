@@ -273,15 +273,20 @@ function App({toolbar}){
   const s=React.useSyncExternalStore(manager.subscribe,manager.snapshot);
   return <><style>{layout}</style><Page s={s} toolbar={toolbar}/></>;
 }
-export function deactivate(){epoch++;ui?.dispose();manager?.dispose();manager=ui=null;}
+function releaseView(){React=h=C=I=ui=Settings=CodletIcon=ProjectLinks=null;}
+export function deactivate(){epoch++;try{ui?.dispose();}finally{manager?.dispose();manager=null;releaseView();}}
 export async function activate(context){
     deactivate();const current=epoch;context.onDeactivate(deactivate);
     try{
       if(context.ui?.api!==2)throw new Error('Update the renderer runtime for official UI components');
-      ui=context.ui.create();({React,components:C,icons:I}=ui);h=React.createElement;I=createCodletIcons(React,I);manager=new Manager(context);
-      Settings=createSettingsView({React,C,I,manager,t,Copy,mutationBusy});CodletIcon=createCodletIcon(React);
-      ProjectLinks=createProjectLinks({React,C,I,t});
+      manager=new Manager(context);
       const owned=manager;
-      await ui.page({label:'Codlet',icon:'Codlet',toolbar:true,render:({toolbar})=> <App toolbar={toolbar}/>,onActivate:()=>owned.open(document.visibilityState!=='hidden'),onDeactivate:()=>owned.close()});
-    }catch(error){if(current===epoch){ui?.dispose();manager?.dispose();context.reportDiagnostic?.({code:'gui_ui_unavailable',message:String(error?.message??error)});}}
+      const options={label:'Codlet',icon:'Codlet',toolbar:true,render:({ui:activeUI,toolbar})=>{
+        ui=activeUI??ui;({React,components:C,icons:I}=ui);h=React.createElement;I=createCodletIcons(React,I);
+        Settings=createSettingsView({React,C,I,manager,t,Copy,mutationBusy});CodletIcon=createCodletIcon(React);ProjectLinks=createProjectLinks({React,C,I,t});
+        return <App toolbar={toolbar}/>;
+      },onActivate:()=>owned.open(document.visibilityState!=='hidden'),onDeactivate:()=>{owned.close();if(context.ui.page)releaseView();}};
+      if(context.ui.page)await context.ui.page(options);
+      else{ui=context.ui.create();await ui.page(options);}
+    }catch(error){if(current===epoch){try{ui?.dispose();}finally{manager?.dispose();manager=null;releaseView();}context.reportDiagnostic?.({code:'gui_ui_unavailable',message:String(error?.message??error)});}}
 }

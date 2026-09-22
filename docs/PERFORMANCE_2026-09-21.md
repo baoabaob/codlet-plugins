@@ -1,5 +1,7 @@
 # 官方插件性能检查 · 2026-09-21
 
+最新 GUI 优化使用 Core 可选的延迟页面注册接口：未打开时不创建 SDK 视图，离开时释放控件、样式和监听，仍兼容旧 API 2。真实测量与剩余重载问题见 [第二轮内存报告](https://github.com/baoabaob/codlet/blob/main/docs/PERFORMANCE_OPTIMIZATION_2026-09-22.md)。
+
 > **后续修正：** [9 月 22 日真实客户端内存报告](https://github.com/baoabaob/codlet/blob/main/docs/PERFORMANCE_MEMORY_2026-09-22.md) 发现 GUI 重载的真实浏览器调度器保留问题。Core 已补充 SDK 通道清理，40 次重载的堆增量由 66.17 MiB 降至 16.81 MiB，仍有隔离环境保留；两个 Adapter 各 20 次实际重载仅增加 0.006 / 0.037 MiB。下文仅是此前合成测试结果，不能代替原生结论。
 
 UI Adapter 现在仅在原生侧栏或插件生命周期发生变化时重新定位，不再为聊天正文的每次文本更新扫描全页。原生导航、页面嵌套挂载、工具栏替换与卸载行为有回归覆盖。
