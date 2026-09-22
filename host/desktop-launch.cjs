@@ -10,7 +10,7 @@ function launchProxy(traffic) {
 async function prepareClientLaunch({ traffic, signal }) {
   if (signal.aborted) throw fail('host_stopping');
   const proxy = launchProxy(traffic);
-  return { arguments: ['--inspect-brk=127.0.0.1:0', `--proxy-server=http=${proxy.host};https=${proxy.host}`] };
+  return { arguments: ['--inspect-brk=127.0.0.1:0', `--proxy-server=http=${proxy.host};https=${proxy.host}`, '--proxy-bypass-list=<-loopback>'] };
 }
 async function attachClientLaunch({ inspectorUrl, expectedPid, executable, traffic, originalEnvironment, signal }) {
   launchProxy(traffic);

@@ -10,7 +10,7 @@ test('Desktop combined manifest supplies only the generic launch capability and 
   assert(manifest.provides.some(value => value.name === 'codex.backend.transport'));
   const host = require('../bundled/codex-desktop-adapter/host.cjs'), signal = new AbortController().signal;
   const result = await host.prepareClientLaunch({ traffic: { proxyUrl: 'http://codlet:fixture@127.0.0.1:12345' }, originalEnvironment: {}, signal });
-  assert.deepEqual(result, { arguments: ['--inspect-brk=127.0.0.1:0', '--proxy-server=http=127.0.0.1:12345;https=127.0.0.1:12345'] });
+  assert.deepEqual(result, { arguments: ['--inspect-brk=127.0.0.1:0', '--proxy-server=http=127.0.0.1:12345;https=127.0.0.1:12345', '--proxy-bypass-list=<-loopback>'] });
   assert.equal(typeof host.attachClientLaunch, 'function'); assert.equal(typeof host.activate, 'function');
   const source = await fs.readFile(new URL('../bundled/codex-desktop-adapter/host.cjs', import.meta.url), 'utf8');
   assert(source.includes('installBackendSpawn')); assert(source.includes('runConfigProbe')); assert(source.includes('setCertificateVerifyProc'));
