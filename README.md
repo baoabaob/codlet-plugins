@@ -1,6 +1,6 @@
 # Codlet official plugins
 
-The development repository for first-party Codlet plugins. Source, reviews, tests and build tools stay together here. Each plugin has its own generated distribution repository and release channel. All repositories remain private during local preview development.
+The source repository for first-party Codlet plugins. Codex-specific adapters and the management GUI live here; the [Codlet Core](https://github.com/baoabaob/codlet) repository owns the runtime, generic SDK, permissions and installers. Each plugin has an independent generated distribution repository and release channel.
 
 | Package ID | Distribution repository | Dependency |
 | --- | --- | --- |
@@ -10,7 +10,7 @@ The development repository for first-party Codlet plugins. Source, reviews, test
 
 These are ordinary plugins with explicit manifests and permissions. Core does not embed their code. The Core-provided runtime skill and CLI remain usable without the GUI.
 
-Build using pinned Node 24:
+Build and package with Node 24 and the locked npm dependencies:
 
 ```text
 npm ci --prefix frontend
@@ -18,7 +18,7 @@ node frontend/build.mjs
 node scripts/package.mjs
 ```
 
-Run the full plugin suite against the SDK built from the matching Core checkout:
+Run the plugin suite against the SDK built from the matching Core checkout:
 
 ```text
 node scripts/prepare-core-sdk.mjs ABSOLUTE_CORE_CHECKOUT
@@ -27,10 +27,18 @@ node --test tests/*.test.mjs
 
 `dist/` contains one versioned ZIP per plugin and a catalog with file hashes. Packaging does not execute plugins or publish a release. Local installers consume this same catalog. The UI and Desktop adapters maintain their own reviewed client profiles in `compatibility/`.
 
-## Independent distribution
+## Development and contracts
 
-The [distribution guide](docs/DISTRIBUTION.md) describes the preparation, review and synchronization commands. A normal synchronization creates or updates private repositories and **draft** releases; it does not make repositories public. Each repository carries the `codlet-plugin` topic, its own installable ZIP, dependency links, source snapshot and reproducible build entrypoint. GitHub topic listings only show private repositories to authorized viewers; the current Codlet importer uses public GitHub releases without authentication.
+- [Documentation map](docs/README.md): current contracts and ownership.
+- [Contributing and testing](docs/development.md): clean checkout setup, fixtures, previews and validation.
+- [Distribution](docs/publishing.md): prepare and review independent packages; publishing is a separate explicit operation.
+- [Known issues](docs/known-issues.md): renderer environment retention and acceptance limits.
+- [Contributing](CONTRIBUTING.md) and [security reporting](SECURITY.md).
 
-Edit plugins here, not in generated repositories. To add a plugin, add its entry to `plugins.json`, its manifest and source. The shared scripts handle discovery metadata, bundling and synchronization. Version numbers remain per plugin; existing release bytes cannot be replaced.
+Edit plugins here, not in generated repositories. Add packages through `plugins.json`; change installer presets only as a separate product decision. Keep generated renderer bundles reproducible from their checked-in sources. Do not replace bytes under an existing release version.
 
-Windows x64 local Preview is currently under acceptance. Windows ARM64 and macOS real-client acceptance remain pending. These bundles are not a public stable release.
+The [marketplace specification](docs/spec/marketplace.md) records an accepted interaction design and its executable preview. It is not yet connected to the production GUI or a live catalog. Package platform declarations, reviewed client profiles and native device acceptance are separate claims.
+
+## License
+
+Codlet official plugins are licensed under [Apache-2.0](LICENSE); see [NOTICE](NOTICE) for attribution. Third-party dependencies retain their own licenses and notices. This license choice does not require independently developed third-party Codlet plugins to use Apache-2.0.

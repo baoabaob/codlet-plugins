@@ -29,6 +29,9 @@ test('each source snapshot contains its own installable bundle and build closure
     for(const required of ['frontend/build-plugin.mjs','frontend/build.mjs','frontend/package-lock.json','.codlet-distribution.json'])assert.ok(paths.includes(required));
     assert.ok(paths.every(p=>!p.includes('node_modules')&&!p.startsWith('.core-sdk')&&!p.startsWith('.git/')));
     const readme=await readFile(resolve(folder,'README.md'),'utf8');assert.ok(readme.includes(`https://github.com/${plugin.repository}`));
+    assert.ok(readme.includes('Apache-2.0'));
+    for(const legal of ['LICENSE','NOTICE'])assert.deepEqual(await readFile(resolve(folder,legal)),await readFile(resolve(root,legal)));
+    const packageJson=JSON.parse(await readFile(resolve(folder,'frontend/package.json'),'utf8'));assert.equal(packageJson.license,'Apache-2.0');
     if(plugin.id!=='codlet-gui')assert.equal(paths.includes('frontend/src/codlet/app.jsx'),false);
     const archive=await readFile(resolve(root,'dist',plugin.archive.path));assert.equal(hash(archive),plugin.archive.sha256);
   }

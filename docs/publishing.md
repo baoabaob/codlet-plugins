@@ -1,10 +1,10 @@
-# 集中开发与独立分发
+# 独立分发与发布契约
 
 `codlet-plugins` 是官方插件的开发入口，集中管理源码、组件依赖、构建与测试。`codlet-ui-adapter`、`codlet-desktop-adapter`、`codlet-gui` 是自动生成的独立分发仓库。每个仓库只有一个插件，具备自己的 topic、版本标签和 Release ZIP。Core 仓库继续保留运行时与 SDK，不重新引入官方插件源码。
 
 ## 日常流程
 
-安装开发依赖后，在本仓库修改和测试插件。先构建、打包，提交源码和生成的 bundle，再准备待同步内容：
+按照 [开发与测试说明](development.md) 在本仓库修改并验证插件。先构建、打包，提交源码和生成的 bundle，再准备待同步内容：
 
 ```powershell
 npm ci --prefix frontend
@@ -32,6 +32,7 @@ powershell -NoProfile -File scripts/Sync-Distribution.ps1 -Apply
 - `codlet.json`、编译后的 renderer、包元数据、README：既能作为插件目录检查，也有适合 GitHub 导入的 Release ZIP
 - 当前插件的实际源码依赖、适配清单、图片/样式资源、锁定的 npm 依赖和独立构建脚本
 - `.codlet-distribution.json`：开发提交、包摘要和文件清单，用于溯源和检查手工修改
+- `LICENSE` 与 `NOTICE`：官方插件采用 Apache-2.0；第三方依赖自身的许可/归属仍随 bundle 保留，独立第三方插件不因此被要求采用 Apache-2.0
 - `codlet-plugin`、`codlet-official` 及对应功能 topics
 
 生成仓库可以独立运行 `npm ci --prefix frontend`、`node frontend/build.mjs`。不要使用 GitHub 自动生成的 Source code ZIP 安装插件，它包含开发目录；使用明确上传的插件 ZIP。GUI 的 README 链接 UI Adapter 依赖，现有 Core 不自动下载安装依赖。
@@ -44,9 +45,9 @@ powershell -NoProfile -File scripts/Sync-Distribution.ps1 -Apply
 
 `installerPlugins` 单独指定安装包携带的三个核心官方插件。新增普通官方插件默认只分发到自己的仓库，不自动扩大 MSI/便携包的预装集合；Core 构建器只读取这个预装子集。
 
-## 当前私有预览与后续公开
+## 可见性与来源迁移
 
-默认 `-Apply` 只生成草稿。现阶段普通用户不能通过社区入口发现这些私有仓库，当前未认证的 GitHub 导入器也不能安装私有或草稿 Release。
+默认 `-Apply` 只生成草稿，初次分发演练使用私有仓库。实际发布前须重新读取远端状态，不把历史演练状态当作当前事实。未认证的 GitHub 导入器不能安装私有或草稿 Release。
 
 将来确定公开发布时，先自行或明确授权调整仓库可见性；随后使用 `-Apply -AllowPublic -Publish`。脚本本身不改可见性。仓库仍为私有时 `-Apply -Publish` 只会发布私有 Release，不会让导入器获得访问凭据。
 
@@ -61,4 +62,6 @@ node --test tests/distribution.test.mjs
 powershell -NoProfile -File tests/distribution.ps1
 ```
 
-另外对三个生成目录分别执行独立构建，比较 bundle 的 SHA-256；同步后核对私有状态、topics、标签、草稿状态及 GitHub 返回的资产 digest，再执行一次同步确认幂等。
+另外对三个生成目录分别执行独立构建，比较 bundle 的 SHA-256；同步后核对可见性、topics、标签、草稿状态及 GitHub 返回的资产 digest，再执行一次同步确认幂等。
+
+历史演练已验证独立重建、摘要、远端所有权与重复同步；结果范围见 [已知限制](known-issues.md)。重新发布仍必须验证当前提交和当前远端，不能以旧回执代替。

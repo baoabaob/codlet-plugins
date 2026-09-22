@@ -1,6 +1,6 @@
-# GUI 内的插件市场：交互设计预览
+# GUI 插件市场：交互要求与集成边界
 
-本轮先提供可操作的界面预览，不连接真实的市场索引，不下载安装插件，不变更用户的插件注册。预览条目和社区插件均为演示数据，页面上方明确标注这一点。
+这是已验收交互设计的当前规范，需求仍待交付。可运行预览位于 `scripts/marketplace-preview/`；生产入口 `frontend/src/codlet/app.jsx` 尚未引用该入口，实际 Add 菜单仍只有创建与导入。预览不连接真实市场索引、不下载安装插件、不变更用户注册，条目和统计为演示数据。保留预览、模型和测试是为了后续生产集成，不表示市场已经发布。
 
 ## 入口与布局
 
@@ -25,15 +25,14 @@
 
 参考：[GitHub Release asset API](https://docs.github.com/en/rest/releases/assets#get-a-release-asset)。
 
-## 系统兼容信息的现状
+## 系统兼容信息
 
-Core 的 `PackageMetadata` 已有可选 `platforms`、`runtimeApi`、`adapters` 字段。
-GitHub ZIP 检查会拒绝明确不支持当前系统/架构或 Runtime API 的包；没有声明时保持未知，不等于支持所有系统。
+通用包元数据与安装检查由 [Core 契约](https://github.com/baoabaob/codlet/blob/main/docs/README.md) 定义。元数据可声明 `platforms`、`runtimeApi`、`adapters`；没有声明时展示未知，不等于支持所有系统。GUI 不能绕过 Core 对系统/架构和 Runtime API 的检查。
 
-当前仍有两个缺口：
+生产集成须核对两个展示缺口：
 
-1. 本地导入/预装的详情 RPC 没有返回这份发布元数据，GUI 也只在 GitHub 来源的 Source 区展示它，所以用户看不到预装 Adapter 的系统信息
-2. 官方包把 Windows x64、Windows ARM64、macOS ARM64 一起写入 `platforms`，同时在 limitations 中混入内部验收进度。声明支持与真实验收记录需要分开，不能将用户界面的支持声明当成测试报告
+1. 本地导入、预装与 GitHub 来源应显示同一套发布元数据；当前 GUI 只在 GitHub 来源的 Source 区展示兼容元数据，须与 Core 一起补齐其它来源。
+2. 官方包声明 Windows x64、Windows ARM64、macOS ARM64；支持声明与真实验收记录需要分开，不能将用户界面的支持声明当成测试报告。
 
 按已确认的产品展示，预览中的官方插件列出 Windows x64、Windows ARM64、macOS Apple Silicon，不再显示“其他平台 / 待验收”。社区示例的系统信息同样是声明/模拟数据；此界面调整没有改写实际设备的历史验收记录，也不包含 Linux 适配。
 
@@ -60,7 +59,7 @@ GitHub ZIP 检查会拒绝明确不支持当前系统/架构或 Runtime API 的�
 
 元数据读取和兼容性判断需要在本地预装、普通本地导入、GitHub 安装之间共享。发布契约应区分作者声明、推导依据和内部验收记录；没有声明或推导依据时明确返回 unknown。操作系统版本最低要求目前没有专门字段，不能根据系统名称自行推测。来源 registry、统计分页及缓存、按包摘要保存的边界审查和 provider/capability 平台契约都需要接入真实 Core 数据，不能把此原型的字段当成现成接口。
 
-市场原型没有修改 Core 契约或已上传的 v0.1.0 草稿资产。实际 GUI 与 UI Adapter 的图标调整使用 0.1.1 源码版本；市场功能本身仍不在生产构建入口中。正式接入后需要相应的兼容性回归验证。
+正式接入必须覆盖生产 Add 入口、真实发现/分页/缓存、统一详情、安装/更新审核与失败恢复；市场候选最终仍走现有 Core 准备和提交流程。原型不能改变已发布资产或替代版本、兼容性与原生 UI 回归。
 
 ## 打开预览
 
