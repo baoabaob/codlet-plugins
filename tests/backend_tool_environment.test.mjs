@@ -12,5 +12,7 @@ test('shell policy removes launch-only proxy/trust and restores only values perm
   assert.deepEqual(filtered.policy.set, { CODEX_CA_CERTIFICATE: originalEnvironment.CODEX_CA_CERTIFICATE, UNRELATED: 'value' });
   const none = restoreShellTrafficEnvironment({ originalEnvironment, environmentPatch, policy: { inherit: 'none' } });
   assert.deepEqual(none.policy.set, {}); assert.equal(none.allToolChildrenIsolated, false);
+  const override = restoreShellTrafficEnvironment({ originalEnvironment, environmentPatch, policy: { set: { https_proxy: 'http://explicit.invalid' } } });
+  assert.equal(override.policy.set.HTTPS_PROXY, undefined); assert.equal(override.policy.set.https_proxy, 'http://explicit.invalid');
   for (const policy of [{ filters: {} }, { experimental_use_profile: true }]) assert.throws(() => restoreShellTrafficEnvironment({ originalEnvironment, environmentPatch, policy }), { code: 'tool_environment_policy_unverified' });
 });

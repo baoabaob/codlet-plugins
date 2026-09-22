@@ -19,6 +19,10 @@ function restoreShellTrafficEnvironment({ originalEnvironment, environmentPatch,
     if (matches(name, policy.exclude ?? []) || (policy.include_only?.length && !matches(name, policy.include_only))) continue;
     if (typeof value === 'string') restored[name] = value;
   }
+  for (const name of Object.keys(policy.set ?? {})) {
+    if (typeof policy.set[name] !== 'string') throw fail('invalid_tool_environment');
+    for (const existing of Object.keys(restored)) if (existing.toLowerCase() === name.toLowerCase()) delete restored[existing];
+  }
   const set = { ...restored, ...policy.set };
   const exclude = [...new Set([...(policy.exclude ?? []), ...affected])];
   return Object.freeze({ policy: Object.freeze({ ...policy, exclude, set }),
