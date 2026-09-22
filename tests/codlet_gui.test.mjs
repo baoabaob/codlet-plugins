@@ -6,7 +6,18 @@ import {displayPath} from '../frontend/src/codlet/paths.js';
 async function fixture(t,locale='en'){const demo=createPreviewRuntime(),f=uiFixture({locale,request:demo.request}),plugin=f.load('bundled/codlet/dist/renderer.js');t.after(()=>{plugin.deactivate();f.dispose();});await plugin.activate(f.context);return {...f,demo,plugin};}
 async function importPlugins(f){const add=f.control('Add');add.focus();await f.key(add,'ArrowDown');await f.click('Import plugin');}
 test('Codlet loads only on its native page and tears down on route changes',async t=>{
-  const f=await fixture(t);assert.equal(f.calls.some(c=>c.method==='list'),false);assert.equal(f.document.querySelector('[data-codlet-panel]'),null);await f.open();assert.ok(f.document.querySelector('section[data-codlet-panel]'));assert.equal(f.document.querySelector('dialog'),null);assert.equal(f.document.activeElement,f.control('Search plugins'));await f.leave();assert.equal(f.document.querySelector('[data-codlet-panel]'),null);await f.open();assert.ok(f.control('Search plugins'));
+  const f=await fixture(t);assert.equal(f.calls.some(c=>c.method==='list'),false);assert.equal(f.document.querySelector('[data-codlet-panel]'),null);
+  assert.equal(f.document.querySelector('[data-codlet-official-styles]'),null);assert.equal(f.mediaListeners.size,0);
+  await f.open();assert.ok(f.document.querySelector('section[data-codlet-panel]'));assert.equal(f.document.querySelector('dialog'),null);assert.equal(f.document.activeElement,f.control('Search plugins'));
+  await f.leave();assert.equal(f.document.querySelector('[data-codlet-panel]'),null);assert.equal(f.document.querySelector('[data-codlet-official-styles]'),null);assert.equal(f.mediaListeners.size,0);
+  await f.open();assert.ok(f.control('Search plugins'));
+});
+test('older API 2 runtimes retain a working create().page() fallback',async t=>{
+  const demo=createPreviewRuntime(),f=uiFixture({request:demo.request}),plugin=f.load('bundled/codlet/dist/renderer.js');
+  delete f.context.ui.page;t.after(()=>{plugin.deactivate();f.dispose();});
+  await plugin.activate(f.context);await f.open();assert.ok(f.control('Search plugins'));
+  await f.leave();assert.equal(f.document.querySelector('[data-codlet-panel]'),null);
+  await f.open();assert.ok(f.control('Search plugins'));assert.equal(f.errors.length,0);
 });
 test('rows show names, adjacent versions and descriptions without normal state labels or row tooltips',async t=>{
   const f=await fixture(t,'zh');await f.open();const row=f.document.querySelector('[data-codlet-plugin="codex.ui.adapter"]');assert.match(row.textContent,/Codex 界面适配器0\.1\.0/);assert.match(row.textContent,/将插件页面接入 Codex 主导航/);assert.equal(row.hasAttribute('title'),false);assert.doesNotMatch(row.textContent,/running|运行正常|not active/i);

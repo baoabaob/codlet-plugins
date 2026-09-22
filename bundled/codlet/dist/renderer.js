@@ -1920,11 +1920,18 @@ function App({ toolbar }) {
   const s = React.useSyncExternalStore(manager.subscribe, manager.snapshot);
   return /* @__PURE__ */ h(React.Fragment, null, /* @__PURE__ */ h("style", null, layout_default), /* @__PURE__ */ h(Page, { s, toolbar }));
 }
+function releaseView() {
+  React = h = C = I = ui = Settings = CodletIcon = ProjectLinks = null;
+}
 function deactivate() {
   epoch++;
-  ui?.dispose();
-  manager?.dispose();
-  manager = ui = null;
+  try {
+    ui?.dispose();
+  } finally {
+    manager?.dispose();
+    manager = null;
+    releaseView();
+  }
 }
 async function activate(context) {
   deactivate();
@@ -1932,20 +1939,35 @@ async function activate(context) {
   context.onDeactivate(deactivate);
   try {
     if (context.ui?.api !== 2) throw new Error("Update the renderer runtime for official UI components");
-    ui = context.ui.create();
-    ({ React, components: C, icons: I } = ui);
-    h = React.createElement;
-    I = createCodletIcons(React, I);
     manager = new Manager(context);
-    Settings = createSettingsView({ React, C, I, manager, t, Copy, mutationBusy });
-    CodletIcon = createCodletIcon(React);
-    ProjectLinks = createProjectLinks({ React, C, I, t });
     const owned = manager;
-    await ui.page({ label: "Codlet", icon: "Codlet", toolbar: true, render: ({ toolbar }) => /* @__PURE__ */ h(App, { toolbar }), onActivate: () => owned.open(document.visibilityState !== "hidden"), onDeactivate: () => owned.close() });
+    const options = { label: "Codlet", icon: "Codlet", toolbar: true, render: ({ ui: activeUI, toolbar }) => {
+      ui = activeUI ?? ui;
+      ({ React, components: C, icons: I } = ui);
+      h = React.createElement;
+      I = createCodletIcons(React, I);
+      Settings = createSettingsView({ React, C, I, manager, t, Copy, mutationBusy });
+      CodletIcon = createCodletIcon(React);
+      ProjectLinks = createProjectLinks({ React, C, I, t });
+      return /* @__PURE__ */ h(App, { toolbar });
+    }, onActivate: () => owned.open(document.visibilityState !== "hidden"), onDeactivate: () => {
+      owned.close();
+      if (context.ui.page) releaseView();
+    } };
+    if (context.ui.page) await context.ui.page(options);
+    else {
+      ui = context.ui.create();
+      await ui.page(options);
+    }
   } catch (error) {
     if (current === epoch) {
-      ui?.dispose();
-      manager?.dispose();
+      try {
+        ui?.dispose();
+      } finally {
+        manager?.dispose();
+        manager = null;
+        releaseView();
+      }
       context.reportDiagnostic?.({ code: "gui_ui_unavailable", message: String(error?.message ?? error) });
     }
   }
