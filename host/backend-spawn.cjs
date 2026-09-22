@@ -63,7 +63,7 @@ function installBackendSpawn(configuration, dependencies = {}) {
       }
       let sidecar;
       if (policy.features?.code_mode_host !== false && !actualArgs.some(value => value === '--code-mode-host' || value.startsWith('--code-mode-host='))) {
-        sidecar = startSidecar({ backendExecutable: file, environment, directory, cwd: options.cwd ?? process.cwd() }); children.add(sidecar);
+        sidecar = startSidecar({ backendExecutable: file, environment, directory, cwd: options.cwd ?? process.cwd(), runtimeExecutable: configuration.runtimeExecutable }); children.add(sidecar);
         extra.push('--code-mode-host', sidecar.url);
       }
       const next = { ...options, args: [args[0], ...launch.arguments, ...extra], envPairs: Object.entries(launch.environment).map(([name, value]) => `${name}=${value}`) };
@@ -88,7 +88,17 @@ function installBackendSpawn(configuration, dependencies = {}) {
     }
   }
   prototype.spawn = wrapped;
-  return Object.freeze({ close() { if (closed) return; closed = true; if (prototype.spawn === wrapped) prototype.spawn = originalSpawn; for (const child of children) child.close(); children.clear();
+  return Object.freeze({
+    async ready() {
+      const deadline = Date.now() + 4000;
+      while (!prepared) {
+        if (closed || declined) throw fail('backend_tool_environment_unsupported');
+        if (Date.now() >= deadline) throw fail('backend_launch_not_observed');
+        await new Promise(resolve => setTimeout(resolve, 20));
+      }
+      return this.inspect();
+    },
+    close() { if (closed) return; closed = true; if (prototype.spawn === wrapped) prototype.spawn = originalSpawn; for (const child of children) child.close(); children.clear();
       // Native removes its private directory after its owned process tree exits.
     },
     inspect: () => ({ installed: !closed, backendRootsPrepared: prepared, backendRootsDeclined: declined, codeModeSidecars: children.size, mcpWrappers, allToolChildrenIsolated: false, reason: declined ? 'backend_tool_environment_unsupported' : prepared ? 'startup-snapshot-covered' : 'awaiting_backend_launch' }) });

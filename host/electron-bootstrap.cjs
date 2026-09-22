@@ -58,6 +58,8 @@ async function attachElectronTrafficBeforeEntry({ inspectorUrl, expectedPid, exe
     // Detach and close the Node inspector immediately after the handshake.
     await request('Runtime.evaluate', { expression: `setImmediate(()=>require('node:inspector').close()); true`, returnByValue: true });
     return Object.freeze({ installed: true, exactChildVerified: true, configuredSessions: ready.result.value.configuredSessions,
+      backendRootsPrepared: ready.result.value.backend?.backendRootsPrepared ?? 0,
+      backendRootsDeclined: ready.result.value.backend?.backendRootsDeclined ?? 0,
       desktopTrafficVerified: false, reason: 'real_request_acceptance_required' });
   } finally { clearTimeout(timer); signal?.removeEventListener('abort', stop); stop(); }
 }
