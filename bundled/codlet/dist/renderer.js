@@ -34,6 +34,9 @@ var PERMISSION_COPY = Object.freeze({
   "host.process": "Run native code with your user account\u2019s OS permissions",
   "host.fs": "Read files inside explicitly allowed folders",
   "host.network": "Request explicitly allowed HTTP(S) origins",
+  "traffic.intercept": "Inspect and modify requests and responses for approved origins",
+  "traffic.sensitiveHeaders": "Read and modify sensitive headers such as credentials and cookies",
+  "traffic.redirect": "Redirect requests to separately approved origins",
   "host.system": "Read basic system information",
   "runtime.manage": "Manage other plugins and their permissions",
   "core.storage": "Save this plugin\u2019s configuration and data",
@@ -54,6 +57,9 @@ var PERMISSION_COPY = Object.freeze({
 });
 function createMessages(context) {
   const TRANSLATIONS = {
+    "Inspect and modify requests and responses for approved origins": "\u67E5\u770B\u5E76\u4FEE\u6539\u5DF2\u6388\u6743\u6765\u6E90\u7684\u8BF7\u6C42\u4E0E\u54CD\u5E94",
+    "Read and modify sensitive headers such as credentials and cookies": "\u8BFB\u53D6\u5E76\u4FEE\u6539\u51ED\u636E\u3001Cookie \u7B49\u654F\u611F\u8BF7\u6C42\u5934\u4E0E\u54CD\u5E94\u5934",
+    "Redirect requests to separately approved origins": "\u5C06\u8BF7\u6C42\u8F6C\u5411\u53E6\u884C\u6388\u6743\u7684\u6765\u6E90",
     "Save this plugin\u2019s configuration and data": "\u4FDD\u5B58\u6B64\u63D2\u4EF6\u7684\u914D\u7F6E\u548C\u6570\u636E",
     "Manage this plugin\u2019s system credentials": "\u7BA1\u7406\u6B64\u63D2\u4EF6\u7684\u7CFB\u7EDF\u51ED\u636E",
     "Use saved credentials for their approved destinations": "\u5C06\u4FDD\u5B58\u7684\u51ED\u636E\u7528\u4E8E\u5DF2\u6388\u6743\u7684\u76EE\u6807",

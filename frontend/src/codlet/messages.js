@@ -5,6 +5,9 @@ export const PERMISSION_COPY = Object.freeze({
         'ui.dom': 'Read and change the page interface', 'ui.mainWorld': 'Run in the page’s main JavaScript world',
         'cdp.raw': 'Use raw browser debugging access', 'host.process': 'Run native code with your user account’s OS permissions',
         'host.fs': 'Read files inside explicitly allowed folders', 'host.network': 'Request explicitly allowed HTTP(S) origins',
+        'traffic.intercept':'Inspect and modify requests and responses for approved origins',
+        'traffic.sensitiveHeaders':'Read and modify sensitive headers such as credentials and cookies',
+        'traffic.redirect':'Redirect requests to separately approved origins',
         'host.system': 'Read basic system information', 'runtime.manage': 'Manage other plugins and their permissions',
         'core.storage':'Save this plugin’s configuration and data', 'core.credentials':'Manage this plugin’s system credentials',
         'core.credentials.use':'Use saved credentials for their approved destinations', 'host.fs.write':'Write files inside explicitly allowed folders',
@@ -17,6 +20,9 @@ export const PERMISSION_COPY = Object.freeze({
 
 export function createMessages(context) {
     const TRANSLATIONS = {
+        'Inspect and modify requests and responses for approved origins':'查看并修改已授权来源的请求与响应',
+        'Read and modify sensitive headers such as credentials and cookies':'读取并修改凭据、Cookie 等敏感请求头与响应头',
+        'Redirect requests to separately approved origins':'将请求转向另行授权的来源',
         'Save this plugin’s configuration and data':'保存此插件的配置和数据','Manage this plugin’s system credentials':'管理此插件的系统凭据',
         'Use saved credentials for their approved destinations':'将保存的凭据用于已授权的目标','Write files inside explicitly allowed folders':'在明确授权的文件夹中写入文件',
         'Watch explicitly allowed folders':'监听明确授权的文件夹','Open native file pickers and access selected files':'打开系统文件选择框并访问选中的文件',

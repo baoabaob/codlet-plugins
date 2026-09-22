@@ -4,6 +4,7 @@ import {createHash} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {execFileSync} from 'node:child_process';
 import {buildPlugin} from '../frontend/build-plugin.mjs';
+import {buildDesktopHost} from '../frontend/build-host.mjs';
 
 export const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
 export const blobHash=bytes=>createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex');
@@ -43,6 +44,7 @@ export async function prepareDistribution(root,{allowDirty=false}={}){
     const manifest=JSON.parse(await readFile(resolve(out,pkg.directory,'codlet.json'),'utf8'));
     safePath(manifest.renderer.entry);
     const built=await buildPlugin(resolve(root,'frontend'),plugin.entry);
+    const hostBuilt=manifest.host?await buildDesktopHost(resolve(root,'frontend')):null;
     const files=new Map();
     const add=(path,bytes)=>{safePath(path);if(files.has(path))throw Error(`Duplicate export ${path}`);files.set(path,Buffer.isBuffer(bytes)?bytes:Buffer.from(bytes));};
     for(const file of pkg.files){
@@ -51,15 +53,17 @@ export async function prepareDistribution(root,{allowDirty=false}={}){
       add(file.path,bytes);
     }
     if(!files.get(manifest.renderer.entry).equals(Buffer.from(built.code)))throw Error(`Stale bundle for ${plugin.id}; rebuild and package first`);
-    for(const file of built.inputs){
+    if(hostBuilt&&!files.get(manifest.host.entry)?.equals(Buffer.from(hostBuilt.code)))throw Error(`Stale Host bundle for ${plugin.id}; rebuild and package first`);
+    for(const file of [...new Set([...built.inputs,...hostBuilt?.inputs??[]])]){
       const actual=await realpath(file),path=relative(root,actual).replaceAll('\\','/');
       safePath(path);add(path,await readFile(actual));
     }
     for(const path of ['frontend/build-plugin.mjs','frontend/package-lock.json'])add(path,await readFile(resolve(root,path)));
+    if(hostBuilt)add('frontend/build-host.mjs',await readFile(resolve(root,'frontend/build-host.mjs')));
     const buildPackage=JSON.parse(await readFile(resolve(root,'frontend/package.json'),'utf8'));
     buildPackage.scripts={build:'node build.mjs'};
     add('frontend/package.json',JSON.stringify(buildPackage,null,2)+'\n');
-    add('frontend/build.mjs',`// Generated distribution build; make changes in ${config.sourceRepository}\nimport {readFile,writeFile,mkdir} from 'node:fs/promises';\nimport {resolve,dirname} from 'node:path';\nimport {fileURLToPath} from 'node:url';\nimport {buildPlugin} from './build-plugin.mjs';\nconst base=dirname(fileURLToPath(import.meta.url)),root=resolve(base,'..');\nconst manifest=JSON.parse(await readFile(resolve(root,'codlet.json'),'utf8'));\nconst result=await buildPlugin(base,${JSON.stringify(plugin.entry)});\nconst destination=resolve(root,manifest.renderer.entry);\nawait mkdir(dirname(destination),{recursive:true});\nawait writeFile(destination,result.code);\n`);
+    add('frontend/build.mjs',`// Generated distribution build; make changes in ${config.sourceRepository}\nimport {readFile,writeFile,mkdir} from 'node:fs/promises';\nimport {resolve,dirname} from 'node:path';\nimport {fileURLToPath} from 'node:url';\nimport {buildPlugin} from './build-plugin.mjs';\nconst base=dirname(fileURLToPath(import.meta.url)),root=resolve(base,'..');\nconst manifest=JSON.parse(await readFile(resolve(root,'codlet.json'),'utf8'));\nconst result=await buildPlugin(base,${JSON.stringify(plugin.entry)});\nconst destination=resolve(root,manifest.renderer.entry);\nawait mkdir(dirname(destination),{recursive:true});\nawait writeFile(destination,result.code);\n${hostBuilt?"const {buildDesktopHost}=await import('./build-host.mjs');\nawait writeFile(resolve(root,manifest.host.entry),(await buildDesktopHost(base)).code);\n":""}`);
     add('.gitignore','frontend/node_modules/\n');
     add('.gitattributes','* -text\n');
     add('CONTRIBUTING.md',`# Contributing\n\nThis is an automatically generated distribution repository. Develop and report issues in https://github.com/${config.sourceRepository}. Direct edits here will stop synchronization rather than being overwritten.\n\nThe development repository is the source of truth. Plugin IDs and release channels stay independent.\n\nOriginal Codlet code and contributions are licensed under Apache-2.0; see LICENSE and NOTICE. Preserve third-party dependency licenses and notices.\n`);

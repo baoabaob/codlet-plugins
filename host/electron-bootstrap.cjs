@@ -7,13 +7,13 @@ const fail = code => Object.assign(new Error(code), { code });
 // Native starts ONE owned client with --inspect-brk=127.0.0.1:0 and supplies
 // the private debugger URL read from that exact child's stderr. No port scan,
 // existing client lookup, saved debugger URL or renderer CDP is accepted.
-async function attachElectronTrafficBeforeEntry({ inspectorUrl, expectedPid, executable, configuration, signal, WebSocketClass = WebSocket }) {
+async function attachElectronTrafficBeforeEntry({ inspectorUrl, expectedPid, executable, configuration, signal, mainSource, WebSocketClass = WebSocket }) {
   const url = new URL(inspectorUrl);
   if (url.protocol !== 'ws:' || url.hostname !== '127.0.0.1' || !url.port || url.username || url.password || url.search || url.hash || !/^\/[a-f0-9-]{36}$/u.test(url.pathname)
     || !Number.isSafeInteger(expectedPid) || expectedPid < 1 || !path.isAbsolute(executable)) throw fail('invalid_main_bootstrap');
   if (signal?.aborted) throw fail('main_bootstrap_cancelled');
   const canonical = fs.realpathSync(executable), token = randomBytes(24).toString('hex');
-  const source = fs.readFileSync(path.join(__dirname, 'electron-traffic.cjs'), 'utf8');
+  const source = mainSource ?? fs.readFileSync(path.join(__dirname, 'electron-traffic.cjs'), 'utf8');
   const socket = new WebSocketClass(url.href), pending = new Map(); let sequence = 0, paused, pauseResolve, pauseReject;
   const pause = new Promise((resolve, reject) => { pauseResolve = resolve; pauseReject = reject; });
   pause.catch(() => {});
