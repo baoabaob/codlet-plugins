@@ -26,6 +26,10 @@ test('each source snapshot contains its own installable bundle and build closure
     for(const file of plugin.files){const bytes=await readFile(resolve(folder,file.path));assert.equal(hash(bytes),file.sha256);assert.equal(blobHash(bytes),file.gitBlob);}
     const manifest=JSON.parse(await readFile(resolve(folder,'codlet.json'),'utf8'));
     assert.equal(manifest.id,plugin.id);assert.equal(manifest.version,plugin.version);assert.ok(paths.includes(manifest.renderer.entry));
+    if(manifest.host){
+      for(const required of [manifest.host.entry,'frontend/build-host.mjs','host/desktop-launch.cjs','host/electron-main.cjs','host/backend-spawn.cjs'])assert.ok(paths.includes(required),required);
+      assert((await readFile(resolve(folder,'frontend/build.mjs'),'utf8')).includes('buildDesktopHost'));
+    }
     for(const required of ['frontend/build-plugin.mjs','frontend/build.mjs','frontend/package-lock.json','.codlet-distribution.json'])assert.ok(paths.includes(required));
     assert.ok(paths.every(p=>!p.includes('node_modules')&&!p.startsWith('.core-sdk')&&!p.startsWith('.git/')));
     const readme=await readFile(resolve(folder,'README.md'),'utf8');assert.ok(readme.includes(`https://github.com/${plugin.repository}`));

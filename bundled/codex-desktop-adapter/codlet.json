@@ -10,7 +10,8 @@
   },
   "version": "0.1.0",
   "renderer": { "entry": "renderer.js", "world": "main" },
-  "permissions": ["ui.mainWorld"],
+  "host": { "entry": "host.cjs", "provides": [{ "name": "codlet.client.launch", "api": 1, "scope": "runtime" }] },
+  "permissions": ["ui.mainWorld", "host.process", "cdp.raw"],
   "provides": [
     { "name": "codex.desktop.compatibility", "api": 1, "scope": "target" },
     { "name": "codex.ui.preSubmit", "api": 1, "scope": "target" },
