@@ -1,7 +1,7 @@
 'use strict';
 // Official Adapter-owned protocol/launch knowledge. Core has no Codex names.
-// Not installed or automatically activated until the native launch owner supplies
-// the ingress and retains its lifecycle. See docs/TRANSPARENT_TRAFFIC_2026-09-22.md.
+// Native owns launch attachment. The public SDK registers with the consuming
+// Host context, so the Adapter cannot lend its own permissions to other plugins.
 const fs = require('node:fs');
 const path = require('node:path');
 const { createHash } = require('node:crypto');
@@ -63,4 +63,42 @@ function rewrittenCodexJsonBody(request, value) {
   if (Buffer.byteLength(body) > 8 * 1024 * 1024) throw failure('codex_body_too_large');
   return { body, headers: request.headers.filter(([name]) => !['content-encoding', 'content-length', 'content-md5', 'content-digest', 'digest'].includes(name.toLowerCase())) };
 }
-module.exports = { probeCodexTraffic, prepareCodexBackendTraffic, classifyCodexTraffic, readCodexJsonBody, rewrittenCodexJsonBody };
+function createCodexTraffic(context, compatibility = {}) {
+  if (!context?.traffic?.registerInterceptor || !context.traffic.inspect || !context.signal) throw failure('core_traffic_unavailable');
+  const verified = probeCodexTraffic(compatibility);
+  async function probe() {
+    let native;
+    try { native = await context.traffic.inspect(); }
+    catch (error) {
+      if (!['traffic_unavailable', 'permission_denied', 'capability_unavailable', 'host_stopping', 'authorization_revoked'].includes(error.code)) throw failure('core_traffic_unavailable');
+      return Object.freeze({ ...verified, listening: false, attached: false, reason: verified.fixtureVerified ? error.code : verified.reason });
+    }
+    const attached = native.attached === true && native.available === true;
+    return Object.freeze({ ...verified, available: verified.fixtureVerified && attached, listening: native.listening === true, attached,
+      restartRequired: !attached, reason: !verified.fixtureVerified ? verified.reason : attached ? null : 'native_process_ingress_not_attached',
+      coverage: 'registered-backend-origins', registered: native.registered, active: native.active });
+  }
+  async function registerInterceptor(options, handlers) {
+    if (context.signal.aborted) throw failure('host_stopping');
+    if (!verified.fixtureVerified) throw failure('backend_build_unverified');
+    if (!options || typeof options !== 'object' || Object.keys(options).some(key => !['id', 'priority', 'timeoutMs', 'kinds'].includes(key))) throw failure('invalid_argument');
+    const kinds = options.kinds ?? ['model.responses', 'model.list'];
+    if (!Array.isArray(kinds) || !kinds.length || kinds.length > 2 || new Set(kinds).size !== kinds.length || kinds.some(kind => !['model.responses', 'model.list'].includes(kind))) throw failure('invalid_argument');
+    if (!handlers || typeof handlers !== 'object' || !Object.keys(handlers).length || Object.entries(handlers).some(([key, value]) => !['request', 'response', 'webSocket'].includes(key) || typeof value !== 'function')) throw failure('invalid_handler');
+    const wrapped = {};
+    const metadata = value => { const info = classifyCodexTraffic(value); return kinds.includes(info.kind) ? info : null; };
+    if (handlers.request) wrapped.request = (value, call) => {
+      const codex = metadata(value); return codex ? handlers.request(value, Object.freeze({ ...call, codex })) : undefined;
+    };
+    if (handlers.response) wrapped.response = (value, call) => {
+      const codex = metadata(call.request); return codex ? handlers.response(value, Object.freeze({ ...call, codex })) : undefined;
+    };
+    if (handlers.webSocket) wrapped.webSocket = (value, call) => {
+      const codex = metadata({ ...value, method: 'GET' }); return codex ? handlers.webSocket(value, Object.freeze({ ...call, codex })) : undefined;
+    };
+    const { kinds: ignored, ...registration } = options;
+    return context.traffic.registerInterceptor({ ...registration, origins: ['https://chatgpt.com', 'https://api.openai.com'] }, wrapped);
+  }
+  return Object.freeze({ probe, registerInterceptor, classify: classifyCodexTraffic, readJsonBody: readCodexJsonBody, rewriteJsonBody: rewrittenCodexJsonBody });
+}
+module.exports = { createCodexTraffic, probeCodexTraffic, prepareCodexBackendTraffic, classifyCodexTraffic, readCodexJsonBody, rewrittenCodexJsonBody };
