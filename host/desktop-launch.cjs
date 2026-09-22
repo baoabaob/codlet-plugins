@@ -20,5 +20,5 @@ async function attachClientLaunch({ inspectorUrl, expectedPid, executable, traff
     configuration: { proxyUrl: traffic.proxyUrl, caPem: traffic.trust.launchCaPem, environmentPatch: traffic.environmentPatch, originalEnvironment,
       runtimeExecutable: process.execPath, privateDirectory: path.dirname(path.dirname(traffic.bundlePath)), originalProxy: { mode: 'system' } } });
 }
-module.exports = { activate() {}, prepareClientLaunch, attachClientLaunch,
+module.exports = { activate() {}, deactivate() {}, prepareClientLaunch, attachClientLaunch,
   ...require('./codex-traffic.cjs'), ...require('./backend-launch.cjs') };

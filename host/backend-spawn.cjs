@@ -48,38 +48,42 @@ function installBackendSpawn(configuration, dependencies = {}) {
       if (['-c', '--config', '--enable', '--disable', '-p', '--profile'].includes(actualArgs[index])) configArguments.push(actualArgs[index], actualArgs[++index]);
       else if (/^--(?:config|enable|disable|profile)=/u.test(actualArgs[index])) configArguments.push(actualArgs[index]);
     }
+    let directory, sidecar, retired = false;
+    const cleanup = (rollback = false) => {
+      if (retired || !directory) return; retired = true;
+      const remove = () => {
+        if (rollback) {
+          try { fs.rmSync(directory, { recursive: true, force: true }); directories.delete(directory); } catch {}
+        } else fs.promises.rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }).then(() => directories.delete(directory), () => {});
+      };
+      if (sidecar) {
+        if (sidecar.process && sidecar.process.exitCode === null && sidecar.process.signalCode === null) sidecar.process.once('exit', remove); else remove();
+        sidecar.close(); children.delete(sidecar);
+      } else remove();
+    };
     try {
       // Verify identity before starting even the read-only configuration probe.
       prepare({ executable: file, arguments: actualArgs, originalEnvironment: environment, environmentPatch: patch, shellPolicy: {}, platform: process.platform });
       const policy = probe({ executable: file, configArguments, environment, cwd: options.cwd ?? process.cwd() });
       const launch = prepare({ executable: file, arguments: actualArgs, originalEnvironment: environment, environmentPatch: patch, shellPolicy: policy.shellPolicy, platform: process.platform });
       if (directories.size >= 8) throw fail('backend_launch_limit');
-      const directory = fs.mkdtempSync(path.join(configuration.privateDirectory, 'backend-tools-')); directories.add(directory);
+      directory = fs.mkdtempSync(path.join(configuration.privateDirectory, 'backend-tools-')); directories.add(directory);
       const extra = [];
       const wrappers = wrapServers({ servers: policy.mcpServers ?? {}, environmentPatch: patch, originalEnvironment: environment, runtimeExecutable: configuration.runtimeExecutable, directory });
-      mcpWrappers += Object.keys(wrappers).length;
       for (const [name, value] of Object.entries(wrappers)) {
         extra.push('-c', `mcp_servers.${name}.command=${toml(value.command)}`, '-c', `mcp_servers.${name}.args=${toml(value.args)}`);
       }
-      let sidecar;
       if (policy.features?.code_mode_host !== false && !actualArgs.some(value => value === '--code-mode-host' || value.startsWith('--code-mode-host='))) {
         sidecar = startSidecar({ backendExecutable: file, environment, directory, cwd: options.cwd ?? process.cwd(), runtimeExecutable: configuration.runtimeExecutable }); children.add(sidecar);
         extra.push('--code-mode-host', sidecar.url);
       }
       const next = { ...options, args: [args[0], ...launch.arguments, ...extra], envPairs: Object.entries(launch.environment).map(([name, value]) => `${name}=${value}`) };
-      let retired = false;
-      const cleanup = () => {
-        if (retired) return; retired = true;
-        const remove = () => fs.promises.rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }).then(() => directories.delete(directory), () => {});
-        if (sidecar) {
-          if (sidecar.process && sidecar.process.exitCode === null && sidecar.process.signalCode === null) sidecar.process.once('exit', remove); else remove();
-          sidecar.close(); children.delete(sidecar);
-        } else remove();
-      };
-      this.once('exit', cleanup); this.once('error', cleanup);
-      try { const result = originalSpawn.call(this, next); prepared++; return result; }
-      catch (error) { cleanup(); throw error; }
+      const exited = () => cleanup(), failed = () => cleanup();
+      this.once('exit', exited); this.once('error', failed);
+      try { const result = originalSpawn.call(this, next); prepared++; mcpWrappers += Object.keys(wrappers).length; return result; }
+      catch (error) { this.off('exit', exited); this.off('error', failed); throw error; }
     } catch (error) {
+      cleanup(true);
       declined++;
       // Unsupported tool inheritance keeps the original backend fully usable.
       // Coverage remains false; do not partially proxy a backend that leaks CA.

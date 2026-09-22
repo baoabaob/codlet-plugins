@@ -39,3 +39,25 @@ test('unverified backend never receives proxy secrets and cannot complete the la
   assert.equal(prototype.spawn.call(new EventEmitter(), options), 'original'); assert.equal(received, options);
   await assert.rejects(hook.ready(), { code: 'backend_tool_environment_unsupported' }); hook.close();
 });
+for (const stage of ['mcp', 'sidecar']) test(`nine unsupported ${stage} preparations retain the original backend and release partial resources`, t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'codlet-spawn-rollback-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const options = { file: path.join(directory, 'codex.exe'), args: ['codex.exe', 'app-server'], envPairs: ['OTHER=original'] };
+  const dispatched = [], prototype = { spawn(value) { dispatched.push(value); return 'original'; } };
+  const unsupported = () => { throw Object.assign(new Error('unsupported fixture'), { code: stage === 'mcp' ? 'mcp_configuration_unsupported' : 'code_mode_build_unverified' }); };
+  const hook = installBackendSpawn({ environmentPatch: { set: {}, removeCaseInsensitive: [] }, originalEnvironment: {}, privateDirectory: directory }, {
+    environment: {}, prototype, prepare: plan => ({ arguments: plan.arguments, environment: plan.originalEnvironment }),
+    probe: () => ({ shellPolicy: {}, features: {}, mcpServers: {} }),
+    wrapServers(plan) { fs.writeFileSync(path.join(plan.directory, 'partial-wrapper.json'), '{}'); if (stage === 'mcp') unsupported(); return { fixture: { command: 'fixture', args: [] } }; },
+    startSidecar: unsupported,
+  });
+  t.after(() => hook.close());
+  for (let index = 0; index < 9; index++) {
+    assert.equal(prototype.spawn.call(new EventEmitter(), options), 'original');
+    assert.deepEqual(fs.readdirSync(directory), [], 'pre-dispatch rollback removes its partial directory immediately');
+  }
+  assert.equal(dispatched.length, 9);
+  assert(dispatched.every(value => value === options));
+  assert.equal(hook.inspect().codeModeSidecars, 0);
+  assert.equal(hook.inspect().mcpWrappers, 0, 'failed preparation never reports committed wrappers');
+});
