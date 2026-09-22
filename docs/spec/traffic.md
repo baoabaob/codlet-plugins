@@ -8,6 +8,8 @@ The real pre-entry inspector handshake, identity checks and backend environment 
 
 Evidence is in local `.artifacts/official-main-owned-result.json` and `.artifacts/official-main-apis.json` (bounded runtime version, field names, counters and cleanup results). These are development artifacts, not package payloads. The owned tests used fresh `CODEX_HOME`, user-data, HOME/APPDATA/LOCALAPPDATA and no copied credentials. Only local fixtures could be forwarded. Final cleanup verifies original client identities, reaps the new process tree by PID plus creation time, and removes the exact private directory without `-Force`.
 
+The subsequent [actual request-chain verification](request-chain.md) establishes separate plaintext Desktop JS and backend provider integration points. It supersedes further proxy workaround research, not this production availability status. Its six backend protocol/auth cases and owned Desktop check are opt-in research; no new production source is enabled yet.
+
 ## Host registration SDK
 
 Bundle `host/codex-traffic.cjs` into the consuming plugin's Host entry and call `createCodexTraffic(context, compatibility)`. Its public methods are `probe`, `registerInterceptor`, `classify`, `readJsonBody` and `rewriteJsonBody`. All registrations use the **consumer's own** `context.traffic`; Adapter permissions are never lent through another Host or renderer capability.

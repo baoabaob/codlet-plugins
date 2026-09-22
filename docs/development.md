@@ -40,6 +40,8 @@ The production plugins use Core's supplied UI SDK. This repository does not rebu
 
 The native CLI fixture uses its own temporary home, synthetic prompt and loopback server. It does not use a user auth file or a real model endpoint. A passing jsdom or CLI test is not a native Desktop visual/accessibility or OS installer acceptance result.
 
+For the separately verified Desktop JS and backend provider boundaries, use the opt-in [request-chain drivers and coverage limits](spec/request-chain.md). These require the reviewed real client build and are not normal CI tests.
+
 ```powershell
 powershell -NoProfile -File tests/distribution.ps1
 ```

@@ -1,0 +1,168 @@
+# Desktop request chain and plaintext integration
+
+This is an evidence-backed design decision, not a new shipped interception path.
+The production compatibility gate in [traffic](traffic.md) remains unchanged.
+Do not extend the failed Desktop CONNECT/proxy-auth/certificate workaround.
+
+## Reviewed build
+
+Windows package `26.915.4065.0` runs the **Owl app shell**, reporting
+Electron/Chrome `153.0.8010.48`, Node `24.19.0`. Its package.json lists an upstream
+Electron development dependency, but bootstrap explicitly rejects stock Electron.
+Use the installed implementation and owned-process evidence, not that dependency
+version, to decide available APIs.
+
+| Input | SHA-256 |
+| --- | --- |
+| `bootstrap-DK4EfNwt.js` | `dbdbdd3ef5dde93dd196a59846edf244dc653341213e0fd45eebb133b5df10ba` |
+| `main-LM8MUIFp.js` | `c71bf3ffecef5fd390b4cd16d120d39dce30d30bffe3c563c8c74c1b691da018` |
+| `src-C3YaUE83.js` | `14c8c23e8b8dfa874d3fb5a50d54fb28eccf55fb83232c3ab29cb7c0ef0a0472` |
+| `codex.exe` (`0.155.0-alpha.9.2`) | `bc45017e8239dc150258f69309ced9df6bbcdf5b8e4f346decf780ac0999e226` |
+
+The extracted official code stays in ignored local artifacts; it is not a source
+dependency or a distributed payload. The research fixture checks these hashes
+before using private symbols.
+
+## Actual paths
+
+```mermaid
+flowchart TD
+  UI[Desktop UI / main services] --> F[wEe.performDesktopFetch]
+  F --> A[Prepare auth, workspace routing and cancellation]
+  A --> P[ApplicationNetwork policy]
+  P --> N[electron.net.fetch / net.request]
+  N --> C[Owl / Chromium networking]
+  UI --> M[AppServerConnection: request scheduling]
+  M --> S[StdioConnection: JSONL over child stdin/stdout]
+  S --> R[codex.exe: model request construction]
+  R --> H[Responses HTTP / SSE]
+  R --> W[Responses WebSocket]
+  H --> U[Provider endpoint]
+  W --> U
+```
+
+`ApplicationNetwork` (`Pt` in bootstrap) checks policy and installs session
+restrictions. Its `fetch` and `request` then call `electron.net`. It is not a
+complete transport. In main, `wEe.performDesktopFetch` resolves credentials and
+workspace routing before calling it. Upload progress uses `performProgressRequest`
+and a `ClientRequest`; wrapping fetch alone misses this branch. That upload
+wrapper already buffers its response in the official implementation.
+
+`AppServerConnection` (`src` export `un`) schedules `thread/start` and `turn/start`.
+Local `hQ` (export `dn`) selects a `mQ` StdioConnection, which spawns the resolved
+`codex app-server`, writes JSONL to stdin and parses stdout. Remote/cloud `qZ`
+(export `pn`) instead carries **AppServer RPC** over a WebSocket. That RPC socket
+is distinct from the backend's **model Responses WebSocket**. Altering UI/RPC
+notifications does not repair a failed model stream inside the backend.
+
+The Rust backend contains separate HTTP, SSE and Responses WebSocket paths. The
+[upstream ModelClient](https://github.com/openai/codex/blob/main/codex-rs/core/src/client.rs)
+and [Responses WebSocket implementation](https://github.com/openai/codex/blob/main/codex-rs/codex-api/src/endpoint/responses_websocket.rs)
+corroborate the split; they are not asserted to be the exact installed source.
+The installed binary contains reqwest/rustls and Windows TLS-related code. Its
+exports do not provide an established plaintext model hook. Importing a Windows
+TLS function is not proof that this model request uses it. Native inline hooks
+would need separate call-site/ABI evidence for each build and architecture.
+
+## Verified integration points
+
+1. **Desktop JS boundary.** In an owned official main process, interception of
+   `net.fetch` and `net.request` observed and changed request content and response
+   content passing through the real `wEe` methods. The local origin received the
+   modified body; the wrapper returned the modified response. This proves a JS
+   plaintext integration point, not complete browser/session/worker coverage.
+   Preserve the official auth, policy and abort pipeline; do not replace it with
+   an unauthenticated generic fetch.
+2. **Model provider endpoint.** The desktop's `EQ` function turns
+   `CODEX_APP_SERVER_OPENAI_BASE_URL` and `CODEX_APP_SERVER_CHATGPT_BASE_URL` into
+   `-c openai_base_url=...` and `-c chatgpt_base_url=...` on the exact backend child.
+   `openai_base_url` directs built-in OpenAI **inference**, including the tested
+   synthetic ChatGPT auth mode. `chatgpt_base_url` is a separate backend-service
+   setting; do not assume changing it alone covers inference. Custom providers
+   use their own `base_url`.
+3. **Full desktop-to-backend connection.** A request through the actual desktop
+   AppServerConnection completed a synthetic model turn via the local provider
+   endpoint. The response modification reached the actual connection's model
+   notifications. The main-process `electron.net` hook saw **zero** model requests.
+
+The provider endpoint is an explicit local destination. It is not an in-process
+Rust/TLS hook and does not intercept existing encrypted sockets. The local bridge
+can forward normally with HTTPS/WSS and normal certificate verification. This
+removes the need for CONNECT authentication, forged certificates or installed
+roots, but still requires a private, authenticated, bounded local endpoint.
+
+## Acceptance and limits
+
+`scripts/verify-plaintext-backend.mjs` exercises the unmodified official binary
+with three modes (custom provider, built-in API key, synthetic ChatGPT tokens)
+over HTTP/SSE and WebSocket: **six cases**. Every case verifies actual rewritten
+request dispatch to a separate local upstream, response replacement, a synthetic
+503 replaced before backend consumption, two endpoint selections within one
+thread, cancellation, and another successful turn afterward. Each case has three
+completed turns and one interrupted turn. HTTP events are split across writes.
+HTTP cancellation and WebSocket cancellation close the observed transport.
+
+The built-in provider attempted WS even with both old responses-websocket feature
+flags false. The HTTP fixture deliberately returns 426 to exercise fallback.
+WS sends `response.create`, including `generate:false` prewarm. Synthetic ChatGPT
+HTTP requests use **Zstandard**; custom/API-key requests used identity encoding.
+WS continuation actually included `previous_response_id` in the fixture, so a
+real provider change must handle that server-owned state explicitly.
+Do not drop WS, prewarm, compression or cancellation when exposing a common API.
+
+`scripts/verify-plaintext-desktop.mjs` uses a fresh, invisible official instance,
+an exact-child pre-entry inspector, the real fetch wrapper and existing desktop
+AppServerConnection. It tests two desktop request branches and one model turn.
+Profile path shims are test isolation scaffolding needed by Owl's native Known
+Folder lookup, not network fallbacks. No installed archive is changed. Both
+drivers preserve original client identities, reap owned descendants by PID plus
+creation time, and remove their private directories without `Remove-Item -Force`.
+Reports contain counters and synthetic metadata, not bodies or account secrets.
+
+These are local synthetic upstreams. They do **not** prove live login refresh,
+enterprise workspace routing, attachments, remote/cloud backend model sockets,
+browser page WS, Realtime/WebRTC, HTTP/2 behavior, macOS, or arbitrary providers.
+Changing destination in this fixture proves routing control, not portability of
+`previous_response_id`, cached model state or tool transactions between real
+providers. Response repair must honor protocol state; a replacement cannot undo a
+tool already executed or justify automatic replay of a non-idempotent request.
+
+## Implementation boundary and recommendation
+
+Use the verified desktop JS hooks and backend provider routing as the next
+implementation direction. Do not adopt native address patches without a separate
+experiment, and do not claim either integration covers all client traffic.
+
+- **Core** owns generic traffic source admission, owner/generation leases,
+  permissions, exact origins, bounded body/frame transport, cancellation and
+  lifecycle. HTTP/SSE and WS should enter the existing interception pipeline.
+  A source reports its protocols and operations explicitly; unknown coverage
+  stays unavailable. A generic pre-entry launch facility must not require a
+  proxy/CA descriptor merely to attach a JS source.
+- **Adapter** owns official build detection, private symbol/call-site mapping,
+  child selection, provider configuration and Codex endpoint/event semantics.
+  Read effective configuration and inject only into the owned runtime. Do not
+  edit the user's config or spread temporary routing into tool/MCP processes.
+- **Ordinary plugins** retain the same primitives and grant rules. Core selects
+  declared capabilities, never official IDs/repository names. Official status
+  confers no additional access. Interceptors run with the consuming plugin's
+  permissions, never authority borrowed from the adapter.
+
+Before shipping, extend the existing generic launch/source contract (currently
+hard-wired to proxy arguments and configured Session count), implement the adapter
+against it, and verify missing paths individually. Version/source mismatch must
+disable only the unsupported integration with a useful compatibility result.
+Neither Core nor its initialization may depend on the official adapter package.
+
+## Repeat
+
+Use Node 24 with repository development dependencies installed, on Windows:
+
+```text
+node scripts/verify-plaintext-backend.mjs --run-owned yes --backend ABSOLUTE_CODEX_EXE
+node scripts/verify-plaintext-desktop.mjs --run-owned yes --executable ABSOLUTE_CHATGPT_EXE --backend ABSOLUTE_CODEX_EXE
+```
+
+Ignored reports: `.artifacts/request-chain/backend-plaintext.json` and
+`.artifacts/request-chain/desktop-plaintext.json`. These opt-in research drivers
+do not run in normal CI, change installed plugins, or enable production traffic.
