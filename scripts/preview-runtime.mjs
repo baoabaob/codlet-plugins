@@ -1,5 +1,6 @@
-// Deterministic demo responses. This module never accesses disk, GitHub or a
-// real runtime. Browser preview controls are separate from the shipped UI.
+// Deterministic demo responses use checked-in client profile identifiers.
+// They never call GitHub, install packages or alter a real runtime.
+import reviewedProfiles from '../compatibility/client-profiles.json' with {type:'json'};
 export function createPreviewRuntime() {
   const state={long:false,phase:'development',client:'matched',failure:false,versionFailure:false,settingsFailure:false,knownCandidate:false,checkedAt:Date.now(),settingsRevision:0,settings:{automaticUpdateChecks:true,checkPluginUpdatesOnStartup:true,showPluginTags:true,updateCheckIntervalSeconds:null,localSourceAutoReload:null},pluginUpdates:{phase:'idle',checkedAt:null,plugins:{},error:null}};let id=0;
   const updateStatus=()=>({phase:state.phase,currentVersion:'0.1.0',configured:state.phase!=='development',channel:state.phase==='development'?'development':'stable',installAvailable:true,
@@ -15,7 +16,8 @@ export function createPreviewRuntime() {
     {repositoryId:5678,ownerId:4321,repositoryUrl:'https://github.com/example/codlet-notes',fullName:'example/codlet-notes',owner:'example',name:'GitHub Notes',description:'A note panel for your workspace.',topics:['codlet-plugin','tool','notes'],author:'Community Demo',latestRelease:{id:21,tag:'v3.0.0',name:'Notes 3.0',publishedAt:'2026-09-22T08:00:00Z',prerelease:false,assets:[{id:201,name:'notes.zip',size:12800,downloadCount:null}]},latestReleaseVerified:false,latestInstallablePublishedAt:null,totalDownloads:null},
   ];
   const manifest={id:'local.notes',name:'Local Notes',description:'Keep notes beside your project.',version:'1.2.0',permissions:['ui.dom'],renderer:{entry:'renderer.js',world:'isolated'},requires:[],provides:[]};
-  const marketMetadata=item=>({platforms:['windows-x86_64','windows-aarch64','macos-aarch64'],runtimeApi:1,author:item?.author??'Community Demo',adapters:{codex:{testedBuilds:['26.915.31945/9922'],limitations:['Local preview fixture']}}});
+  const clientProfiles=reviewedProfiles.builds.map(profile=>({appVersion:profile.appVersion,buildNumber:profile.buildNumber,appServerVersion:profile.appServerVersion}));
+  const marketMetadata=item=>({platforms:['windows-x86_64','windows-aarch64','macos-aarch64'],runtimeApi:1,author:item?.author??'Community Demo',adapters:{codex:item?.repositoryId===1379359689?{clientProfiles}:{testedBuilds:['26.915.31945/9922'],limitations:['Local preview fixture']}}});
   marketItems[0].declarationStatus='matched';
   marketItems[0].latestInstallablePublishedAt=marketItems[0].latestRelease.publishedAt;
   marketItems[0].totalDownloads=18;

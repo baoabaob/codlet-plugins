@@ -89,7 +89,7 @@ export function createMessages(context) {
         'Package declares this device compatible':'插件包声明适用于此设备','Package declares this device incompatible':'插件包声明不适用于此设备',
         'Published listing details differ from the reviewed ZIP. Review the actual package below.':'发布列表信息与已检查的 ZIP 不一致，请以下方实际插件包为准重新确认。',
         'Supported systems':'支持系统','Current device':'当前设备','Codex client':'当前 Codex 客户端','Adapted client versions':'已适配客户端版本','Codlet API':'Codlet API','Adapters':'适配器',
-        'Author-declared client builds':'作者声明的客户端构建','Author-declared limitations':'作者声明的限制','Adapter declarations':'适配器声明',
+        'Publisher-declared client versions':'发布方声明的适配版本','Author-declared client builds':'作者声明的客户端构建','Author-declared limitations':'作者声明的限制','Adapter declarations':'适配器声明',
         'Unknown':'未知','Unknown (not declared)':'未知（未声明）','Compatible with this device':'适用于当前设备','Not compatible with this device':'不适用于当前设备',
         'Compatibility unknown':'兼容性未知','Incompatible':'不兼容','Installed':'已安装','Install':'安装',
         'Package and source':'插件包与来源','Release':'发布版本','ZIP assets':'ZIP 资源包','Installed version':'已安装版本','GitHub repository':'GitHub 项目仓库',

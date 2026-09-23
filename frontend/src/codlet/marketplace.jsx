@@ -46,12 +46,14 @@ export function createMarketplaceView({React,C,I,manager,t,Copy,Back,PluginTags}
     const platforms=Array.isArray(metadata?.platforms)&&metadata.platforms.length?metadata.platforms.map(label).join(', '):t('Unknown (not declared)');
     const current=device?.platform?label(device.platform):t('Unknown');
     const verdict=status??device?.status??'unknown';
-    const adapters=metadata?.adapters,builds=Array.isArray(adapters?.codex?.testedBuilds)?adapters.codex.testedBuilds.filter(value=>typeof value==='string'):[],limitations=Array.isArray(adapters?.codex?.limitations)?adapters.codex.limitations.filter(value=>typeof value==='string'):[];
+    const adapters=metadata?.adapters,profiles=Array.isArray(adapters?.codex?.clientProfiles)?[...new Set(adapters.codex.clientProfiles.map(profile=>profile?.appVersion).filter(value=>typeof value==='string'&&value.length>0))]:[];
+    const builds=Array.isArray(adapters?.codex?.testedBuilds)?adapters.codex.testedBuilds.filter(value=>typeof value==='string'):[],limitations=Array.isArray(adapters?.codex?.limitations)?adapters.codex.limitations.filter(value=>typeof value==='string'):[];
     return <section className="market-detail-section market-compatibility"><div className="market-compat-heading"><h2>{t('Systems and compatibility')}</h2><span className={verdict==='compatible'?'market-compatible':'market-platform-note market-unknown'}>{t(verdict==='compatible'?(declared?'Author declares this device compatible':'Package declares this device compatible'):verdict==='incompatible'?(declared?'Author declares this device incompatible':'Package declares this device incompatible'):'Compatibility unknown')}</span></div><dl>
       <dt>{t('Supported systems')}</dt><dd>{platforms}</dd><dt>{t('Current device')}</dt><dd>{current}</dd>
       <dt>{t('Codex client')}</dt><dd>{clientStatus?.runningVersion||t('Unknown')}</dd>
       <dt>{t('Adapted client versions')}</dt><dd>{clientStatus?.adaptedVersions?.length?clientStatus.adaptedVersions.join(', '):t('Unknown')}</dd>
       <dt>{t('Codlet API')}</dt><dd>{metadata?.runtimeApi==null?t('Unknown (not declared)'):`API ${metadata.runtimeApi}`}</dd>
+      {profiles.length>0&&<><dt>{t('Publisher-declared client versions')}</dt><dd>{profiles.join(', ')}</dd></>}
       {builds.length>0&&<><dt>{t('Author-declared client builds')}</dt><dd>{builds.join(', ')}</dd></>}
       {limitations.length>0&&<><dt>{t('Author-declared limitations')}</dt><dd>{limitations.join('; ')}</dd></>}
       {adapters&&typeof adapters==='object'&&!Array.isArray(adapters)&&Object.keys(adapters).length>0&&<><dt>{t('Adapter declarations')}</dt><dd>{Object.keys(adapters).join(', ')}</dd></>}
