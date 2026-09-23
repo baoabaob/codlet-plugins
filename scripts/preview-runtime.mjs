@@ -10,10 +10,23 @@ export function createPreviewRuntime() {
   const operations=new Map(),preferences=new Map(),removed=new Set(),versions=new Map();
   state.pluginInstall={id:0,running:false,items:[]};
   const source={repositoryUrl:'https://github.com/example/codlet-notes',releaseId:20,tag:'v2.0.0',assetId:200,assetName:'notes-win-x64.zip',sha256:'c'.repeat(64),upstreamDigestVerified:false};
+  const marketItems=[
+    {repositoryId:1379359689,ownerId:76909162,repositoryUrl:'https://github.com/baoabaob/codlet-gui',fullName:'baoabaob/codlet-gui',owner:'baoabaob',name:'Codlet GUI',description:'Manage Codlet plugins.',topics:['codlet-official','codlet-plugin','plugin-manager','ui','tool'],author:'baoabaob',latestRelease:{id:101,tag:'v0.2.0',name:'Codlet GUI v0.2.0',publishedAt:'2026-09-23T08:00:00Z',prerelease:false,assets:[{id:1001,name:'codlet-gui.zip',size:12000,downloadCount:null}]},latestReleaseVerified:false,latestInstallablePublishedAt:null,totalDownloads:null},
+    {repositoryId:5678,ownerId:4321,repositoryUrl:'https://github.com/example/codlet-notes',fullName:'example/codlet-notes',owner:'example',name:'GitHub Notes',description:'A note panel for your workspace.',topics:['codlet-plugin','tool','notes'],author:'Community Demo',latestRelease:{id:21,tag:'v3.0.0',name:'Notes 3.0',publishedAt:'2026-09-22T08:00:00Z',prerelease:false,assets:[{id:201,name:'notes.zip',size:12800,downloadCount:null}]},latestReleaseVerified:false,latestInstallablePublishedAt:null,totalDownloads:null},
+  ];
   const manifest={id:'local.notes',name:'Local Notes',description:'Keep notes beside your project.',version:'1.2.0',permissions:['ui.dom'],renderer:{entry:'renderer.js',world:'isolated'},requires:[],provides:[]};
+  const marketMetadata=item=>({platforms:['windows-x86_64','windows-aarch64','macos-aarch64'],runtimeApi:1,author:item?.author??'Community Demo',adapters:{codex:{testedBuilds:['26.915.31945/9922'],limitations:['Local preview fixture']}}});
+  marketItems[0].declarationStatus='matched';
+  marketItems[0].latestInstallablePublishedAt=marketItems[0].latestRelease.publishedAt;
+  marketItems[0].totalDownloads=18;
+  marketItems[0].declaredPackage={basis:'publisher-release-declaration',releaseId:101,publishedAt:marketItems[0].latestRelease.publishedAt,
+    manifest:{...manifest,id:'codlet-gui',name:'Codlet GUI',description:'Manage Codlet plugins.',tags:['UI','Tool'],version:'0.2.0'},
+    metadata:marketMetadata(marketItems[0]),asset:{id:1001,name:'codlet-gui.zip',bytes:12000,sha256:'c'.repeat(64),downloadCount:18},
+    deviceCompatibility:{platform:'windows-x86_64',runtimeApi:1,status:'compatible',basis:'author-declaration'}};
+  marketItems[1].declarationStatus='missing';marketItems[1].declaredPackage=null;
   const preview=()=>({schema:1,kind:'codlet.local-import-preview',path:'C:/Projects/Local Notes',contentDigest:'a'.repeat(64),registrationDigest:'b'.repeat(64),manifest,ownership:'development-directory'});
   const plugins=()=>[
-    {id:'codlet-gui',name:'Codlet GUI',tags:['UI','Tool'],description:'Manage plugins, imports, permissions, and Codlet updates.',i18n:{zh:{name:'Codlet 管理界面',description:'管理插件、导入、权限和 Codlet 更新。'}},version:'0.1.0',source:'bundled',enabled:true},
+    {id:'codlet-gui',name:'Codlet GUI',tags:['UI','Tool'],description:'Manage plugins, imports, permissions, and Codlet updates.',i18n:{zh:{name:'Codlet 管理界面',description:'管理插件、导入、权限和 Codlet 更新。'}},version:'0.1.0',source:'bundled',ownership:'installer-seed',enabled:true},
     {id:'codex.ui.adapter',name:'Codex UI Adapter',tags:['UI','Adapter'],description:'Connect plugin pages to Codex navigation.',i18n:{zh:{name:'Codex 界面适配器',description:'将插件页面接入 Codex 主导航。'}},version:'0.1.0',source:'bundled',enabled:true,disableDependents:['codlet-gui']},
     {id:'codex.desktop.adapter',name:'Codex Desktop Adapter',tags:['Adapter'],description:'Connect plugins to supported desktop features.',i18n:{zh:{name:'Codex 桌面适配器',description:'为插件提供已适配的 Codex 桌面功能。'}},version:'0.1.0',source:'bundled',enabled:true},
     {...manifest,source:'local',enabled:false,disableDependents:state.dependents?['codex.ui.adapter','codlet-gui']:[]},
@@ -35,7 +48,7 @@ export function createPreviewRuntime() {
       if(method==='saveSettings'){if(args.expectedRevision!==state.settingsRevision)throw Error('Settings changed in another window. Review the current values before saving again.');state.settings={...args.values};state.settingsRevision++;state.checkedAt=Date.now();}
       return settings();
     }
-    if(method==='list'){if(state.failure)throw Error('Preview: connection unavailable. Refresh to retry.');return {plugins:plugins(),runtimeVersion:'0.1.0',clientStatus:{status:'matched'},runtimeSkill:{available:true,name:'codlet',path:'C:/Preview/runtime-skills/codlet/SKILL.md'},localManagement:{available:true,folderPicker:true},githubManagement:{available:true}};}
+    if(method==='list'){if(state.failure)throw Error('Preview: connection unavailable. Refresh to retry.');return {plugins:plugins(),runtimeVersion:'0.1.0',clientStatus:{status:'matched'},deviceCompatibility:{platform:'windows-x86_64',runtimeApi:1,status:'unknown',basis:'unknown'},runtimeSkill:{available:true,name:'codlet',path:'C:/Preview/runtime-skills/codlet/SKILL.md'},localManagement:{available:true,folderPicker:true},githubManagement:{available:true}};}
     if(method==='previewLocal')return {...preview(),path:args.path};
     if(method==='chooseLocalFolder')return {selectionId:'fixture-folder',status:'selected',path:'C:/Projects/Local Notes'};
     if(method==='permissions')return {pluginId:args.pluginId,registration:{path:'C:/Projects/Local Notes',grants:['ui.dom'],brokerPolicy:{}},ownership:args.pluginId==='managed.notes'?'core-managed-github':'development-directory',managedSource:source};
@@ -43,8 +56,15 @@ export function createPreviewRuntime() {
     if(method==='openRuntimeFolder')return {opened:true};
     if(method==='sourceRemovalPreview')return {pluginId:args.pluginId,status:'available',path:'C:/Projects/Local Notes',sourceIdentity:'fixture-source',registrationDigest:'b'.repeat(64)};
     if(method==='githubReleases')return {jobId:'release-fixture',kind:'releases',status:'completed',result:{repository:{url:source.repositoryUrl},releases:[{id:20,tag:'v2.0.0',name:'Notes 2.0',assets:[{id:200,name:source.assetName,size:12800}]}]}};
+    if(method==='githubDiscover'){
+      const terms=(args.query??'').toLowerCase().split(/\s+/).filter(Boolean);
+      const items=marketItems.filter(item=>terms.every(term=>term.startsWith('#')?item.topics.includes(term.slice(1)):[item.name,item.fullName,item.description,...item.topics].join(' ').toLowerCase().includes(term)));
+      return {jobId:`discovery-${args.page??1}`,kind:'discovery',status:'completed',result:{items:args.page===1?items:[],page:args.page??1,hasMore:false,fetchedAtUnixMs:Date.now(),cacheUntilUnixMs:Date.now()+60000}};
+    }
     if(method==='githubPrepare'||method==='previewRollback') {
-      const result={...preview(),kind:'codlet.managed-preview',ownership:'core-managed-github',operation:method==='previewRollback'?'rollback':args.operation,source,manifest:{...manifest,id:args.pluginId??'managed.notes',version:'2.0.0'},changes:{permissionsAdded:[],permissionsRemoved:[],requirementsAdded:[],requirementsRemoved:[]}};
+      const item=marketItems.find(item=>item.repositoryUrl===args.repositoryUrl&&item.latestRelease.id===args.releaseId&&item.latestRelease.assets.some(asset=>asset.id===args.assetId)),asset=item?.latestRelease.assets.find(asset=>asset.id===args.assetId);
+      const preparedSource=item?{repositoryUrl:item.repositoryUrl,repositoryId:item.repositoryId,ownerId:item.ownerId,releaseId:item.latestRelease.id,releasePublishedAt:item.latestRelease.publishedAt,tag:item.latestRelease.tag,assetId:asset.id,assetName:asset.name,sha256:'c'.repeat(64),upstreamDigestVerified:false}:source;
+      const result={...preview(),kind:'codlet.managed-preview',ownership:'core-managed-github',operation:method==='previewRollback'?'rollback':args.operation,source:preparedSource,manifest:{...manifest,id:args.pluginId??(item?.repositoryId===1379359689?'codlet-gui':'managed.notes'),name:item?.name??manifest.name,description:item?.description??manifest.description,tags:item?.repositoryId===1379359689?['UI','Tool']:item?['Tool']:manifest.tags,version:item?.repositoryId===1379359689?'0.2.0':item?'3.0.0':'2.0.0'},metadata:marketMetadata(item),deviceCompatibility:{platform:'windows-x86_64',runtimeApi:1,status:'compatible',basis:'author-declaration'},changes:{permissionsAdded:[],permissionsRemoved:[],requirementsAdded:[],requirementsRemoved:[]}};
       return method==='previewRollback'?result:{jobId:'package-fixture',kind:'package',status:'completed',result};
     }
     if(method==='managedHistory')return {pluginId:args.pluginId,currentVersion:'v2',history:[{versionKey:'v2',manifest:{version:'2.0.0'},source},{versionKey:'v1',manifest:{version:'1.0.0'},source:{...source,tag:'v1.0.0'}}],nextCursor:null};

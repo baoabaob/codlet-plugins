@@ -4,7 +4,7 @@
 
 ## Production behavior
 
-The production entry is `frontend/src/codlet/app.jsx`, selected by `plugins.json`. It provides plugin status, text/tag search, enable/disable/reload/revoke controls, local/GitHub import review, details and source removal, plugin/runtime update status, settings, and links to the Codlet project. The Add menu currently offers Create plugin and Import plugin. The accepted [marketplace design](marketplace.md) has a separate executable preview and still needs production integration.
+The production entry is `frontend/src/codlet/app.jsx`, selected by `plugins.json`. It provides plugin status, text/tag search, enable/disable/reload/revoke controls, local/GitHub import review, details and source removal, plugin/runtime update status, settings, and links to the Codlet project. The Add menu opens the internal [marketplace](marketplace.md), Create plugin, and Import plugin. Marketplace discovery uses Core's paginated GitHub job; package review and installation use the existing managed import receipt path.
 
 Create/help/review actions open an editable native task draft containing the Core skill instructions. They do not submit a turn. Removing the GUI or a dependency required by it directs the user to the CLI or a draft task instead of destroying its own review interface mid-operation.
 
@@ -12,7 +12,7 @@ Create/help/review actions open an editable native task draft containing the Cor
 
 `frontend/src/codlet/controller.js` owns state and RPC sequencing. Mutations prepare a Core-issued receipt, submit it once and query that same receipt to resolve a lost response. A stale list blocks new operations until refreshed. Closing a page cancels work not yet submitted; it does not claim an already submitted operation was undone.
 
-Imports display the prepared package identity, permissions, dependencies and allowed origins before submission. Trust acknowledgment and the installation notice remain separate from package metadata. “Let Codex inspect” opens a draft review task. GitHub/local source identity, removal preview and immutable package checks remain Core responsibilities.
+Imports display the prepared package identity, permissions, dependencies, system compatibility and allowed origins before submission. Trust acknowledgment and the installation notice remain separate from package metadata. “Let Codex inspect” opens a draft review task. GitHub/local source identity, removal preview and immutable package checks remain Core responsibilities. Marketplace discovery never grants permission or infers compatibility from a repository topic.
 
 Settings use revision checks so another window's changes are not silently overwritten. Update candidates are matched to the plugin's managed version identity. Uncertain install/update replies lead to status reconciliation, not a second install. Combined client/runtime updates remain subject to Core's operation state and confirmation.
 
@@ -26,4 +26,4 @@ Page closure stops GUI timers and invalidates pending view replies. Deactivation
 
 ## Validation
 
-Controller and GUI tests cover stale replies, receipt reuse, update reconciliation, review notices, task drafts, search selection, focus and teardown. `scripts/serve-gui-preview.mjs` loads the production bundle with deterministic management fixtures for visual review. Native routes, toolbar placement, dialogs, keyboard/IME interaction and actual install/update outcomes still require isolated real-client acceptance.
+Controller and GUI tests cover stale replies, receipt reuse, update reconciliation, market discovery and cancellation, review notices, task drafts, search selection, focus and teardown. `scripts/serve-gui-preview.mjs` loads the production bundle with deterministic management and market fixtures for visual review. Native routes, toolbar placement, dialogs, keyboard/IME interaction and actual install/update outcomes still require isolated real-client acceptance.

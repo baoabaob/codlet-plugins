@@ -8,6 +8,8 @@ import {buildDesktopHost} from '../frontend/build-host.mjs';
 
 export const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
 export const blobHash=bytes=>createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex');
+const canonical=value=>Array.isArray(value)?`[${value.map(canonical).join(',')}]`:value&&typeof value==='object'?`{${Object.keys(value).sort().map(key=>`${JSON.stringify(key)}:${canonical(value[key])}`).join(',')}}`:JSON.stringify(value);
+const releasePlatforms=['windows-x86_64','windows-aarch64','macos-aarch64'];
 export function safePath(path){
   if(typeof path!=='string'||!path||isAbsolute(path)||path.includes('\\')||path.includes(':')||path.includes('\0')||path.split('/').some(p=>!p||p==='.'||p==='..'||p.toLowerCase()==='.git'))throw Error(`Unsafe distribution path: ${path}`);
   return path;
@@ -31,6 +33,9 @@ export function validateConfig(config){
 export async function prepareDistribution(root,{allowDirty=false,outputDirectory}={}){
   root=await realpath(root);
   const config=validateConfig(JSON.parse(await readFile(resolve(root,'plugins.json'),'utf8')));
+  const compatibility=JSON.parse(await readFile(resolve(root,'compatibility/client-profiles.json'),'utf8'));
+  if(compatibility.schema!==1||!Array.isArray(compatibility.builds))throw Error('Invalid reviewed client profile source');
+  const reviewedClientProfiles=compatibility.builds.map(({appVersion,buildNumber,appServerVersion})=>({appVersion,buildNumber,appServerVersion}));
   const git=(...args)=>execFileSync('git',args,{cwd:root,encoding:'utf8',windowsHide:true}).trim();
   const sourceCommit=git('rev-parse','HEAD'),dirty=!!git('status','--porcelain','--untracked-files=normal');
   if(dirty&&!allowDirty)throw Error('Commit the tested development files before preparing a synchronized distribution (use --allow-dirty for local inspection only)');
@@ -41,7 +46,18 @@ export async function prepareDistribution(root,{allowDirty=false,outputDirectory
     if(!pkg||pkg.repository!==`https://github.com/${plugin.repository}`||pkg.tag!==`v${pkg.version}`||!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(pkg.version))throw Error(`Invalid package catalog for ${plugin.id}`);
     const archive=await readFile(resolve(out,safePath(pkg.asset)));
     if(hash(archive)!==pkg.sha256||archive.length!==pkg.bytes)throw Error(`Archive changed for ${plugin.id}`);
-    const manifest=JSON.parse(await readFile(resolve(out,pkg.directory,'codlet.json'),'utf8'));
+    const packageDirectory=resolve(out,safePath(pkg.directory));
+    const manifest=JSON.parse(await readFile(resolve(packageDirectory,'codlet.json'),'utf8'));
+    const metadata=JSON.parse(await readFile(resolve(packageDirectory,'codlet-package.json'),'utf8'));
+    if(metadata.schema!==1||metadata.runtimeApi!==1||canonical(metadata.platforms)!==canonical(releasePlatforms)||
+      canonical(metadata.adapters?.codex?.clientProfiles)!==canonical(reviewedClientProfiles)||
+      'testedBuilds'in(metadata.adapters?.codex??{})||'limitations'in(metadata.adapters?.codex??{}))throw Error(`Stale or invalid release metadata for ${plugin.id}; rebuild and package first`);
+    const releaseAssetPath=safePath(`release-assets/${plugin.id}/codlet-release.json`);
+    const releaseAssetBytes=await readFile(resolve(out,releaseAssetPath));
+    if(releaseAssetBytes.length>16*1024)throw Error(`Release declaration is too large for ${plugin.id}`);
+    const releaseDeclaration=JSON.parse(releaseAssetBytes);
+    const expectedDeclaration={schema:1,kind:'codlet-plugin-release',manifest,metadata,asset:{name:pkg.asset,bytes:archive.length,sha256:hash(archive)}};
+    if(canonical(releaseDeclaration)!==canonical(expectedDeclaration))throw Error(`Release declaration differs from the actual package for ${plugin.id}`);
     safePath(manifest.renderer.entry);
     const built=await buildPlugin(resolve(root,'frontend'),plugin.entry);
     const hostBuilt=manifest.host?await buildDesktopHost(resolve(root,'frontend')):null;
@@ -72,7 +88,7 @@ export async function prepareDistribution(root,{allowDirty=false,outputDirectory
     add('.codlet-distribution.json',JSON.stringify({schema:1,kind:'codlet-generated-distribution',pluginId:plugin.id,repository:plugin.repository,sourceRepository:config.sourceRepository,sourceCommit,version:pkg.version,packageSha256:pkg.sha256,contentDigest,files:payloadFiles},null,2)+'\n');
     const directory=`repositories/${plugin.repository.split('/')[1]}`;
     for(const [path,bytes]of files){const target=resolve(out,directory,path);await mkdir(dirname(target),{recursive:true});await writeFile(target,bytes);}
-    plan.plugins.push({id:plugin.id,repository:plugin.repository,description:plugin.description,topics:plugin.topics,version:pkg.version,tag:pkg.tag,directory,contentDigest,archive:{path:pkg.asset,bytes:pkg.bytes,sha256:pkg.sha256},files:inventory()});
+    plan.plugins.push({id:plugin.id,repository:plugin.repository,description:plugin.description,topics:plugin.topics,version:pkg.version,tag:pkg.tag,directory,contentDigest,archive:{path:pkg.asset,bytes:pkg.bytes,sha256:pkg.sha256},releaseAsset:{name:'codlet-release.json',path:releaseAssetPath,bytes:releaseAssetBytes.length,sha256:hash(releaseAssetBytes)},files:inventory()});
   }
   await writeFile(resolve(out,'distribution-plan.json'),JSON.stringify(plan,null,2)+'\n');
   return plan;

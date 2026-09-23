@@ -46,11 +46,21 @@ function Read-Plan([string]$Path){
       $bytes=[IO.File]::ReadAllBytes((Get-OwnedPath $directory $file.path))
       if($bytes.Length -ne $file.bytes -or (Get-Sha256 $bytes) -ne $file.sha256 -or (Get-GitBlob $bytes) -ne $file.gitBlob){throw "Generated file changed: $($plugin.id)/$($file.path)"}
     }
-    foreach($required in @('codlet.json','.codlet-distribution.json','README.md','frontend/build.mjs')){if(-not $paths.ContainsKey($required)){throw "Missing generated file: $required"}}
+    foreach($required in @('codlet.json','codlet-package.json','.codlet-distribution.json','README.md','frontend/build.mjs')){if(-not $paths.ContainsKey($required)){throw "Missing generated file: $required"}}
     $marker=[IO.File]::ReadAllText((Join-Path $directory '.codlet-distribution.json'))|ConvertFrom-Json
     if($marker.pluginId -ne $plugin.id -or $marker.repository -ne $plugin.repository -or $marker.sourceCommit -ne $document.sourceCommit -or $marker.sourceRepository -ne $document.sourceRepository -or $marker.contentDigest -ne $plugin.contentDigest -or $marker.packageSha256 -ne $plugin.archive.sha256){throw 'Snapshot identity mismatch'}
     $bytes=[IO.File]::ReadAllBytes((Get-OwnedPath $root $plugin.archive.path))
     if($bytes.Length -ne $plugin.archive.bytes -or (Get-Sha256 $bytes) -ne $plugin.archive.sha256){throw "Archive changed: $($plugin.id)"}
+    if($plugin.releaseAsset.name -cne 'codlet-release.json' -or $plugin.releaseAsset.path -cne ('release-assets/'+$plugin.id+'/codlet-release.json') -or
+      [long]$plugin.releaseAsset.bytes -le 0 -or [long]$plugin.releaseAsset.bytes -gt 16KB -or $plugin.releaseAsset.sha256 -notmatch '^[a-f0-9]{64}$'){
+      throw 'Invalid release declaration asset record'
+    }
+    $releaseBytes=[IO.File]::ReadAllBytes((Get-OwnedPath $root $plugin.releaseAsset.path))
+    if($releaseBytes.Length -ne [long]$plugin.releaseAsset.bytes -or (Get-Sha256 $releaseBytes) -ne $plugin.releaseAsset.sha256){throw "Release declaration changed: $($plugin.id)"}
+    $releaseDeclaration=$script:utf8.GetString($releaseBytes)|ConvertFrom-Json
+    $packageManifest=[IO.File]::ReadAllText((Get-OwnedPath $directory 'codlet.json'))|ConvertFrom-Json
+    $packageMetadata=[IO.File]::ReadAllText((Get-OwnedPath $directory 'codlet-package.json'))|ConvertFrom-Json
+    Assert-ReleaseDeclaration $releaseDeclaration $packageManifest $packageMetadata $plugin
   }
   if($ids.Count -eq 0){throw 'Empty distribution plan'}
   [pscustomobject]@{Document=$document;Root=$root}
@@ -69,7 +79,7 @@ function Initialize-GitHubCredential {
   }
   if(-not $script:token){throw 'Use Git Credential Manager or CODLET_DISTRIBUTION_TOKEN with access to the distribution repositories'}
 }
-function Invoke-GitHub([string]$Method,[string]$Path,$Body=$null,[switch]$Missing,[byte[]]$Upload){
+function Invoke-GitHub([string]$Method,[string]$Path,$Body=$null,[switch]$Missing,[byte[]]$Upload,[string]$UploadContentType='application/octet-stream'){
   $hostName=if($PSBoundParameters.ContainsKey('Upload')){'uploads.github.com'}else{'api.github.com'}
   if(-not $Path.StartsWith('/') -or $Path.StartsWith('//')){throw 'Expected a GitHub API path'}
   $request=[Net.HttpWebRequest]::Create('https://'+$hostName+$Path)
@@ -77,7 +87,7 @@ function Invoke-GitHub([string]$Method,[string]$Path,$Body=$null,[switch]$Missin
   $request.UserAgent='Codlet-official-plugin-distribution';$request.Accept='application/vnd.github+json'
   $request.Headers['Authorization']='Bearer '+$script:token
   $request.Headers['X-GitHub-Api-Version']='2022-11-28'
-  if($PSBoundParameters.ContainsKey('Upload')){$bytes=$Upload;$request.ContentType='application/zip'}
+  if($PSBoundParameters.ContainsKey('Upload')){$bytes=$Upload;$request.ContentType=$UploadContentType}
   elseif($null -ne $Body){$bytes=$script:utf8.GetBytes(($Body|ConvertTo-Json -Depth 60 -Compress));$request.ContentType='application/json'}
   else{$bytes=$null}
   if($null -ne $bytes){$request.ContentLength=$bytes.Length;$stream=$request.GetRequestStream();try{$stream.Write($bytes,0,$bytes.Length)}finally{$stream.Dispose()}}
@@ -99,6 +109,36 @@ function Test-RemoteSnapshot($Marker,$Tree,$Plugin,[string]$SourceRepository){
   $actual=@($Tree.tree|Where-Object{$_.type -ne 'tree' -and $_.path -ne '.codlet-distribution.json'})
   if($actual.Count -ne $expected.Count){throw 'Distribution repository was edited directly; merge its changes into the development repository first'}
   foreach($file in $actual){if($file.type -ne 'blob' -or $file.mode -ne '100644' -or -not $expected.ContainsKey($file.path) -or $expected[$file.path] -ne $file.sha){throw 'Distribution repository was edited directly; synchronization stopped without overwriting it'}}
+}
+function ConvertTo-CompactJson($Value){ConvertTo-Json -InputObject $Value -Depth 60 -Compress}
+function Assert-ReleaseDeclaration($Declaration,$Manifest,$Metadata,$Plugin){
+  $top=@($Declaration.PSObject.Properties.Name|Sort-Object)-join ','
+  $assetFields=@($Declaration.asset.PSObject.Properties.Name|Sort-Object)-join ','
+  if($top -cne 'asset,kind,manifest,metadata,schema' -or $assetFields -cne 'bytes,name,sha256' -or
+    $Declaration.schema -ne 1 -or $Declaration.kind -ne 'codlet-plugin-release' -or
+    $Declaration.manifest.id -ne $Plugin.id -or $Declaration.manifest.version -ne $Plugin.version -or
+    (ConvertTo-CompactJson $Declaration.manifest) -cne (ConvertTo-CompactJson $Manifest) -or
+    (ConvertTo-CompactJson $Declaration.metadata) -cne (ConvertTo-CompactJson $Metadata) -or
+    $Declaration.asset.name -ne [IO.Path]::GetFileName($Plugin.archive.path) -or
+    [long]$Declaration.asset.bytes -ne [long]$Plugin.archive.bytes -or
+    $Declaration.asset.sha256 -ne $Plugin.archive.sha256){throw 'codlet-release.json does not declare the exact ZIP, manifest and package metadata'}
+}
+function Assert-RemoteReleaseAsset($Asset,[string]$Name,[long]$Bytes,[string]$Sha256){
+  if($Asset.state -ne 'uploaded' -or $Asset.name -cne $Name -or [long]$Asset.size -ne $Bytes -or $Asset.digest -ne ('sha256:'+$Sha256)){
+    throw "Release asset differs from the versioned package plan: $Name"
+  }
+}
+function Sync-ReleaseAsset($PlanData,$Plugin,$Release,$RemoteAssets,[string]$Name,[string]$RelativePath,[long]$Bytes,[string]$Sha256,[string]$ContentType){
+  $localPath=Get-OwnedPath $PlanData.Root $RelativePath
+  $localBytes=[IO.File]::ReadAllBytes($localPath)
+  if($localBytes.Length -ne $Bytes -or (Get-Sha256 $localBytes) -ne $Sha256){throw "Release asset changed after preview: $Name"}
+  $existing=@($RemoteAssets|Where-Object{$_.name -ceq $Name})
+  if($existing.Count -gt 1){throw "Ambiguous release asset: $Name"}
+  if($existing.Count){Assert-RemoteReleaseAsset $existing[0] $Name $Bytes $Sha256;return $existing[0]}
+  if(-not $Release.draft){throw "Published release is missing $Name; it will not be modified"}
+  $uploaded=Invoke-GitHub POST ('/repos/'+$Plugin.repository+'/releases/'+$Release.id+'/assets?name='+[Uri]::EscapeDataString($Name)) -Upload $localBytes -UploadContentType $ContentType
+  Assert-RemoteReleaseAsset $uploaded $Name $Bytes $Sha256
+  $uploaded
 }
 function Find-Release([string]$Repository,[string]$Tag){
   for($page=1;$page -le 10;$page++){
@@ -165,20 +205,21 @@ function Sync-Plugin($PlanData,$Plugin,[switch]$Publish,[switch]$AllowPublic){
     $body="Install this ZIP through Codlet's GitHub importer. The automatically generated Source code archives are for development.`n`nPlugin: $($Plugin.id)`nDevelopment source: https://github.com/$($PlanData.Document.sourceRepository)/tree/$($PlanData.Document.sourceCommit)`nPackage SHA-256: $($Plugin.archive.sha256)`n"
     $release=Invoke-GitHub POST ($api+'/releases') @{tag_name=$Plugin.tag;target_commitish=$headSha;name=($Plugin.id+' '+$Plugin.version);body=$body;draft=$true;prerelease=($Plugin.version.Contains('-'))}
   }
-  $assetName=[IO.Path]::GetFileName($Plugin.archive.path)
   $assets=@(Invoke-GitHub GET ($api+'/releases/'+$release.id+'/assets?per_page=100'))
-  $existing=@($assets|Where-Object{$_.name -eq $assetName})
-  if($existing.Count -gt 1){throw 'Ambiguous release asset'}
-  if($existing.Count){$asset=$existing[0]}
-  else{
-    if(-not $release.draft){throw 'Published release is missing its expected asset; it will not be modified'}
-    $bytes=[IO.File]::ReadAllBytes((Get-OwnedPath $PlanData.Root $Plugin.archive.path))
-    if($bytes.Length -ne $Plugin.archive.bytes -or (Get-Sha256 $bytes) -ne $Plugin.archive.sha256){throw 'Archive changed after preview'}
-    $asset=Invoke-GitHub POST ($api+'/releases/'+$release.id+'/assets?name='+[Uri]::EscapeDataString($assetName)) -Upload $bytes
+  $assetName=[IO.Path]::GetFileName($Plugin.archive.path)
+  foreach($expected in @(
+    @{name=$assetName;bytes=[long]$Plugin.archive.bytes;sha256=$Plugin.archive.sha256},
+    @{name='codlet-release.json';bytes=[long]$Plugin.releaseAsset.bytes;sha256=$Plugin.releaseAsset.sha256}
+  )){
+    $matches=@($assets|Where-Object{$_.name -ceq $expected.name})
+    if($matches.Count -gt 1){throw "Ambiguous release asset: $($expected.name)"}
+    if($matches.Count){Assert-RemoteReleaseAsset $matches[0] $expected.name $expected.bytes $expected.sha256}
+    elseif(-not $release.draft){throw "Published release is missing $($expected.name); it will not be modified"}
   }
-  if($asset.state -ne 'uploaded' -or $asset.size -ne $Plugin.archive.bytes -or $asset.digest -ne ('sha256:'+$Plugin.archive.sha256)){throw 'Release asset verification failed; no asset was overwritten and no release was published'}
+  $asset=Sync-ReleaseAsset $PlanData $Plugin $release $assets $assetName $Plugin.archive.path ([long]$Plugin.archive.bytes) $Plugin.archive.sha256 'application/zip'
+  $releaseAsset=Sync-ReleaseAsset $PlanData $Plugin $release $assets 'codlet-release.json' $Plugin.releaseAsset.path ([long]$Plugin.releaseAsset.bytes) $Plugin.releaseAsset.sha256 'application/json; charset=utf-8'
   if($Publish -and $release.draft){$release=Invoke-GitHub PATCH ($api+'/releases/'+$release.id) @{draft=$false}}
-  [pscustomobject]@{id=$Plugin.id;repository=('https://github.com/'+$repository);private=$repo.private;version=$Plugin.version;tag=$Plugin.tag;commit=$headSha;releaseId=$release.id;releaseUrl=$release.html_url;draft=$release.draft;assetId=$asset.id;assetName=$asset.name;assetUrl=$asset.browser_download_url;sha256=$Plugin.archive.sha256;bytes=$asset.size}
+  [pscustomobject]@{id=$Plugin.id;repository=('https://github.com/'+$repository);private=$repo.private;version=$Plugin.version;tag=$Plugin.tag;commit=$headSha;releaseId=$release.id;releaseUrl=$release.html_url;draft=$release.draft;assetId=$asset.id;assetName=$asset.name;assetUrl=$asset.browser_download_url;sha256=$Plugin.archive.sha256;bytes=$asset.size;releaseAssetId=$releaseAsset.id;releaseAssetName=$releaseAsset.name;releaseAssetUrl=$releaseAsset.browser_download_url;releaseAssetSha256=$Plugin.releaseAsset.sha256;releaseAssetBytes=$releaseAsset.size}
 }
 
 if($MyInvocation.InvocationName -ne '.'){

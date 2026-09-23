@@ -9,7 +9,7 @@
       "entry": "src/adapter/entry.js",
       "repository": "baoabaob/codlet-ui-adapter",
       "description": "Official Codlet plugin for Codex sidebar and plugin page integration",
-      "topics": ["codlet-plugin", "codlet-official", "codlet-adapter", "ui"],
+      "topics": ["codlet-plugin", "codlet-official", "codlet-adapter", "ui", "adapter"],
       "dependencies": []
     },
     {
@@ -18,7 +18,7 @@
       "entry": "src/desktop/entry.js",
       "repository": "baoabaob/codlet-desktop-adapter",
       "description": "Official Codlet plugin for Codex desktop, task and transport integration",
-      "topics": ["codlet-plugin", "codlet-official", "codlet-adapter"],
+      "topics": ["codlet-plugin", "codlet-official", "codlet-adapter", "adapter"],
       "dependencies": []
     },
     {
@@ -27,7 +27,7 @@
       "entry": "src/codlet/app.jsx",
       "repository": "baoabaob/codlet-gui",
       "description": "Official Codlet plugin for graphical plugin and runtime management",
-      "topics": ["codlet-plugin", "codlet-official", "ui", "plugin-manager"],
+      "topics": ["codlet-plugin", "codlet-official", "ui", "plugin-manager", "tool"],
       "dependencies": ["codex.ui.adapter"]
     }
   ]

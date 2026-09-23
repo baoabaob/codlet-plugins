@@ -1,27 +1,33 @@
 import { createMessages, PERMISSION_COPY } from './messages.js';
 import { skillPrompt } from './creation.js';
+import {marketAssets,marketMatches,marketSort,marketItemKey,officialRepository,declaredPackageFor} from './marketplace-model.js';
 import { validUpdate, validOfficialUpdate, validPluginUpdates, validPluginInstall, busyUpdatePhases, validateSettings } from './versions.js';
 const capability = { name: 'codlet.runtime.manage', api: 1, scope: 'target' };
 const digest = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
 const message = error => String(error?.message ?? error);
+const sameJson=(left,right)=>{
+  const canonical=value=>JSON.stringify(value,(_key,part)=>part&&typeof part==='object'&&!Array.isArray(part)?Object.fromEntries(Object.entries(part).sort(([a],[b])=>a.localeCompare(b))):part);
+  return canonical(left)===canonical(right);
+};
 const updateIdentity = value => value?.candidate?.id && value?.candidate?.version ? `${value.candidate.id}:${value.candidate.version}` : null;
 const githubTimeout = kind => kind==='releases' ? 'Reading GitHub releases timed out. Check the connection or proxy, then try again.' : 'Preparing the GitHub package timed out. No installation was submitted. Try again.';
 
 export class Manager {
   constructor(context) {
     this.context = context; this.messages = createMessages(context);
-    this.listeners = new Set(); this.timers = new Map(); this.sequence = { list:0, page:0, removal:0, update:0, version:0, settings:0 };
+    this.listeners = new Set(); this.timers = new Map(); this.sequence = { list:0, page:0, market:0, removal:0, update:0, version:0, settings:0 };
     this.visible=true;
-    this.alive = true; this.job = null; this.pending = null; this.updateCommand = null;this.settingsWrite=null;
+    this.alive = true; this.job = null; this.marketJob=null; this.pending = null; this.updateCommand = null;this.settingsWrite=null;
     this.state = { open:false, page:'plugins', plugins:[], query:'', filter:'all', loading:false, error:'', operationError:'', listError:'', listStale:false, operationStatus:'',
       runtimeVersion:'', clientStatus:null, localManagement:null, githubAvailable:false, runtimeSkill:null, confirmation:null,createBusy:false,
-      mode:'local', importOperation:'install', target:null, path:'', url:'', catalog:null, release:'', asset:'',
+      mode:'local', importOperation:'install', importPreviousPage:'plugins', target:null, path:'', url:'', catalog:null, release:'', asset:'',
       preview:null, importBusy:false, importStatus:'', importError:'', importWarning:null, importReviewError:'', grants:[], trusted:false, enableAfter:false, policy:{},
       details:null, detailsBusy:false, detailsError:'',
       update:null, updateBusy:false, updateUncertain:false, updateError:'', versionError:'',versionLoading:false,versionJump:0,
       officialUpdate:null,combinedConfirmation:null,
       pluginUpdates:null,pluginUpdateBusy:false,pluginUpdateError:'',pluginInstall:null,pluginInstallBusy:false,pluginInstallUncertain:false,pluginInstallError:'',folderBusy:null,folderError:'',
       settings:null,settingsBusy:false,settingsReady:false,settingsError:'',settingsUncertain:false, jobRetry:false, locale:context.i18n?.locale ?? 'en' };
+    this.state.market={items:[],page:0,hasMore:false,loading:false,error:'',query:'',origin:'all',onlyDevice:false,sort:'updated',selected:null,assetId:null,reviewReturn:false};
     this.unsubscribeLocale = context.i18n?.onChange?.(() => this.set({locale:context.i18n.locale}));
   }
   subscribe = fn => { this.listeners.add(fn); return () => this.listeners.delete(fn); };
@@ -34,8 +40,8 @@ export class Manager {
   uninstallWithCodex(){return this.openSkillTask('remove',this.state.details);}
   removalRequiresCli(plugin){return !!plugin&&(plugin.id===this.context.pluginId||plugin.disableDependents?.includes(this.context.pluginId)===true);}
   async openSkillTask(mode,subject=null){
-    const page=mode==='review'?'import':mode==='remove'?'details':'plugins',errorKey=mode==='review'?'importReviewError':mode==='remove'?'detailsError':'operationError';
-    if(!this.available()||this.state.createBusy||this.state.page!==page)return false;
+    const page=mode==='review'?'import':mode==='remove'?'details':'plugins',activePage=this.state.page,errorKey=mode==='review'?'importReviewError':mode==='remove'?'detailsError':'operationError';
+    if(!this.available()||this.state.createBusy||(activePage!==page&&!(page==='plugins'&&activePage==='market')))return false;
     if(mode==='review'&&(!this.state.importWarning||this.state.importWarning.preview!==subject)||mode==='remove'&&(!subject||this.state.detailsBusy||!this.removalRequiresCli(subject)))return false;
     const sequence=this.sequence.page;
     this.set({createBusy:true,[errorKey]:''});
@@ -44,9 +50,9 @@ export class Manager {
       const prompt=skillPrompt(this.state.runtimeSkill,this.state.locale,mode,selected);
       const reply=await this.context.rpc.request({name:'codex.ui.navigation.page',api:1,scope:'target'},'newTaskDraft',{prompt});
       if(reply?.opened!==true||reply.submitted!==false)throw new Error('The new task could not be opened.');
-      if(mode==='review'&&this.current('page',sequence,page))this.cancelImportWarning();
+      if(mode==='review'&&this.current('page',sequence,activePage))this.cancelImportWarning();
       return true;
-    }catch(error){if(this.current('page',sequence,page))this.set({[errorKey]:this.state.runtimeSkill?.available?'The new task could not be opened.':'The Codlet skill is unavailable. Refresh or restart Codlet and try again.'});return false;}
+    }catch(error){if(this.current('page',sequence,activePage))this.set({[errorKey]:this.state.runtimeSkill?.available?'The new task could not be opened.':'The Codlet skill is unavailable. Refresh or restart Codlet and try again.'});return false;}
     finally{if(this.alive)this.set({createBusy:false});}
   }
   clearTimer(name) { clearTimeout(this.timers.get(name)); this.timers.delete(name); }
@@ -97,6 +103,7 @@ export class Manager {
     this.set({open:false, page:'plugins', confirmation:null,combinedConfirmation:null});
     for (const name of [...this.timers.keys()]) this.clearTimer(name);
     this.sequence.list++; this.sequence.update++; this.sequence.removal++;this.sequence.version++;this.sequence.settings++;
+    this.cancelMarketJob();this.sequence.market++;
     this.invalidateImport();
   }
   dispose() {
@@ -111,7 +118,7 @@ export class Manager {
       const reply=await this.rpc('list');
       if (!this.current('list',sequence)) return;
       if (!Array.isArray(reply?.plugins) || reply.plugins.some(p=>!p || typeof p.id!=='string' || !p.id) || new Set(reply.plugins.map(p=>p.id)).size!==reply.plugins.length) throw new Error('Plugin list unavailable');
-      this.set({plugins:reply.plugins,listStale:false,localManagement:reply.localManagement??null,githubAvailable:reply.githubManagement?.available===true,
+      this.set({plugins:reply.plugins,listStale:false,localManagement:reply.localManagement??null,githubAvailable:reply.githubManagement?.available===true,deviceCompatibility:reply.deviceCompatibility??null,
         runtimeVersion:reply.runtimeVersion??'',runtimeSkill:reply.runtimeSkill??null});
     } catch(error) { if(this.current('list',sequence)) this.set({listStale:true,listError:'Plugin state could not be refreshed. Displayed values may be out of date.\n'+(error?.code==='rpc_timeout'?'Plugin list timed out. Refresh to try again.':message(error))}); }
     finally { if(this.current('list',sequence)) this.set({loading:false}); }
@@ -134,6 +141,90 @@ export class Manager {
     finally{if(this.alive){this.set({pluginUpdateBusy:false});if(this.state.open&&this.visible)void this.pollVersions();}}
   }
   setQuery(query) { this.set({query}); }
+  marketSet(patch){this.set({market:{...this.state.market,...patch}});}
+  marketPage(){
+    if(!this.available()||!this.state.githubAvailable)return;
+    this.invalidateImport();this.marketSet({selected:null,reviewReturn:false});this.set({page:'market'});
+    if(!this.state.market.items.length&&!this.state.market.loading)return this.marketSearch();
+  }
+  marketDetails(item){if(!item||!this.available())return;this.cancelMarketJob();this.sequence.market++;const assets=marketAssets(item);this.marketSet({selected:item,assetId:assets.length===1?String(assets[0].id):null,loading:false});this.set({page:'marketDetails'});}
+  marketChangeQuery(query){this.marketSet({query});this.after('market-search',350,()=>{if(this.state.page==='market')void this.marketSearch();});}
+  marketFiltered(){
+    const market=this.state.market,device=this.state.deviceCompatibility?.platform;
+    return marketSort(market.items.filter(item=>marketMatches(item,market.query)&&
+      (market.origin==='all'||(market.origin==='official')===!!officialRepository(item))&&
+      (!market.onlyDevice||!!device&&this.marketKnownCompatibility(item)==='compatible')),market.sort);
+  }
+  marketKnownCompatibility(item){
+    // A release declaration is publisher metadata. A prepared ZIP takes precedence.
+    return item?.preparedCompatibility?.status??declaredPackageFor(item)?.deviceCompatibility?.status??'unknown';
+  }
+  marketInstalled(item){
+    const repository=item.repositoryUrl?.replace(/\.git$/i,'').toLowerCase();
+    const managed=this.state.plugins.find(plugin=>plugin.registered!==false&&plugin.ownership==='core-managed-github'&&plugin.managedSource?.repositoryUrl?.replace(/\.git$/i,'').toLowerCase()===repository);
+    if(managed)return {plugin:managed,operation:managed.managedSource?.tag===item.latestRelease?.tag?'installed':'update'};
+    const official=officialRepository(item),local=official&&this.state.plugins.find(plugin=>plugin.registered!==false&&official.pluginIds.includes(plugin.id));
+    if(local)return {plugin:local,operation:'installed'};
+    return null;
+  }
+  cancelMarketJob(){
+    const job=this.marketJob;this.marketJob=null;this.clearTimer('market-poll');this.clearTimer('market-deadline');
+    if(job?.id)void this.rpc('cancelGitHubJob',{jobId:job.id}).catch(()=>{});
+    if(job)this.marketSet({loading:false});
+  }
+  async marketSearch(refresh=false){
+    if(!this.alive||!this.state.open||this.state.page!=='market'||!this.state.githubAvailable)return;
+    this.cancelMarketJob();this.sequence.market++;
+    this.marketSet({items:[],page:0,hasMore:false,loading:false,error:''});
+    return this.marketLoadMore(refresh);
+  }
+  async marketLoadMore(refresh=false){
+    if(!this.alive||!this.state.open||this.state.page!=='market'||this.marketJob||this.state.market.loading)return;
+    const market=this.state.market,page=market.page+1,job={id:null,sequence:this.sequence.market,page,query:market.query,checking:false};
+    this.marketJob=job;this.marketSet({loading:true,error:''});
+    this.after('market-deadline',30000,()=>{if(this.marketJob!==job)return;this.cancelMarketJob();this.marketSet({loading:false,error:'Plugin marketplace timed out. Check the connection and retry.'});});
+    try{
+      const reply=await this.rpc('githubDiscover',{query:job.query,page,refresh});
+      if(this.marketJob!==job||!this.current('market',job.sequence)){if(reply?.jobId)void this.rpc('cancelGitHubJob',{jobId:reply.jobId}).catch(()=>{});return;}
+      if(typeof reply?.jobId!=='string'||!reply.jobId)throw Error('Plugin marketplace did not return a task ID.');
+      job.id=reply.jobId;this.acceptMarketJob(job,reply);
+    }catch(error){if(this.marketJob===job&&this.current('market',job.sequence)){this.cancelMarketJob();this.marketSet({loading:false,error:message(error)});}}
+  }
+  acceptMarketJob(job,reply){
+    if(this.marketJob!==job||!this.current('market',job.sequence))return;
+    if(reply.jobId!==job.id||reply.kind!=='discovery')throw Error('Plugin marketplace task response did not match the request.');
+    if(reply.status==='running'){this.after('market-poll',300,()=>this.pollMarketJob(job));return;}
+    if(reply.status==='completed'){
+      const result=reply.result;
+      if(!Array.isArray(result?.items)||result.page!==job.page||typeof result.hasMore!=='boolean'||result.items.some(item=>!Number.isSafeInteger(item.repositoryId)||!Number.isSafeInteger(item.ownerId)||typeof item.repositoryUrl!=='string'||typeof item.fullName!=='string'||!Array.isArray(item.topics)))throw Error('Plugin marketplace results are incomplete.');
+      const previous=job.page===1?[]:this.state.market.items,seen=new Set(previous.map(marketItemKey));
+      this.marketSet({items:[...previous,...result.items.filter(item=>!seen.has(marketItemKey(item)))],page:job.page,hasMore:result.hasMore,loading:false,error:''});
+    }else if(['failed','cancelled'].includes(reply.status))this.marketSet({loading:false,error:reply.error?.message||'Plugin marketplace request failed.'});
+    else throw Error('Plugin marketplace returned an unknown status.');
+    this.marketJob=null;this.clearTimer('market-poll');this.clearTimer('market-deadline');
+  }
+  async pollMarketJob(job=this.marketJob){
+    if(!job?.id||this.marketJob!==job||job.checking)return;job.checking=true;
+    try{this.acceptMarketJob(job,await this.rpc('githubJob',{jobId:job.id}));}
+    catch(error){if(this.marketJob===job&&this.current('market',job.sequence)){this.cancelMarketJob();this.marketSet({loading:false,error:`Marketplace status unavailable: ${message(error)}. Retry the search.`});}}
+    finally{job.checking=false;}
+  }
+  reviewMarket(item){
+    if(!this.available()||!item||this.state.page!=='marketDetails')return;
+    const asset=marketAssets(item).find(asset=>String(asset.id)===this.state.market.assetId);if(!asset)return;
+    const installed=this.marketInstalled(item),official=officialRepository(item);
+    let operation=installed?.operation==='update'?'update':'install',target=installed?.operation==='update'?installed.plugin:null;
+    if(installed?.operation==='installed'&&official&&installed.plugin.ownership==='installer-seed'){operation='adopt';target=installed.plugin;}
+    if(installed?.operation==='installed'&&operation!=='adopt')return;
+    this.invalidateImport();this.set({page:'import',mode:'github',target,importOperation:operation,catalog:null,release:'',asset:'',url:item.repositoryUrl,importStatus:'',importError:''});
+    this.marketSet({reviewReturn:true});
+    return this.runJob('githubPrepare',{repositoryUrl:item.repositoryUrl,releaseId:item.latestRelease.id,assetId:asset.id,operation,...(target?{pluginId:target.id}:{})},'package');
+  }
+  retryMarketReview(){
+    const item=this.state.market.selected;
+    if(this.state.page!=='import'||!this.state.market.reviewReturn||!item||this.state.importBusy)return;
+    this.invalidateImport();this.set({page:'marketDetails'});this.reviewMarket(item);
+  }
   async openRuntimeFolder(location){
     if(!this.alive||!this.state.open||this.state.folderBusy||!['installation','logs'].includes(location))return;
     this.set({folderBusy:location,folderError:''});
@@ -251,13 +342,20 @@ export class Manager {
   }
   back() {
     if(this.pending) return;
+    const page=this.state.page,marketReturn=this.state.market.reviewReturn;
     this.invalidateImport(); this.clearTimer('update'); this.sequence.update++;
+    if(page==='marketDetails'){this.set({page:'market'});if(!this.state.market.items.length)void this.marketSearch();return;}
+    if(page==='market'){this.cancelMarketJob();this.sequence.market++;this.set({page:'plugins'});return this.refresh();}
+    if(page==='import'&&marketReturn){this.marketSet({reviewReturn:false});this.set({page:'marketDetails'});return;}
+    if(page==='import'&&this.state.importPreviousPage==='market'){this.set({page:'market'});return;}
     this.set({page:'plugins',details:null,updateBusy:false}); return this.refresh();
   }
   importPage(mode='local',target=null) {
     if(!this.available()) return;
+    const importPreviousPage=this.state.page==='import'?this.state.importPreviousPage:this.state.page;
     this.invalidateImport();
-    this.set({page:'import',mode,target,importOperation:target?'update':'install',catalog:null,release:'',asset:'',url:target?.managedSource?.repositoryUrl??this.state.url,importStatus:'',importError:''});
+    this.marketSet({reviewReturn:false});
+    this.set({page:'import',mode,target,importPreviousPage,importOperation:target?'update':'install',catalog:null,release:'',asset:'',url:target?.managedSource?.repositoryUrl??this.state.url,importStatus:'',importError:''});
     if(mode==='local' && this.state.path.trim()) this.setPath(this.state.path);
     if(mode==='github' && target) return this.readReleases();
   }
@@ -303,7 +401,7 @@ export class Manager {
     try {await accept(await this.rpc('chooseLocalFolder',{locale:this.context.i18n?.locale??'en'}));}catch(error){fail(error);}
   }
   grant(permission,value) { if(!this.state.preview?.manifest.permissions.includes(permission)) return; this.set({grants:value?[...new Set([...this.state.grants,permission])]:this.state.grants.filter(p=>p!==permission)}); }
-  importReady() {const s=this.state;return this.available() && s.page==='import' && !!s.preview && !s.importBusy && !s.createBusy && s.trusted && s.preview.manifest.permissions.every(p=>s.grants.includes(p));}
+  importReady() {const s=this.state;return this.available() && s.page==='import' && !!s.preview && s.preview.deviceCompatibility?.status!=='incompatible' && !s.importBusy && !s.createBusy && s.trusted && s.preview.manifest.permissions.every(p=>s.grants.includes(p));}
   submitImport() {
     if(!this.importReady()||this.state.importWarning) return;
     this.set({importWarning:{preview:this.state.preview,sequence:this.sequence.page},importReviewError:''});
@@ -317,8 +415,10 @@ export class Manager {
     const policyPermissions={readRoots:['host.fs'],writeRoots:['host.fs.write'],watchRoots:['host.fs.watch'],networkOrigins:['host.network'],executables:['host.process','host.process.spawn'],cwdRoots:['host.process.spawn'],envKeys:['host.process.spawn'],shortcuts:['core.shortcuts']};
     const brokerPolicy=Object.fromEntries(Object.entries(s.policy).filter(([key])=>policyPermissions[key]?.some(permission=>s.grants.includes(permission))).map(([key,value])=>[key,value.split(/\r?\n/).map(line=>line.trim()).filter(Boolean)]));
     const local_import={path:p.path,contentDigest:p.contentDigest,registrationDigest:p.registrationDigest,trusted:true,grants:p.manifest.permissions.filter(permission=>s.grants.includes(permission)),brokerPolicy,enable:s.enableAfter,...(s.mode==='github'?{managed:s.importOperation}:{})};
-    const action=s.mode==='github' && s.importOperation!=='install'?s.importOperation:'import';
-    this.invalidateImport();this.set({page:'plugins'});return this.mutate(p.manifest.id,action,{local_import},this.messages.name(p.manifest));
+    const action=s.mode==='github' && s.importOperation==='adopt'?'update':s.mode==='github' && s.importOperation!=='install'?s.importOperation:'import';
+    const marketReturn=s.market.reviewReturn;
+    this.invalidateImport();this.marketSet({reviewReturn:false});this.set({page:marketReturn?'marketDetails':'plugins'});
+    return this.mutate(p.manifest.id,action,{local_import},this.messages.name(p.manifest));
   }
   setUrl(url) {this.invalidateImport();this.set({url,catalog:null,release:'',asset:'',importStatus:'',importError:''});}
   selectRelease(release) {this.invalidateImport();this.set({release,asset:'',importStatus:'',importError:''});}
@@ -365,7 +465,18 @@ export class Manager {
         this.set({catalog,importStatus:catalog.releases.length?'Choose the exact release and ZIP asset.':'No published releases found. Ask the author for a built plugin ZIP, or download and inspect a local plugin folder.'});
       } else {
         this.validatePreview(reply.result,true,job.selection);
-        this.set({preview:reply.result,importStatus:'Review the exact source, compatibility, dependencies and permissions before confirming.'});
+        if(this.state.market.reviewReturn&&this.state.market.selected){
+          const item=this.state.market.selected;
+          const declared=declaredPackageFor(item),source=reply.result.source,manifest=reply.result.manifest;
+          const declarationChanged=!!declared&&(source?.sha256!==declared.asset.sha256||source?.assetId!==declared.asset.id||manifest.id!==declared.manifest.id||manifest.version!==declared.manifest.version||
+            (manifest.name??null)!==(declared.manifest.name??null)||(manifest.description??null)!==(declared.manifest.description??null)||!sameJson(manifest.tags??[],declared.manifest.tags??[])||
+            !sameJson(reply.result.metadata??null,declared.metadata??null));
+          const verified={...item,...(declarationChanged?{declarationStatus:'invalid',declaredPackage:null,totalDownloads:null,latestInstallablePublishedAt:null}:{}),preparedPluginId:manifest.id,preparedManifest:{id:manifest.id,name:manifest.name,version:manifest.version,tags:manifest.tags??[],description:manifest.description},preparedSource:source,preparedReleasePublishedAt:source?.releasePublishedAt??null,preparedCompatibility:reply.result.deviceCompatibility??null};
+          verified.preparedMetadata=reply.result.metadata??null;
+          this.marketSet({selected:verified,items:this.state.market.items.map(candidate=>marketItemKey(candidate)===marketItemKey(item)?verified:candidate)});
+          if(declarationChanged)job.declarationChanged=true;
+        }
+        this.set({preview:reply.result,importStatus:job.declarationChanged?'Published listing details differ from the reviewed ZIP. Review the actual package below.':'Review the exact source, compatibility, dependencies and permissions before confirming.'});
       }
     } else if(['cancelled','failed'].includes(reply.status)) this.set({importStatus:reply.error?.code==='github_timeout'?githubTimeout(job.kind):reply.error?.message||'GitHub task cancelled. No installation was submitted; temporary download files may remain.'});
     else throw new Error('GitHub task returned an unknown status.');
@@ -386,7 +497,7 @@ export class Manager {
       const reply=plugin.source==='bundled'?{pluginId:plugin.id,registration:{path:'',grants:plugin.grants??[]}}:await this.rpc('permissions',{pluginId:plugin.id});
       if(!this.current('page',sequence,'details')) return;
       if(reply?.pluginId!==plugin.id || !Array.isArray(reply.registration?.grants) || typeof reply.registration.path!=='string') throw new Error('Permission details are unavailable.');
-      this.set({details:{...plugin,...reply.registration,...(reply.ownership?{ownership:reply.ownership}:{}),...(reply.managedSource?{managedSource:reply.managedSource}:{}),metadata:reply.metadata}});
+      this.set({details:{...plugin,...reply.registration,...(reply.ownership?{ownership:reply.ownership}:{}),...(reply.managedSource?{managedSource:reply.managedSource}:{}),metadata:reply.metadata??plugin.metadata??null,deviceCompatibility:reply.deviceCompatibility??plugin.deviceCompatibility??this.state.deviceCompatibility??null}});
     }catch(error){if(this.current('page',sequence,'details')) this.set({detailsError:message(error)});}
     finally{if(this.current('page',sequence,'details')) this.set({detailsBusy:false});}
   }
@@ -412,8 +523,8 @@ export class Manager {
     catch(error){operation.inFlight=false;if(this.current('update',sequence))this.set({combinedConfirmation:null,updateError:message(error),updateUncertain:true});}
     finally{if(this.current('update',sequence)){this.set({updateBusy:false});if(this.visible)this.after('version',1000,()=>this.pollVersions());}}
   }
-  settingsPage(jump=false){if(!this.alive||!this.state.open||this.state.confirmation)return;this.invalidateImport();this.set({page:'settings',settingsReady:false,versionJump:this.state.versionJump+(jump?1:0)});return Promise.all([this.loadSettings(),this.refresh()]);}
-  pluginsPage(){if(!this.alive||!this.state.open||this.state.confirmation)return;this.invalidateImport();this.sequence.settings++;this.set({page:'plugins',settingsBusy:false});return this.refresh();}
+  settingsPage(jump=false){if(!this.alive||!this.state.open||this.state.confirmation)return;this.cancelMarketJob();this.sequence.market++;this.invalidateImport();this.marketSet({reviewReturn:false});this.set({page:'settings',settingsReady:false,versionJump:this.state.versionJump+(jump?1:0)});return Promise.all([this.loadSettings(),this.refresh()]);}
+  pluginsPage(){if(!this.alive||!this.state.open||this.state.confirmation)return;this.cancelMarketJob();this.sequence.market++;this.invalidateImport();this.marketSet({reviewReturn:false});this.sequence.settings++;this.set({page:'plugins',settingsBusy:false});return this.refresh();}
   async loadSettings(keepError=false,allowPlugins=false){
     if(this.settingsWrite){if(this.alive&&this.state.open&&this.state.page==='settings')this.set({settingsBusy:true});return;}
     const page=this.state.page;

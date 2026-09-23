@@ -162,6 +162,86 @@ function createMessages(context) {
     "Plugin management": "\u63D2\u4EF6\u7BA1\u7406",
     "Settings": "\u8BBE\u7F6E",
     "Codlet pages": "Codlet \u9875\u9762",
+    "Plugin marketplace": "\u63D2\u4EF6\u5E02\u573A",
+    "Refresh marketplace": "\u5237\u65B0\u63D2\u4EF6\u5E02\u573A",
+    "Search marketplace": "\u641C\u7D22\u63D2\u4EF6\u5E02\u573A",
+    "Search plugins or #tag": "\u641C\u7D22\u63D2\u4EF6\u6216 #\u6807\u7B7E",
+    "Search repositories or #topic": "\u641C\u7D22\u4ED3\u5E93\u6216 #\u4E3B\u9898",
+    "Repository topics": "\u4ED3\u5E93\u4E3B\u9898",
+    "Search covers public repository names, descriptions and tags.": "\u641C\u7D22\u8303\u56F4\u4E3A\u516C\u5F00\u4ED3\u5E93\u7684\u540D\u79F0\u3001\u7B80\u4ECB\u548C\u6807\u7B7E\u3002",
+    "Plugin source": "\u63D2\u4EF6\u6765\u6E90",
+    "Official": "\u5B98\u65B9",
+    "Community": "\u793E\u533A",
+    "Official repository": "\u5B98\u65B9\u4ED3\u5E93",
+    "Verified official plugin source": "\u5DF2\u6838\u5BF9\u7684\u5B98\u65B9\u63D2\u4EF6\u6765\u6E90",
+    "Registered official repository; plugin identity is checked during package review": "\u6B64\u4ED3\u5E93\u5DF2\u767B\u8BB0\u4E3A\u5B98\u65B9\u6765\u6E90\uFF0C\u63D2\u4EF6\u8EAB\u4EFD\u5C06\u5728\u5305\u5BA1\u6838\u65F6\u6838\u5BF9",
+    "Only compatible with this device": "\u4EC5\u770B\u9002\u7528\u4E8E\u6B64\u8BBE\u5907",
+    "Sort": "\u6392\u5E8F",
+    "Recently updated": "\u6700\u8FD1\u66F4\u65B0",
+    "Newest Release candidate": "\u6700\u65B0\u5019\u9009\u53D1\u5E03",
+    "Most downloaded": "\u6700\u591A\u4E0B\u8F7D",
+    "Name": "\u540D\u79F0\u6392\u5E8F",
+    "Compatibility is checked after package review. Unreviewed repositories are hidden by this filter.": "\u68C0\u67E5\u63D2\u4EF6\u5305\u540E\u624D\u80FD\u786E\u8BA4\u517C\u5BB9\u6027\uFF1B\u6B64\u7B5B\u9009\u4F1A\u9690\u85CF\u5C1A\u672A\u5BA1\u6838\u7684\u4ED3\u5E93\u3002",
+    "Only declared or reviewed packages with support for this device are shown.": "\u4EC5\u663E\u793A\u58F0\u660E\u6216\u5305\u5BA1\u6838\u7ED3\u679C\u652F\u6301\u6B64\u8BBE\u5907\u7684\u63D2\u4EF6\u3002",
+    "Author unknown": "\u4F5C\u8005\u672A\u77E5",
+    "Systems unknown until package review": "\u68C0\u67E5\u63D2\u4EF6\u5305\u540E\u624D\u80FD\u786E\u8BA4\u7CFB\u7EDF\u652F\u6301",
+    "Systems and compatibility": "\u7CFB\u7EDF\u4E0E\u517C\u5BB9\u6027",
+    "Release candidate": "\u5019\u9009\u53D1\u5E03\u7248\u672C",
+    "Package Release": "\u63D2\u4EF6\u5305\u53D1\u5E03\u7248\u672C",
+    "Date unknown": "\u65E5\u671F\u672A\u77E5",
+    "Verified package": "\u5DF2\u6838\u9A8C\u63D2\u4EF6\u5305",
+    "Publisher Release": "\u53D1\u5E03\u65B9\u58F0\u660E\u7684\u7248\u672C",
+    "Publisher declaration": "\u53D1\u5E03\u65B9\u58F0\u660E",
+    "Publisher declared": "\u53D1\u5E03\u65B9\u58F0\u660E",
+    "The actual ZIP is checked before installation.": "\u5B89\u88C5\u524D\u4ECD\u4F1A\u68C0\u67E5\u5B9E\u9645 ZIP \u63D2\u4EF6\u5305\u3002",
+    "Author declares this device compatible": "\u4F5C\u8005\u58F0\u660E\u9002\u7528\u4E8E\u6B64\u8BBE\u5907",
+    "Author declares this device incompatible": "\u4F5C\u8005\u58F0\u660E\u4E0D\u9002\u7528\u4E8E\u6B64\u8BBE\u5907",
+    "Package declares this device compatible": "\u63D2\u4EF6\u5305\u58F0\u660E\u9002\u7528\u4E8E\u6B64\u8BBE\u5907",
+    "Package declares this device incompatible": "\u63D2\u4EF6\u5305\u58F0\u660E\u4E0D\u9002\u7528\u4E8E\u6B64\u8BBE\u5907",
+    "Published listing details differ from the reviewed ZIP. Review the actual package below.": "\u53D1\u5E03\u5217\u8868\u4FE1\u606F\u4E0E\u5DF2\u68C0\u67E5\u7684 ZIP \u4E0D\u4E00\u81F4\uFF0C\u8BF7\u4EE5\u4E0B\u65B9\u5B9E\u9645\u63D2\u4EF6\u5305\u4E3A\u51C6\u91CD\u65B0\u786E\u8BA4\u3002",
+    "Supported systems": "\u652F\u6301\u7CFB\u7EDF",
+    "Current device": "\u5F53\u524D\u8BBE\u5907",
+    "Codex client": "\u5F53\u524D Codex \u5BA2\u6237\u7AEF",
+    "Adapted client versions": "\u5DF2\u9002\u914D\u5BA2\u6237\u7AEF\u7248\u672C",
+    "Codlet API": "Codlet API",
+    "Adapters": "\u9002\u914D\u5668",
+    "Author-declared client builds": "\u4F5C\u8005\u58F0\u660E\u7684\u5BA2\u6237\u7AEF\u6784\u5EFA",
+    "Author-declared limitations": "\u4F5C\u8005\u58F0\u660E\u7684\u9650\u5236",
+    "Adapter declarations": "\u9002\u914D\u5668\u58F0\u660E",
+    "Unknown": "\u672A\u77E5",
+    "Unknown (not declared)": "\u672A\u77E5\uFF08\u672A\u58F0\u660E\uFF09",
+    "Compatible with this device": "\u9002\u7528\u4E8E\u5F53\u524D\u8BBE\u5907",
+    "Not compatible with this device": "\u4E0D\u9002\u7528\u4E8E\u5F53\u524D\u8BBE\u5907",
+    "Compatibility unknown": "\u517C\u5BB9\u6027\u672A\u77E5",
+    "Incompatible": "\u4E0D\u517C\u5BB9",
+    "Installed": "\u5DF2\u5B89\u88C5",
+    "Install": "\u5B89\u88C5",
+    "Package and source": "\u63D2\u4EF6\u5305\u4E0E\u6765\u6E90",
+    "Release": "\u53D1\u5E03\u7248\u672C",
+    "ZIP assets": "ZIP \u8D44\u6E90\u5305",
+    "Installed version": "\u5DF2\u5B89\u88C5\u7248\u672C",
+    "GitHub repository": "GitHub \u9879\u76EE\u4ED3\u5E93",
+    "Choose ZIP": "\u9009\u62E9 ZIP",
+    "No installable ZIP asset was found in the latest release.": "\u6700\u65B0\u53D1\u5E03\u7248\u672C\u6CA1\u6709\u53EF\u5B89\u88C5\u7684 ZIP \u8D44\u6E90\u5305\u3002",
+    "The package ID, permissions, dependencies and compatibility are checked before installation.": "\u5B89\u88C5\u524D\u4F1A\u68C0\u67E5\u5B9E\u9645\u63D2\u4EF6\u5305\u7684 ID\u3001\u6743\u9650\u3001\u4F9D\u8D56\u4E0E\u517C\u5BB9\u6027\u3002",
+    "Declared author: {author}": "\u58F0\u660E\u7684\u4F5C\u8005\uFF1A{author}",
+    "The author has not declared compatible systems; suitability for this device is unknown.": "\u4F5C\u8005\u5C1A\u672A\u58F0\u660E\u517C\u5BB9\u7CFB\u7EDF\uFF0C\u65E0\u6CD5\u786E\u8BA4\u6B64\u63D2\u4EF6\u662F\u5426\u9002\u7528\u4E8E\u5F53\u524D\u8BBE\u5907\u3002",
+    "Core reports this package is incompatible with this device. Installation is unavailable.": "Core \u5224\u5B9A\u6B64\u63D2\u4EF6\u5305\u4E0E\u5F53\u524D\u8BBE\u5907\u4E0D\u517C\u5BB9\uFF0C\u65E0\u6CD5\u5B89\u88C5\u3002",
+    "Marketplace unavailable": "\u6682\u65F6\u65E0\u6CD5\u52A0\u8F7D\u63D2\u4EF6\u5E02\u573A",
+    "Loading marketplace": "\u6B63\u5728\u52A0\u8F7D\u63D2\u4EF6\u5E02\u573A",
+    "Loading more plugins...": "\u6B63\u5728\u52A0\u8F7D\u66F4\u591A\u63D2\u4EF6\u2026",
+    "Retry": "\u91CD\u8BD5",
+    "Load more": "\u52A0\u8F7D\u66F4\u591A",
+    "Clear filters": "\u6E05\u9664\u7B5B\u9009",
+    "Inspecting marketplace package": "\u6B63\u5728\u68C0\u67E5\u5E02\u573A\u63D2\u4EF6\u5305",
+    "Retry inspection": "\u91CD\u8BD5\u68C0\u67E5",
+    "Sorting currently covers loaded repositories. Load more to include additional results.": "\u5F53\u524D\u4EC5\u5BF9\u5DF2\u52A0\u8F7D\u7684\u4ED3\u5E93\u6392\u5E8F\uFF1B\u52A0\u8F7D\u66F4\u591A\u540E\u4F1A\u7EB3\u5165\u5176\u4F59\u7ED3\u679C\u3002",
+    "Plugin marketplace timed out. Check the connection and retry.": "\u63D2\u4EF6\u5E02\u573A\u8BF7\u6C42\u8D85\u65F6\uFF0C\u8BF7\u68C0\u67E5\u7F51\u7EDC\u540E\u91CD\u8BD5\u3002",
+    "Plugin marketplace request failed.": "\u63D2\u4EF6\u5E02\u573A\u8BF7\u6C42\u5931\u8D25\u3002",
+    "Plugin marketplace results are incomplete.": "\u63D2\u4EF6\u5E02\u573A\u7ED3\u679C\u4E0D\u5B8C\u6574\u3002",
+    "Plugin marketplace did not return a task ID.": "\u63D2\u4EF6\u5E02\u573A\u672A\u8FD4\u56DE\u4EFB\u52A1 ID\u3002",
+    "Plugin marketplace task response did not match the request.": "\u63D2\u4EF6\u5E02\u573A\u54CD\u5E94\u4E0E\u8BF7\u6C42\u4E0D\u5339\u914D\u3002",
+    "Plugin marketplace returned an unknown status.": "\u63D2\u4EF6\u5E02\u573A\u8FD4\u56DE\u4E86\u672A\u77E5\u72B6\u6001\u3002",
     "Create or manage Codlet plugins": "\u521B\u5EFA\u6216\u7BA1\u7406 Codlet \u63D2\u4EF6",
     "Manage Codlet preferences and version updates.": "\u7BA1\u7406 Codlet \u504F\u597D\u4E0E\u7248\u672C\u66F4\u65B0\u3002",
     "Basic settings": "\u57FA\u672C\u8BBE\u7F6E",
@@ -594,6 +674,58 @@ function skillPrompt(skill, locale, mode = "create", subject = null) {
   return `[$codlet](${path2}) ${prompt}`;
 }
 
+// ../compatibility/official-sources.json
+var official_sources_default = {
+  schema: 1,
+  sources: [
+    { repository: "baoabaob/codlet-ui-adapter", repositoryId: 1379358711, ownerId: 76909162, pluginIds: ["codex.ui.adapter"] },
+    { repository: "baoabaob/codlet-desktop-adapter", repositoryId: 1379359205, ownerId: 76909162, pluginIds: ["codex.desktop.adapter"] },
+    { repository: "baoabaob/codlet-gui", repositoryId: 1379359689, ownerId: 76909162, pluginIds: ["codlet-gui"] }
+  ]
+};
+
+// src/codlet/marketplace-model.js
+function isOfficialPlugin(plugin) {
+  const source = plugin.source;
+  return source?.kind === "github" && official_sources_default.sources.some((allowed) => source.repositoryId === allowed.repositoryId && source.ownerId === allowed.ownerId && typeof source.repository === "string" && source.repository.toLowerCase() === allowed.repository.toLowerCase() && allowed.pluginIds.includes(plugin.id));
+}
+function officialRepository(item) {
+  return official_sources_default.sources.find((source) => source.repositoryId === item?.repositoryId && source.ownerId === item?.ownerId && typeof item?.fullName === "string" && source.repository.toLowerCase() === item.fullName.toLowerCase()) ?? null;
+}
+function declaredPackageFor(item) {
+  const declared = item?.declarationStatus === "matched" ? item.declaredPackage : null;
+  if (!declared || declared.basis !== "publisher-release-declaration" || declared.releaseId !== item.latestRelease?.id || typeof declared.manifest?.id !== "string" || typeof declared.manifest?.version !== "string" || !Number.isSafeInteger(declared.asset?.id) || !(item.latestRelease?.assets ?? []).some((asset) => asset.id === declared.asset.id && asset.name === declared.asset.name && asset.size === declared.asset.bytes)) return null;
+  return declared;
+}
+function marketAssets(item) {
+  const declared = declaredPackageFor(item);
+  return (item?.latestRelease?.assets ?? []).filter((asset) => Number.isSafeInteger(asset.id) && /\.zip$/i.test(asset.name) && (!declared || asset.id === declared.asset.id));
+}
+function marketItemKey(item) {
+  return Number.isSafeInteger(item?.repositoryId) ? String(item.repositoryId) : item?.fullName ?? "";
+}
+function marketMatches(item, query) {
+  const topics = (item.topics ?? []).map((topic) => topic.toLowerCase());
+  const manifest = declaredPackageFor(item)?.manifest;
+  const text = [item.name, item.fullName, item.description, item.author, manifest?.name, manifest?.description, ...topics].filter((value) => typeof value === "string").join(" ").toLowerCase();
+  return query.trim().toLowerCase().split(/\s+/u).filter(Boolean).every((term) => term.startsWith("#") ? topics.includes(term.slice(1)) : text.includes(term));
+}
+function marketSort(items, order = "updated") {
+  return [...items].sort((a, b) => {
+    if (order !== "name") {
+      const left = order === "downloads" ? count(a.totalDownloads) : timestamp(a.preparedManifest ? a.preparedReleasePublishedAt : declaredPackageFor(a)?.publishedAt);
+      const right = order === "downloads" ? count(b.totalDownloads) : timestamp(b.preparedManifest ? b.preparedReleasePublishedAt : declaredPackageFor(b)?.publishedAt);
+      if (left !== right) return left == null ? 1 : right == null ? -1 : right - left;
+    }
+    return (a.name ?? a.fullName ?? "").localeCompare(b.name ?? b.fullName ?? "", "zh-CN") || marketItemKey(a).localeCompare(marketItemKey(b));
+  });
+}
+var timestamp = (value) => Number.isFinite(Date.parse(value)) ? Date.parse(value) : null;
+var count = (value) => Number.isSafeInteger(value) && value >= 0 ? value : null;
+function formatDownloads(value, locale = "zh-CN") {
+  return count(value) == null ? locale.startsWith("zh") ? "\u4E0B\u8F7D\u6B21\u6570\u672A\u77E5" : "Downloads unknown" : `${new Intl.NumberFormat(locale, { notation: "compact", maximumFractionDigits: 1 }).format(value)} ${locale.startsWith("zh") ? "\u6B21\u4E0B\u8F7D" : "downloads"}`;
+}
+
 // src/codlet/versions.js
 var updatePhases = ["development", "idle", "checking", "upToDate", "available", "downloading", "downloaded", "installRequested", "failed"];
 var busyUpdatePhases = ["checking", "downloading", "installRequested"];
@@ -619,6 +751,10 @@ function validateSettings(reply) {
 var capability = { name: "codlet.runtime.manage", api: 1, scope: "target" };
 var digest = (value) => typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
 var message = (error) => String(error?.message ?? error);
+var sameJson = (left, right) => {
+  const canonical = (value) => JSON.stringify(value, (_key, part) => part && typeof part === "object" && !Array.isArray(part) ? Object.fromEntries(Object.entries(part).sort(([a], [b]) => a.localeCompare(b))) : part);
+  return canonical(left) === canonical(right);
+};
 var updateIdentity = (value) => value?.candidate?.id && value?.candidate?.version ? `${value.candidate.id}:${value.candidate.version}` : null;
 var githubTimeout = (kind) => kind === "releases" ? "Reading GitHub releases timed out. Check the connection or proxy, then try again." : "Preparing the GitHub package timed out. No installation was submitted. Try again.";
 var Manager = class {
@@ -627,10 +763,11 @@ var Manager = class {
     this.messages = createMessages(context);
     this.listeners = /* @__PURE__ */ new Set();
     this.timers = /* @__PURE__ */ new Map();
-    this.sequence = { list: 0, page: 0, removal: 0, update: 0, version: 0, settings: 0 };
+    this.sequence = { list: 0, page: 0, market: 0, removal: 0, update: 0, version: 0, settings: 0 };
     this.visible = true;
     this.alive = true;
     this.job = null;
+    this.marketJob = null;
     this.pending = null;
     this.updateCommand = null;
     this.settingsWrite = null;
@@ -655,6 +792,7 @@ var Manager = class {
       createBusy: false,
       mode: "local",
       importOperation: "install",
+      importPreviousPage: "plugins",
       target: null,
       path: "",
       url: "",
@@ -700,6 +838,7 @@ var Manager = class {
       jobRetry: false,
       locale: context.i18n?.locale ?? "en"
     };
+    this.state.market = { items: [], page: 0, hasMore: false, loading: false, error: "", query: "", origin: "all", onlyDevice: false, sort: "updated", selected: null, assetId: null, reviewReturn: false };
     this.unsubscribeLocale = context.i18n?.onChange?.(() => this.set({ locale: context.i18n.locale }));
   }
   subscribe = (fn) => {
@@ -732,8 +871,8 @@ var Manager = class {
     return !!plugin && (plugin.id === this.context.pluginId || plugin.disableDependents?.includes(this.context.pluginId) === true);
   }
   async openSkillTask(mode, subject = null) {
-    const page = mode === "review" ? "import" : mode === "remove" ? "details" : "plugins", errorKey = mode === "review" ? "importReviewError" : mode === "remove" ? "detailsError" : "operationError";
-    if (!this.available() || this.state.createBusy || this.state.page !== page) return false;
+    const page = mode === "review" ? "import" : mode === "remove" ? "details" : "plugins", activePage = this.state.page, errorKey = mode === "review" ? "importReviewError" : mode === "remove" ? "detailsError" : "operationError";
+    if (!this.available() || this.state.createBusy || activePage !== page && !(page === "plugins" && activePage === "market")) return false;
     if (mode === "review" && (!this.state.importWarning || this.state.importWarning.preview !== subject) || mode === "remove" && (!subject || this.state.detailsBusy || !this.removalRequiresCli(subject))) return false;
     const sequence = this.sequence.page;
     this.set({ createBusy: true, [errorKey]: "" });
@@ -742,10 +881,10 @@ var Manager = class {
       const prompt = skillPrompt(this.state.runtimeSkill, this.state.locale, mode, selected);
       const reply = await this.context.rpc.request({ name: "codex.ui.navigation.page", api: 1, scope: "target" }, "newTaskDraft", { prompt });
       if (reply?.opened !== true || reply.submitted !== false) throw new Error("The new task could not be opened.");
-      if (mode === "review" && this.current("page", sequence, page)) this.cancelImportWarning();
+      if (mode === "review" && this.current("page", sequence, activePage)) this.cancelImportWarning();
       return true;
     } catch (error) {
-      if (this.current("page", sequence, page)) this.set({ [errorKey]: this.state.runtimeSkill?.available ? "The new task could not be opened." : "The Codlet skill is unavailable. Refresh or restart Codlet and try again." });
+      if (this.current("page", sequence, activePage)) this.set({ [errorKey]: this.state.runtimeSkill?.available ? "The new task could not be opened." : "The Codlet skill is unavailable. Refresh or restart Codlet and try again." });
       return false;
     } finally {
       if (this.alive) this.set({ createBusy: false });
@@ -862,6 +1001,8 @@ var Manager = class {
     this.sequence.removal++;
     this.sequence.version++;
     this.sequence.settings++;
+    this.cancelMarketJob();
+    this.sequence.market++;
     this.invalidateImport();
   }
   dispose() {
@@ -885,6 +1026,7 @@ var Manager = class {
         listStale: false,
         localManagement: reply.localManagement ?? null,
         githubAvailable: reply.githubManagement?.available === true,
+        deviceCompatibility: reply.deviceCompatibility ?? null,
         runtimeVersion: reply.runtimeVersion ?? "",
         runtimeSkill: reply.runtimeSkill ?? null
       });
@@ -925,6 +1067,143 @@ var Manager = class {
   }
   setQuery(query) {
     this.set({ query });
+  }
+  marketSet(patch) {
+    this.set({ market: { ...this.state.market, ...patch } });
+  }
+  marketPage() {
+    if (!this.available() || !this.state.githubAvailable) return;
+    this.invalidateImport();
+    this.marketSet({ selected: null, reviewReturn: false });
+    this.set({ page: "market" });
+    if (!this.state.market.items.length && !this.state.market.loading) return this.marketSearch();
+  }
+  marketDetails(item) {
+    if (!item || !this.available()) return;
+    this.cancelMarketJob();
+    this.sequence.market++;
+    const assets = marketAssets(item);
+    this.marketSet({ selected: item, assetId: assets.length === 1 ? String(assets[0].id) : null, loading: false });
+    this.set({ page: "marketDetails" });
+  }
+  marketChangeQuery(query) {
+    this.marketSet({ query });
+    this.after("market-search", 350, () => {
+      if (this.state.page === "market") void this.marketSearch();
+    });
+  }
+  marketFiltered() {
+    const market = this.state.market, device = this.state.deviceCompatibility?.platform;
+    return marketSort(market.items.filter((item) => marketMatches(item, market.query) && (market.origin === "all" || market.origin === "official" === !!officialRepository(item)) && (!market.onlyDevice || !!device && this.marketKnownCompatibility(item) === "compatible")), market.sort);
+  }
+  marketKnownCompatibility(item) {
+    return item?.preparedCompatibility?.status ?? declaredPackageFor(item)?.deviceCompatibility?.status ?? "unknown";
+  }
+  marketInstalled(item) {
+    const repository = item.repositoryUrl?.replace(/\.git$/i, "").toLowerCase();
+    const managed = this.state.plugins.find((plugin) => plugin.registered !== false && plugin.ownership === "core-managed-github" && plugin.managedSource?.repositoryUrl?.replace(/\.git$/i, "").toLowerCase() === repository);
+    if (managed) return { plugin: managed, operation: managed.managedSource?.tag === item.latestRelease?.tag ? "installed" : "update" };
+    const official = officialRepository(item), local = official && this.state.plugins.find((plugin) => plugin.registered !== false && official.pluginIds.includes(plugin.id));
+    if (local) return { plugin: local, operation: "installed" };
+    return null;
+  }
+  cancelMarketJob() {
+    const job = this.marketJob;
+    this.marketJob = null;
+    this.clearTimer("market-poll");
+    this.clearTimer("market-deadline");
+    if (job?.id) void this.rpc("cancelGitHubJob", { jobId: job.id }).catch(() => {
+    });
+    if (job) this.marketSet({ loading: false });
+  }
+  async marketSearch(refresh = false) {
+    if (!this.alive || !this.state.open || this.state.page !== "market" || !this.state.githubAvailable) return;
+    this.cancelMarketJob();
+    this.sequence.market++;
+    this.marketSet({ items: [], page: 0, hasMore: false, loading: false, error: "" });
+    return this.marketLoadMore(refresh);
+  }
+  async marketLoadMore(refresh = false) {
+    if (!this.alive || !this.state.open || this.state.page !== "market" || this.marketJob || this.state.market.loading) return;
+    const market = this.state.market, page = market.page + 1, job = { id: null, sequence: this.sequence.market, page, query: market.query, checking: false };
+    this.marketJob = job;
+    this.marketSet({ loading: true, error: "" });
+    this.after("market-deadline", 3e4, () => {
+      if (this.marketJob !== job) return;
+      this.cancelMarketJob();
+      this.marketSet({ loading: false, error: "Plugin marketplace timed out. Check the connection and retry." });
+    });
+    try {
+      const reply = await this.rpc("githubDiscover", { query: job.query, page, refresh });
+      if (this.marketJob !== job || !this.current("market", job.sequence)) {
+        if (reply?.jobId) void this.rpc("cancelGitHubJob", { jobId: reply.jobId }).catch(() => {
+        });
+        return;
+      }
+      if (typeof reply?.jobId !== "string" || !reply.jobId) throw Error("Plugin marketplace did not return a task ID.");
+      job.id = reply.jobId;
+      this.acceptMarketJob(job, reply);
+    } catch (error) {
+      if (this.marketJob === job && this.current("market", job.sequence)) {
+        this.cancelMarketJob();
+        this.marketSet({ loading: false, error: message(error) });
+      }
+    }
+  }
+  acceptMarketJob(job, reply) {
+    if (this.marketJob !== job || !this.current("market", job.sequence)) return;
+    if (reply.jobId !== job.id || reply.kind !== "discovery") throw Error("Plugin marketplace task response did not match the request.");
+    if (reply.status === "running") {
+      this.after("market-poll", 300, () => this.pollMarketJob(job));
+      return;
+    }
+    if (reply.status === "completed") {
+      const result = reply.result;
+      if (!Array.isArray(result?.items) || result.page !== job.page || typeof result.hasMore !== "boolean" || result.items.some((item) => !Number.isSafeInteger(item.repositoryId) || !Number.isSafeInteger(item.ownerId) || typeof item.repositoryUrl !== "string" || typeof item.fullName !== "string" || !Array.isArray(item.topics))) throw Error("Plugin marketplace results are incomplete.");
+      const previous = job.page === 1 ? [] : this.state.market.items, seen = new Set(previous.map(marketItemKey));
+      this.marketSet({ items: [...previous, ...result.items.filter((item) => !seen.has(marketItemKey(item)))], page: job.page, hasMore: result.hasMore, loading: false, error: "" });
+    } else if (["failed", "cancelled"].includes(reply.status)) this.marketSet({ loading: false, error: reply.error?.message || "Plugin marketplace request failed." });
+    else throw Error("Plugin marketplace returned an unknown status.");
+    this.marketJob = null;
+    this.clearTimer("market-poll");
+    this.clearTimer("market-deadline");
+  }
+  async pollMarketJob(job = this.marketJob) {
+    if (!job?.id || this.marketJob !== job || job.checking) return;
+    job.checking = true;
+    try {
+      this.acceptMarketJob(job, await this.rpc("githubJob", { jobId: job.id }));
+    } catch (error) {
+      if (this.marketJob === job && this.current("market", job.sequence)) {
+        this.cancelMarketJob();
+        this.marketSet({ loading: false, error: `Marketplace status unavailable: ${message(error)}. Retry the search.` });
+      }
+    } finally {
+      job.checking = false;
+    }
+  }
+  reviewMarket(item) {
+    if (!this.available() || !item || this.state.page !== "marketDetails") return;
+    const asset = marketAssets(item).find((asset2) => String(asset2.id) === this.state.market.assetId);
+    if (!asset) return;
+    const installed = this.marketInstalled(item), official = officialRepository(item);
+    let operation = installed?.operation === "update" ? "update" : "install", target = installed?.operation === "update" ? installed.plugin : null;
+    if (installed?.operation === "installed" && official && installed.plugin.ownership === "installer-seed") {
+      operation = "adopt";
+      target = installed.plugin;
+    }
+    if (installed?.operation === "installed" && operation !== "adopt") return;
+    this.invalidateImport();
+    this.set({ page: "import", mode: "github", target, importOperation: operation, catalog: null, release: "", asset: "", url: item.repositoryUrl, importStatus: "", importError: "" });
+    this.marketSet({ reviewReturn: true });
+    return this.runJob("githubPrepare", { repositoryUrl: item.repositoryUrl, releaseId: item.latestRelease.id, assetId: asset.id, operation, ...target ? { pluginId: target.id } : {} }, "package");
+  }
+  retryMarketReview() {
+    const item = this.state.market.selected;
+    if (this.state.page !== "import" || !this.state.market.reviewReturn || !item || this.state.importBusy) return;
+    this.invalidateImport();
+    this.set({ page: "marketDetails" });
+    this.reviewMarket(item);
   }
   async openRuntimeFolder(location) {
     if (!this.alive || !this.state.open || this.state.folderBusy || !["installation", "logs"].includes(location)) return;
@@ -1087,16 +1366,39 @@ var Manager = class {
   }
   back() {
     if (this.pending) return;
+    const page = this.state.page, marketReturn = this.state.market.reviewReturn;
     this.invalidateImport();
     this.clearTimer("update");
     this.sequence.update++;
+    if (page === "marketDetails") {
+      this.set({ page: "market" });
+      if (!this.state.market.items.length) void this.marketSearch();
+      return;
+    }
+    if (page === "market") {
+      this.cancelMarketJob();
+      this.sequence.market++;
+      this.set({ page: "plugins" });
+      return this.refresh();
+    }
+    if (page === "import" && marketReturn) {
+      this.marketSet({ reviewReturn: false });
+      this.set({ page: "marketDetails" });
+      return;
+    }
+    if (page === "import" && this.state.importPreviousPage === "market") {
+      this.set({ page: "market" });
+      return;
+    }
     this.set({ page: "plugins", details: null, updateBusy: false });
     return this.refresh();
   }
   importPage(mode = "local", target = null) {
     if (!this.available()) return;
+    const importPreviousPage = this.state.page === "import" ? this.state.importPreviousPage : this.state.page;
     this.invalidateImport();
-    this.set({ page: "import", mode, target, importOperation: target ? "update" : "install", catalog: null, release: "", asset: "", url: target?.managedSource?.repositoryUrl ?? this.state.url, importStatus: "", importError: "" });
+    this.marketSet({ reviewReturn: false });
+    this.set({ page: "import", mode, target, importPreviousPage, importOperation: target ? "update" : "install", catalog: null, release: "", asset: "", url: target?.managedSource?.repositoryUrl ?? this.state.url, importStatus: "", importError: "" });
     if (mode === "local" && this.state.path.trim()) this.setPath(this.state.path);
     if (mode === "github" && target) return this.readReleases();
   }
@@ -1168,7 +1470,7 @@ var Manager = class {
   }
   importReady() {
     const s = this.state;
-    return this.available() && s.page === "import" && !!s.preview && !s.importBusy && !s.createBusy && s.trusted && s.preview.manifest.permissions.every((p) => s.grants.includes(p));
+    return this.available() && s.page === "import" && !!s.preview && s.preview.deviceCompatibility?.status !== "incompatible" && !s.importBusy && !s.createBusy && s.trusted && s.preview.manifest.permissions.every((p) => s.grants.includes(p));
   }
   submitImport() {
     if (!this.importReady() || this.state.importWarning) return;
@@ -1185,9 +1487,11 @@ var Manager = class {
     const policyPermissions = { readRoots: ["host.fs"], writeRoots: ["host.fs.write"], watchRoots: ["host.fs.watch"], networkOrigins: ["host.network"], executables: ["host.process", "host.process.spawn"], cwdRoots: ["host.process.spawn"], envKeys: ["host.process.spawn"], shortcuts: ["core.shortcuts"] };
     const brokerPolicy = Object.fromEntries(Object.entries(s.policy).filter(([key]) => policyPermissions[key]?.some((permission) => s.grants.includes(permission))).map(([key, value]) => [key, value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)]));
     const local_import = { path: p.path, contentDigest: p.contentDigest, registrationDigest: p.registrationDigest, trusted: true, grants: p.manifest.permissions.filter((permission) => s.grants.includes(permission)), brokerPolicy, enable: s.enableAfter, ...s.mode === "github" ? { managed: s.importOperation } : {} };
-    const action = s.mode === "github" && s.importOperation !== "install" ? s.importOperation : "import";
+    const action = s.mode === "github" && s.importOperation === "adopt" ? "update" : s.mode === "github" && s.importOperation !== "install" ? s.importOperation : "import";
+    const marketReturn = s.market.reviewReturn;
     this.invalidateImport();
-    this.set({ page: "plugins" });
+    this.marketSet({ reviewReturn: false });
+    this.set({ page: marketReturn ? "marketDetails" : "plugins" });
     return this.mutate(p.manifest.id, action, { local_import }, this.messages.name(p.manifest));
   }
   setUrl(url) {
@@ -1269,7 +1573,16 @@ var Manager = class {
         this.set({ catalog, importStatus: catalog.releases.length ? "Choose the exact release and ZIP asset." : "No published releases found. Ask the author for a built plugin ZIP, or download and inspect a local plugin folder." });
       } else {
         this.validatePreview(reply.result, true, job.selection);
-        this.set({ preview: reply.result, importStatus: "Review the exact source, compatibility, dependencies and permissions before confirming." });
+        if (this.state.market.reviewReturn && this.state.market.selected) {
+          const item = this.state.market.selected;
+          const declared = declaredPackageFor(item), source = reply.result.source, manifest = reply.result.manifest;
+          const declarationChanged = !!declared && (source?.sha256 !== declared.asset.sha256 || source?.assetId !== declared.asset.id || manifest.id !== declared.manifest.id || manifest.version !== declared.manifest.version || (manifest.name ?? null) !== (declared.manifest.name ?? null) || (manifest.description ?? null) !== (declared.manifest.description ?? null) || !sameJson(manifest.tags ?? [], declared.manifest.tags ?? []) || !sameJson(reply.result.metadata ?? null, declared.metadata ?? null));
+          const verified = { ...item, ...declarationChanged ? { declarationStatus: "invalid", declaredPackage: null, totalDownloads: null, latestInstallablePublishedAt: null } : {}, preparedPluginId: manifest.id, preparedManifest: { id: manifest.id, name: manifest.name, version: manifest.version, tags: manifest.tags ?? [], description: manifest.description }, preparedSource: source, preparedReleasePublishedAt: source?.releasePublishedAt ?? null, preparedCompatibility: reply.result.deviceCompatibility ?? null };
+          verified.preparedMetadata = reply.result.metadata ?? null;
+          this.marketSet({ selected: verified, items: this.state.market.items.map((candidate) => marketItemKey(candidate) === marketItemKey(item) ? verified : candidate) });
+          if (declarationChanged) job.declarationChanged = true;
+        }
+        this.set({ preview: reply.result, importStatus: job.declarationChanged ? "Published listing details differ from the reviewed ZIP. Review the actual package below." : "Review the exact source, compatibility, dependencies and permissions before confirming." });
       }
     } else if (["cancelled", "failed"].includes(reply.status)) this.set({ importStatus: reply.error?.code === "github_timeout" ? githubTimeout(job.kind) : reply.error?.message || "GitHub task cancelled. No installation was submitted; temporary download files may remain." });
     else throw new Error("GitHub task returned an unknown status.");
@@ -1304,7 +1617,7 @@ Check the same task again, or cancel. No new download or installation is started
       const reply = plugin.source === "bundled" ? { pluginId: plugin.id, registration: { path: "", grants: plugin.grants ?? [] } } : await this.rpc("permissions", { pluginId: plugin.id });
       if (!this.current("page", sequence, "details")) return;
       if (reply?.pluginId !== plugin.id || !Array.isArray(reply.registration?.grants) || typeof reply.registration.path !== "string") throw new Error("Permission details are unavailable.");
-      this.set({ details: { ...plugin, ...reply.registration, ...reply.ownership ? { ownership: reply.ownership } : {}, ...reply.managedSource ? { managedSource: reply.managedSource } : {}, metadata: reply.metadata } });
+      this.set({ details: { ...plugin, ...reply.registration, ...reply.ownership ? { ownership: reply.ownership } : {}, ...reply.managedSource ? { managedSource: reply.managedSource } : {}, metadata: reply.metadata ?? plugin.metadata ?? null, deviceCompatibility: reply.deviceCompatibility ?? plugin.deviceCompatibility ?? this.state.deviceCompatibility ?? null } });
     } catch (error) {
       if (this.current("page", sequence, "details")) this.set({ detailsError: message(error) });
     } finally {
@@ -1372,13 +1685,19 @@ Check the same task again, or cancel. No new download or installation is started
   }
   settingsPage(jump = false) {
     if (!this.alive || !this.state.open || this.state.confirmation) return;
+    this.cancelMarketJob();
+    this.sequence.market++;
     this.invalidateImport();
+    this.marketSet({ reviewReturn: false });
     this.set({ page: "settings", settingsReady: false, versionJump: this.state.versionJump + (jump ? 1 : 0) });
     return Promise.all([this.loadSettings(), this.refresh()]);
   }
   pluginsPage() {
     if (!this.alive || !this.state.open || this.state.confirmation) return;
+    this.cancelMarketJob();
+    this.sequence.market++;
     this.invalidateImport();
+    this.marketSet({ reviewReturn: false });
     this.sequence.settings++;
     this.set({ page: "plugins", settingsBusy: false });
     return this.refresh();
@@ -1501,8 +1820,8 @@ function displayPath(path2) {
 // src/codlet/settings.jsx
 function createSettingsView({ React: React2, C: C2, I: I2, manager: manager2, t: t2, Copy: Copy2, mutationBusy: mutationBusy2 }) {
   const h2 = React2.createElement;
-  function Row({ label, description: description2, children }) {
-    return /* @__PURE__ */ h2("div", { className: "codlet-setting-row" }, /* @__PURE__ */ h2("div", { className: "codlet-setting-copy" }, /* @__PURE__ */ h2("div", { className: "codlet-setting-label" }, t2(label)), /* @__PURE__ */ h2(Copy2, null, t2(description2))), /* @__PURE__ */ h2("div", { className: "codlet-setting-control" }, children));
+  function Row({ label: label2, description: description2, children }) {
+    return /* @__PURE__ */ h2("div", { className: "codlet-setting-row" }, /* @__PURE__ */ h2("div", { className: "codlet-setting-copy" }, /* @__PURE__ */ h2("div", { className: "codlet-setting-label" }, t2(label2)), /* @__PURE__ */ h2(Copy2, null, t2(description2))), /* @__PURE__ */ h2("div", { className: "codlet-setting-control" }, children));
   }
   return function Settings2({ s, highlight = false }) {
     const config = s.settings, r = s.update, phase = r?.phase, client = s.clientStatus, o = s.officialUpdate;
@@ -1511,7 +1830,7 @@ function createSettingsView({ React: React2, C: C2, I: I2, manager: manager2, t:
     const updateRunning = ["checking", "downloading", "installRequested"].includes(phase), summary = manager2.pluginSummary();
     const texts = { development: "This development build has no configured update source.", idle: "Codlet updates have not been checked yet.", checking: "Checking for updates...", upToDate: "Codlet is up to date.", available: `Codlet ${r?.candidate?.version || ""} is available.`, downloading: r?.totalBytes ? `Downloading update: ${Math.min(100, Math.round(r.downloadedBytes / r.totalBytes * 100))}%` : "Downloading update...", downloaded: `Codlet ${r?.candidate?.version || ""} is ready to install.`, installRequested: "Installation was requested. Follow the update process to restart Codlet.", failed: `Update failed.
 ${r?.error?.message || ""}` };
-    return /* @__PURE__ */ h2("div", { className: "codlet-settings" }, /* @__PURE__ */ h2("section", { "aria-labelledby": "codlet-basic-heading" }, /* @__PURE__ */ h2("h2", { id: "codlet-basic-heading" }, t2("Basic settings")), s.settingsError && /* @__PURE__ */ h2(Copy2, { error: true, role: "alert" }, t2(s.settingsError)), !config ? /* @__PURE__ */ h2(React2.Fragment, null, /* @__PURE__ */ h2(Copy2, { role: "status" }, t2(s.settingsBusy ? "Loading settings..." : "Settings are unavailable or incomplete.")), !s.settingsBusy && /* @__PURE__ */ h2(C2.Button, { color: "secondary", variant: "soft", size: "md", onClick: () => manager2.loadSettings() }, t2("Retry settings"))) : /* @__PURE__ */ h2(React2.Fragment, null, /* @__PURE__ */ h2(Row, { label: "Automatically check for Codlet updates", description: config.availability.updateChecks ? "Check for Codlet releases in the background. Downloads and installation remain manual." : "This development build has no configured update source." }, /* @__PURE__ */ h2(C2.Switch, { "aria-label": t2("Automatically check for Codlet updates"), checked: config.effective.automaticUpdateChecks, disabled: disabled || !config.availability.updateChecks, onCheckedChange: (value) => manager2.saveSettings({ automaticUpdateChecks: value }) })), /* @__PURE__ */ h2(Row, { label: "Check for plugin updates at startup", description: "Check plugins imported from GitHub once when Codlet starts. Downloads and installation remain manual." }, /* @__PURE__ */ h2(C2.Switch, { "aria-label": t2("Check for plugin updates at startup"), checked: config.effective.checkPluginUpdatesOnStartup, disabled: disabled || !config.availability.pluginUpdateChecks, onCheckedChange: (value) => manager2.saveSettings({ checkPluginUpdatesOnStartup: value }) })), /* @__PURE__ */ h2(Row, { label: "Show plugin tags", description: "Show literal labels after plugin versions in the management list." }, /* @__PURE__ */ h2(C2.Switch, { "aria-label": t2("Show plugin tags"), checked: config.effective.showPluginTags, disabled, onCheckedChange: (value) => manager2.saveSettings({ showPluginTags: value }) })), /* @__PURE__ */ h2(Row, { label: "Reload local plugins when files change", description: "Automatically reloads running local plugins after files are saved." }, /* @__PURE__ */ h2(C2.Switch, { "aria-label": t2("Reload local plugins when files change"), checked: config.effective.localSourceAutoReload, disabled: disabled || !config.availability.localSourceWatch, onCheckedChange: (value) => manager2.saveSettings({ localSourceAutoReload: value }) })), s.settingsUncertain && /* @__PURE__ */ h2(C2.Button, { color: "secondary", variant: "soft", size: "md", disabled: s.settingsBusy, onClick: () => manager2.loadSettings() }, t2("Reload saved settings")))), /* @__PURE__ */ h2("section", { "aria-labelledby": "codlet-folders-heading" }, /* @__PURE__ */ h2("h2", { id: "codlet-folders-heading" }, t2("Files and troubleshooting")), /* @__PURE__ */ h2(Row, { label: "Installation directory", description: "Open the folder containing this Codlet installation." }, /* @__PURE__ */ h2(C2.Button, { color: "secondary", variant: "soft", size: "sm", "aria-label": t2("Open installation directory"), disabled: !!s.folderBusy, loading: s.folderBusy === "installation", onClick: () => manager2.openRuntimeFolder("installation") }, /* @__PURE__ */ h2(I2.FolderOpen, null), t2("Open folder"))), /* @__PURE__ */ h2(Row, { label: "Error logs", description: "Open this runtime\u2019s local error logs for troubleshooting." }, /* @__PURE__ */ h2(C2.Button, { color: "secondary", variant: "soft", size: "sm", "aria-label": t2("Open error logs"), disabled: !!s.folderBusy, loading: s.folderBusy === "logs", onClick: () => manager2.openRuntimeFolder("logs") }, /* @__PURE__ */ h2(I2.FolderOpen, null), t2("Open folder"))), s.folderError && /* @__PURE__ */ h2(Copy2, { error: true, role: "alert" }, t2(s.folderError))), /* @__PURE__ */ h2("section", { "aria-labelledby": "codlet-plugin-summary-heading" }, /* @__PURE__ */ h2("h2", { id: "codlet-plugin-summary-heading" }, t2("Plugin information")), s.listStale || s.loading ? /* @__PURE__ */ h2(Copy2, { role: "status" }, t2(s.loading ? "Loading plugins..." : "Plugin state could not be refreshed.")) : /* @__PURE__ */ h2("dl", { className: "codlet-plugin-summary" }, [["Installed plugins", "total"], ["Running normally", "healthy"], ["Not enabled", "disabled"], ["Needs attention", "attention"]].map(([label, key]) => /* @__PURE__ */ h2("div", { key }, /* @__PURE__ */ h2("dt", null, t2(label)), /* @__PURE__ */ h2("dd", null, summary[key]))))), /* @__PURE__ */ h2("section", { id: "codlet-version-section", className: highlight ? "codlet-version-highlight" : "", "aria-labelledby": "codlet-version-heading" }, /* @__PURE__ */ h2("div", { className: "codlet-section-heading" }, /* @__PURE__ */ h2("h2", { id: "codlet-version-heading", tabIndex: -1 }, t2("Version information")), /* @__PURE__ */ h2(C2.Button, { color: "secondary", variant: "soft", size: "sm", "aria-label": t2("Check for Codlet updates"), disabled: updatesDisabled || updateRunning, loading: phase === "checking" || s.updateBusy, onClick: () => manager2.loadUpdate("checkRuntimeUpdate") }, /* @__PURE__ */ h2(I2.Regenerate, null), t2("Check for updates"))), highlight && /* @__PURE__ */ h2("p", { className: "codlet-sr-only", role: "status" }, t2("Version information is highlighted below.")), /* @__PURE__ */ h2("dl", { className: "codlet-version-details" }, [["Codlet version", r?.currentVersion || s.runtimeVersion || t2("Not available")], ["Current client version", client?.runningVersion || t2("Not available")], ["Codlet adapted version", client?.adaptedVersions?.join(", ") || t2("Not available")]].map(([label, value]) => /* @__PURE__ */ h2(React2.Fragment, { key: label }, /* @__PURE__ */ h2("dt", null, t2(label)), /* @__PURE__ */ h2("dd", null, value)))), r && /* @__PURE__ */ h2(Copy2, { role: "status" }, t2(texts[phase] || "Version information is unavailable.")), [...new Set([s.versionError, s.updateError].filter(Boolean))].map((error) => /* @__PURE__ */ h2(Copy2, { key: error, error: true, role: "alert" }, t2(error))), r?.candidate?.releaseUrl && /* @__PURE__ */ h2(C2.TextLink, { href: r.candidate.releaseUrl, target: "_blank", rel: "noopener noreferrer" }, t2("Release details")), /* @__PURE__ */ h2(C2.Dialog.Root, { open: !!s.combinedConfirmation, onOpenChange: (open) => {
+    return /* @__PURE__ */ h2("div", { className: "codlet-settings" }, /* @__PURE__ */ h2("section", { "aria-labelledby": "codlet-basic-heading" }, /* @__PURE__ */ h2("h2", { id: "codlet-basic-heading" }, t2("Basic settings")), s.settingsError && /* @__PURE__ */ h2(Copy2, { error: true, role: "alert" }, t2(s.settingsError)), !config ? /* @__PURE__ */ h2(React2.Fragment, null, /* @__PURE__ */ h2(Copy2, { role: "status" }, t2(s.settingsBusy ? "Loading settings..." : "Settings are unavailable or incomplete.")), !s.settingsBusy && /* @__PURE__ */ h2(C2.Button, { color: "secondary", variant: "soft", size: "md", onClick: () => manager2.loadSettings() }, t2("Retry settings"))) : /* @__PURE__ */ h2(React2.Fragment, null, /* @__PURE__ */ h2(Row, { label: "Automatically check for Codlet updates", description: config.availability.updateChecks ? "Check for Codlet releases in the background. Downloads and installation remain manual." : "This development build has no configured update source." }, /* @__PURE__ */ h2(C2.Switch, { "aria-label": t2("Automatically check for Codlet updates"), checked: config.effective.automaticUpdateChecks, disabled: disabled || !config.availability.updateChecks, onCheckedChange: (value) => manager2.saveSettings({ automaticUpdateChecks: value }) })), /* @__PURE__ */ h2(Row, { label: "Check for plugin updates at startup", description: "Check plugins imported from GitHub once when Codlet starts. Downloads and installation remain manual." }, /* @__PURE__ */ h2(C2.Switch, { "aria-label": t2("Check for plugin updates at startup"), checked: config.effective.checkPluginUpdatesOnStartup, disabled: disabled || !config.availability.pluginUpdateChecks, onCheckedChange: (value) => manager2.saveSettings({ checkPluginUpdatesOnStartup: value }) })), /* @__PURE__ */ h2(Row, { label: "Show plugin tags", description: "Show literal labels after plugin versions in the management list." }, /* @__PURE__ */ h2(C2.Switch, { "aria-label": t2("Show plugin tags"), checked: config.effective.showPluginTags, disabled, onCheckedChange: (value) => manager2.saveSettings({ showPluginTags: value }) })), /* @__PURE__ */ h2(Row, { label: "Reload local plugins when files change", description: "Automatically reloads running local plugins after files are saved." }, /* @__PURE__ */ h2(C2.Switch, { "aria-label": t2("Reload local plugins when files change"), checked: config.effective.localSourceAutoReload, disabled: disabled || !config.availability.localSourceWatch, onCheckedChange: (value) => manager2.saveSettings({ localSourceAutoReload: value }) })), s.settingsUncertain && /* @__PURE__ */ h2(C2.Button, { color: "secondary", variant: "soft", size: "md", disabled: s.settingsBusy, onClick: () => manager2.loadSettings() }, t2("Reload saved settings")))), /* @__PURE__ */ h2("section", { "aria-labelledby": "codlet-folders-heading" }, /* @__PURE__ */ h2("h2", { id: "codlet-folders-heading" }, t2("Files and troubleshooting")), /* @__PURE__ */ h2(Row, { label: "Installation directory", description: "Open the folder containing this Codlet installation." }, /* @__PURE__ */ h2(C2.Button, { color: "secondary", variant: "soft", size: "sm", "aria-label": t2("Open installation directory"), disabled: !!s.folderBusy, loading: s.folderBusy === "installation", onClick: () => manager2.openRuntimeFolder("installation") }, /* @__PURE__ */ h2(I2.FolderOpen, null), t2("Open folder"))), /* @__PURE__ */ h2(Row, { label: "Error logs", description: "Open this runtime\u2019s local error logs for troubleshooting." }, /* @__PURE__ */ h2(C2.Button, { color: "secondary", variant: "soft", size: "sm", "aria-label": t2("Open error logs"), disabled: !!s.folderBusy, loading: s.folderBusy === "logs", onClick: () => manager2.openRuntimeFolder("logs") }, /* @__PURE__ */ h2(I2.FolderOpen, null), t2("Open folder"))), s.folderError && /* @__PURE__ */ h2(Copy2, { error: true, role: "alert" }, t2(s.folderError))), /* @__PURE__ */ h2("section", { "aria-labelledby": "codlet-plugin-summary-heading" }, /* @__PURE__ */ h2("h2", { id: "codlet-plugin-summary-heading" }, t2("Plugin information")), s.listStale || s.loading ? /* @__PURE__ */ h2(Copy2, { role: "status" }, t2(s.loading ? "Loading plugins..." : "Plugin state could not be refreshed.")) : /* @__PURE__ */ h2("dl", { className: "codlet-plugin-summary" }, [["Installed plugins", "total"], ["Running normally", "healthy"], ["Not enabled", "disabled"], ["Needs attention", "attention"]].map(([label2, key]) => /* @__PURE__ */ h2("div", { key }, /* @__PURE__ */ h2("dt", null, t2(label2)), /* @__PURE__ */ h2("dd", null, summary[key]))))), /* @__PURE__ */ h2("section", { id: "codlet-version-section", className: highlight ? "codlet-version-highlight" : "", "aria-labelledby": "codlet-version-heading" }, /* @__PURE__ */ h2("div", { className: "codlet-section-heading" }, /* @__PURE__ */ h2("h2", { id: "codlet-version-heading", tabIndex: -1 }, t2("Version information")), /* @__PURE__ */ h2(C2.Button, { color: "secondary", variant: "soft", size: "sm", "aria-label": t2("Check for Codlet updates"), disabled: updatesDisabled || updateRunning, loading: phase === "checking" || s.updateBusy, onClick: () => manager2.loadUpdate("checkRuntimeUpdate") }, /* @__PURE__ */ h2(I2.Regenerate, null), t2("Check for updates"))), highlight && /* @__PURE__ */ h2("p", { className: "codlet-sr-only", role: "status" }, t2("Version information is highlighted below.")), /* @__PURE__ */ h2("dl", { className: "codlet-version-details" }, [["Codlet version", r?.currentVersion || s.runtimeVersion || t2("Not available")], ["Current client version", client?.runningVersion || t2("Not available")], ["Codlet adapted version", client?.adaptedVersions?.join(", ") || t2("Not available")]].map(([label2, value]) => /* @__PURE__ */ h2(React2.Fragment, { key: label2 }, /* @__PURE__ */ h2("dt", null, t2(label2)), /* @__PURE__ */ h2("dd", null, value)))), r && /* @__PURE__ */ h2(Copy2, { role: "status" }, t2(texts[phase] || "Version information is unavailable.")), [...new Set([s.versionError, s.updateError].filter(Boolean))].map((error) => /* @__PURE__ */ h2(Copy2, { key: error, error: true, role: "alert" }, t2(error))), r?.candidate?.releaseUrl && /* @__PURE__ */ h2(C2.TextLink, { href: r.candidate.releaseUrl, target: "_blank", rel: "noopener noreferrer" }, t2("Release details")), /* @__PURE__ */ h2(C2.Dialog.Root, { open: !!s.combinedConfirmation, onOpenChange: (open) => {
       if (!open) manager2.cancelCombinedInstall();
     } }, /* @__PURE__ */ h2("div", { className: "codlet-actions" }, phase === "available" && /* @__PURE__ */ h2(C2.Button, { color: "primary", size: "md", disabled: updatesDisabled, onClick: () => manager2.loadUpdate("downloadRuntimeUpdate") }, /* @__PURE__ */ h2(I2.Download, null), t2("Download update")), phase === "downloaded" && (r.installAvailable ? /* @__PURE__ */ h2(C2.Button, { color: "primary", size: "md", "data-codlet-focus-key": "install:page", disabled: updatesDisabled, onClick: () => manager2.requestInstall() }, /* @__PURE__ */ h2(I2.ArrowRotateCw, null), t2("Install and restart")) : /* @__PURE__ */ h2(Copy2, null, t2(`Automatic installation is unavailable for this launch.
 ${r.unavailableReason || ""}`))), showCombined && /* @__PURE__ */ h2(C2.Dialog.Trigger, { asChild: true }, /* @__PURE__ */ h2(C2.Button, { color: "secondary", variant: "soft", size: "md", className: "codlet-combined-update", disabled: updatesDisabled || !manager2.canCombineUpdates(), loading: combinedBusy, onClick: () => manager2.requestCombinedInstall() }, /* @__PURE__ */ h2(I2.ArrowRotateCw, null), t2(combinedBusy ? "Updating together..." : "Update both")))), showCombined && !combinedBusy && o.phase === "downloading" && /* @__PURE__ */ h2(Copy2, { role: "status" }, t2("Waiting for the client update to finish downloading")), combinedBusy && /* @__PURE__ */ h2(Copy2, { role: "status" }, t2(o.combinedPhase === "downloading" ? "Preparing the Codlet update..." : o.combinedPhase === "preparing" ? "Verifying both updates..." : "Installing the client update, then restarting through Codlet...")), o?.combinedPhase === "failed" && o.error && /* @__PURE__ */ h2(Copy2, { error: true, role: "alert" }, t2(o.error)), /* @__PURE__ */ h2(C2.Dialog.Portal, null, /* @__PURE__ */ h2(C2.Dialog.Overlay, { className: "codlet-help-overlay" }), /* @__PURE__ */ h2(C2.Dialog.Content, { className: "codlet-help-dialog codlet-combined-dialog" }, /* @__PURE__ */ h2("div", { className: "codlet-help-heading" }, /* @__PURE__ */ h2(C2.Dialog.Title, null, t2("Update Codlet and the client together"))), /* @__PURE__ */ h2(C2.Dialog.Description, null, descriptionText(t2("The current client will restart and running local tasks will be interrupted."))), /* @__PURE__ */ h2("dl", { className: "codlet-version-details" }, /* @__PURE__ */ h2("dt", null, "Codlet"), /* @__PURE__ */ h2("dd", null, r?.currentVersion, " \u2192 ", r?.candidate?.version), /* @__PURE__ */ h2("dt", null, t2("Client")), /* @__PURE__ */ h2("dd", null, t2("Update prepared by the official client"))), /* @__PURE__ */ h2(Copy2, null, t2("After updating, launch through Codlet with your plugins and settings preserved")), s.combinedConfirmation?.error && /* @__PURE__ */ h2(Copy2, { error: true, role: "alert" }, t2(s.combinedConfirmation.error)), /* @__PURE__ */ h2("div", { className: "codlet-confirmation-actions" }, /* @__PURE__ */ h2(C2.Button, { color: "secondary", variant: "soft", disabled: s.updateBusy, onClick: () => manager2.cancelCombinedInstall() }, t2("Cancel")), /* @__PURE__ */ h2(C2.Button, { color: "primary", disabled: s.updateBusy, loading: s.updateBusy, onClick: () => manager2.confirmCombinedInstall() }, t2("Update and restart"))))))), /* @__PURE__ */ h2("footer", { className: "codlet-credits" }, "Powered by Codex & cccake"));
@@ -1629,6 +1948,171 @@ function insertTag(query, tag, token = null) {
   return { query: next, caret: head.length + value.length + (separator ? 1 : /^\s/u.test(after) ? 1 : 0) };
 }
 
+// src/codlet/marketplace.jsx
+var platformNames = { "windows-x86_64": "Windows \xB7 x64", "windows-aarch64": "Windows \xB7 ARM64", "macos-aarch64": "macOS \xB7 Apple Silicon" };
+var label = (platform) => platformNames[platform] ?? platform;
+var topicLabels = { ui: "UI", adapter: "Adapter", tool: "Tool", enhancement: "Enhancement" };
+var visibleTopics = (topics) => (topics ?? []).filter((topic) => !["codlet-plugin", "codlet-official", "codlet-adapter"].includes(topic.toLowerCase())).map((topic) => topicLabels[topic.toLowerCase()] ?? topic);
+function createMarketplaceView({ React: React2, C: C2, I: I2, manager: manager2, t: t2, Copy: Copy2, Back: Back2, PluginTags: PluginTags2 }) {
+  const h2 = React2.createElement;
+  function TagHash2() {
+    return /* @__PURE__ */ h2("svg", { className: "codlet-tag-hash", width: "16", height: "16", viewBox: "0 0 16 16", fill: "none", stroke: "currentColor", strokeWidth: "1.5", strokeLinecap: "round", "aria-hidden": "true" }, /* @__PURE__ */ h2("path", { d: "M6.3 2.7L4.7 13.3 M11.3 2.7L9.7 13.3 M2.7 5.5H13.3 M2.7 10.5H13.3" }));
+  }
+  function Search({ s }) {
+    const market = s.market, [draft, setDraft] = React2.useState(market.query), [focused, setFocused] = React2.useState(false), [ime, setIme] = React2.useState(false), [active, setActive] = React2.useState(0), [dismissed, setDismissed] = React2.useState(false);
+    const input = React2.useRef(null), composing = React2.useRef(false), caret = React2.useRef({ start: 0, end: 0 }), pendingCaret = React2.useRef(null), options = React2.useRef(null), listId = React2.useId();
+    React2.useEffect(() => setDraft(market.query), [market.query]);
+    const token = tagAtCaret(draft, caret.current.start, caret.current.end);
+    const candidates = suggestTags(tagCatalog(market.items.map((item) => ({ tags: visibleTopics(item.topics) }))), draft, token);
+    const open = focused && !ime && !dismissed && !!token, selected = Math.min(active, Math.max(0, candidates.length - 1));
+    React2.useLayoutEffect(() => {
+      if (pendingCaret.current == null) return;
+      const next = pendingCaret.current;
+      pendingCaret.current = null;
+      input.current?.focus();
+      input.current?.setSelectionRange(next, next);
+      caret.current = { start: next, end: next };
+    }, [draft]);
+    React2.useEffect(() => {
+      if (open) options.current?.querySelector('[aria-selected="true"]')?.scrollIntoView?.({ block: "nearest" });
+    }, [open, selected]);
+    const remember = (node) => {
+      caret.current = { start: node.selectionStart, end: node.selectionEnd };
+      setDismissed(false);
+    };
+    const change = (query) => {
+      setDraft(query);
+      manager2.marketChangeQuery(query);
+      setDismissed(false);
+      setActive(0);
+    };
+    const choose = (tag) => {
+      const result = insertTag(draft, tag, token);
+      change(result.query);
+      pendingCaret.current = result.caret;
+      setDismissed(true);
+    };
+    return /* @__PURE__ */ h2("div", { className: "market-search-anchor" }, /* @__PURE__ */ h2(
+      C2.Input,
+      {
+        ref: input,
+        className: "codlet-search market-search",
+        size: "md",
+        variant: "outline",
+        pill: true,
+        value: draft,
+        role: "combobox",
+        "data-codlet-market-search": "",
+        "aria-label": t2("Search marketplace"),
+        placeholder: t2("Search plugins or #tag"),
+        "aria-autocomplete": "list",
+        "aria-haspopup": "listbox",
+        "aria-expanded": open,
+        "aria-controls": open ? listId : void 0,
+        "aria-activedescendant": open && candidates.length ? `${listId}-${selected}` : void 0,
+        startAdornment: /* @__PURE__ */ h2(I2.Search, { width: 16, height: 16 }),
+        endAdornment: draft ? /* @__PURE__ */ h2(C2.Button, { color: "secondary", variant: "ghost", size: "sm", uniform: true, "aria-label": t2("Clear search"), onClick: () => change("") }, /* @__PURE__ */ h2(I2.X, null)) : null,
+        onFocus: (event) => {
+          setFocused(true);
+          remember(event.currentTarget);
+        },
+        onBlur: () => {
+          setFocused(false);
+          setDismissed(true);
+        },
+        onSelect: (event) => remember(event.currentTarget),
+        onCompositionStart: () => {
+          composing.current = true;
+          setIme(true);
+        },
+        onCompositionEnd: (event) => {
+          composing.current = false;
+          setIme(false);
+          remember(event.currentTarget);
+          change(event.currentTarget.value);
+        },
+        onChange: (event) => {
+          remember(event.currentTarget);
+          setDraft(event.currentTarget.value);
+          if (!composing.current) manager2.marketChangeQuery(event.currentTarget.value);
+        },
+        onKeyDown: (event) => {
+          if (event.nativeEvent.isComposing || composing.current || event.altKey || event.ctrlKey || event.metaKey) return;
+          if ((event.key === "ArrowDown" || event.key === "ArrowUp") && token && candidates.length) {
+            event.preventDefault();
+            setDismissed(false);
+            setActive(open ? (selected + (event.key === "ArrowDown" ? 1 : -1) + candidates.length) % candidates.length : event.key === "ArrowDown" ? 0 : candidates.length - 1);
+          } else if (event.key === "Enter" && open && candidates.length) {
+            event.preventDefault();
+            choose(candidates[selected]);
+          } else if (event.key === "Escape" && !event.shiftKey && (open || draft)) {
+            event.preventDefault();
+            open ? setDismissed(true) : change("");
+          }
+        }
+      }
+    ), open && /* @__PURE__ */ h2("div", { className: "codlet-tag-menu" }, /* @__PURE__ */ h2("div", { className: "codlet-tag-menu-title" }, t2("Tags")), /* @__PURE__ */ h2("div", { id: listId, ref: options, role: "listbox", "aria-label": t2("Tag suggestions"), className: "codlet-tag-options" }, candidates.map((tag, index) => /* @__PURE__ */ h2("div", { key: tag, id: `${listId}-${index}`, role: "option", "aria-label": `#${tag}`, "aria-selected": index === selected, className: "codlet-tag-option", onPointerMove: () => setActive(index), onPointerDown: (event) => event.preventDefault(), onMouseDown: (event) => event.preventDefault(), onClick: () => choose(tag) }, /* @__PURE__ */ h2(TagHash2, null), /* @__PURE__ */ h2("span", null, tag))), !candidates.length && /* @__PURE__ */ h2("div", { className: "codlet-tag-empty", role: "status" }, t2("No matching tags")))));
+  }
+  function verifiedOfficial(item) {
+    const source = item.preparedSource;
+    return !!source && source.repositoryId === item.repositoryId && source.ownerId === item.ownerId && isOfficialPlugin({ id: item.preparedPluginId, source: { kind: "github", repository: item.fullName, repositoryId: source.repositoryId, ownerId: source.ownerId } });
+  }
+  function Origin({ item }) {
+    const pinned = officialRepository(item), verified = verifiedOfficial(item);
+    return /* @__PURE__ */ h2("span", { className: "market-origin" }, item.author || item.owner || t2("Author unknown"), pinned && /* @__PURE__ */ h2(C2.Tooltip, { content: t2(verified ? "Verified official plugin source" : "Registered official repository; plugin identity is checked during package review") }, /* @__PURE__ */ h2("span", { className: "market-official" }, t2(verified ? "Official" : "Official repository"))));
+  }
+  function Metrics({ item }) {
+    const declared = declaredPackageFor(item), published = item.preparedManifest ? item.preparedReleasePublishedAt : declared ? declared.publishedAt : item.latestRelease?.publishedAt;
+    const date = published && Number.isFinite(Date.parse(published)) ? new Intl.DateTimeFormat(manager2.state.locale === "zh" ? "zh-CN" : "en", { year: "numeric", month: "short", day: "numeric" }).format(new Date(published)) : t2("Date unknown");
+    return /* @__PURE__ */ h2(React2.Fragment, null, /* @__PURE__ */ h2("time", { dateTime: published || void 0 }, t2(item.preparedManifest ? "Package Release" : declared ? "Publisher Release" : "Release candidate"), " \xB7 ", date), /* @__PURE__ */ h2("span", null, formatDownloads(item.totalDownloads, manager2.state.locale)));
+  }
+  function Compatibility2({ metadata, device, status, clientStatus, declared = false }) {
+    const platforms = Array.isArray(metadata?.platforms) && metadata.platforms.length ? metadata.platforms.map(label).join(", ") : t2("Unknown (not declared)");
+    const current = device?.platform ? label(device.platform) : t2("Unknown");
+    const verdict = status ?? device?.status ?? "unknown";
+    const adapters = metadata?.adapters, builds = Array.isArray(adapters?.codex?.testedBuilds) ? adapters.codex.testedBuilds.filter((value) => typeof value === "string") : [], limitations = Array.isArray(adapters?.codex?.limitations) ? adapters.codex.limitations.filter((value) => typeof value === "string") : [];
+    return /* @__PURE__ */ h2("section", { className: "market-detail-section market-compatibility" }, /* @__PURE__ */ h2("div", { className: "market-compat-heading" }, /* @__PURE__ */ h2("h2", null, t2("Systems and compatibility")), /* @__PURE__ */ h2("span", { className: verdict === "compatible" ? "market-compatible" : "market-platform-note market-unknown" }, t2(verdict === "compatible" ? declared ? "Author declares this device compatible" : "Package declares this device compatible" : verdict === "incompatible" ? declared ? "Author declares this device incompatible" : "Package declares this device incompatible" : "Compatibility unknown"))), /* @__PURE__ */ h2("dl", null, /* @__PURE__ */ h2("dt", null, t2("Supported systems")), /* @__PURE__ */ h2("dd", null, platforms), /* @__PURE__ */ h2("dt", null, t2("Current device")), /* @__PURE__ */ h2("dd", null, current), /* @__PURE__ */ h2("dt", null, t2("Codex client")), /* @__PURE__ */ h2("dd", null, clientStatus?.runningVersion || t2("Unknown")), /* @__PURE__ */ h2("dt", null, t2("Adapted client versions")), /* @__PURE__ */ h2("dd", null, clientStatus?.adaptedVersions?.length ? clientStatus.adaptedVersions.join(", ") : t2("Unknown")), /* @__PURE__ */ h2("dt", null, t2("Codlet API")), /* @__PURE__ */ h2("dd", null, metadata?.runtimeApi == null ? t2("Unknown (not declared)") : `API ${metadata.runtimeApi}`), builds.length > 0 && /* @__PURE__ */ h2(React2.Fragment, null, /* @__PURE__ */ h2("dt", null, t2("Author-declared client builds")), /* @__PURE__ */ h2("dd", null, builds.join(", "))), limitations.length > 0 && /* @__PURE__ */ h2(React2.Fragment, null, /* @__PURE__ */ h2("dt", null, t2("Author-declared limitations")), /* @__PURE__ */ h2("dd", null, limitations.join("; "))), adapters && typeof adapters === "object" && !Array.isArray(adapters) && Object.keys(adapters).length > 0 && /* @__PURE__ */ h2(React2.Fragment, null, /* @__PURE__ */ h2("dt", null, t2("Adapter declarations")), /* @__PURE__ */ h2("dd", null, Object.keys(adapters).join(", ")))));
+  }
+  function Action({ item, s }) {
+    const installed = manager2.marketInstalled(item), status = manager2.marketKnownCompatibility(item), assets = marketAssets(item);
+    if (status === "incompatible") return /* @__PURE__ */ h2(C2.Button, { color: "secondary", variant: "soft", size: "sm", disabled: true }, t2("Incompatible"));
+    if (installed?.operation === "installed" && installed.plugin.ownership !== "installer-seed") return /* @__PURE__ */ h2("span", { className: "market-status" }, t2("Installed"));
+    const update = installed?.operation === "update" || installed?.plugin?.ownership === "installer-seed";
+    const selected = s.market.selected && marketItemKey(s.market.selected) === marketItemKey(item);
+    return /* @__PURE__ */ h2(C2.Button, { color: update ? "info" : "secondary", variant: "soft", size: "sm", disabled: !assets.length || s.market.loading || s.listStale || !!manager2.pending || selected && !s.market.assetId, onClick: () => {
+      if (!selected || assets.length > 1) {
+        manager2.marketDetails(item);
+        if (assets.length > 1) return;
+      }
+      manager2.reviewMarket(item);
+    } }, update ? /* @__PURE__ */ h2(I2.Download, null) : /* @__PURE__ */ h2(I2.Plus, null), t2(assets.length > 1 && !selected ? "Choose ZIP" : update ? "Update" : "Install"));
+  }
+  function Marketplace2({ s }) {
+    const market = s.market, items = manager2.marketFiltered(), showTags = s.settings?.effective?.showPluginTags !== false;
+    const sorts = { updated: "Recently updated", downloads: "Most downloaded", name: "Name" };
+    return /* @__PURE__ */ h2("section", { className: "codlet-page market-detail" }, /* @__PURE__ */ h2("div", { className: "market-breadcrumb" }, /* @__PURE__ */ h2(Back2, null), /* @__PURE__ */ h2("h2", null, t2("Plugin marketplace"))), /* @__PURE__ */ h2(Search, { s }), /* @__PURE__ */ h2("div", { className: "market-filterbar" }, /* @__PURE__ */ h2("div", { className: "codlet-filters", role: "group", "aria-label": t2("Plugin source") }, [["all", "All"], ["official", "Official"], ["community", "Community"]].map(([value, label2]) => /* @__PURE__ */ h2(C2.Button, { key: value, color: "secondary", variant: market.origin === value ? "soft" : "ghost", size: "sm", "aria-pressed": market.origin === value, onClick: () => manager2.marketSet({ origin: value }) }, t2(label2)))), /* @__PURE__ */ h2("div", { className: "market-filter-actions" }, /* @__PURE__ */ h2(C2.Checkbox, { checked: market.onlyDevice, label: t2("Only compatible with this device"), onCheckedChange: (onlyDevice) => manager2.marketSet({ onlyDevice }) }), /* @__PURE__ */ h2(C2.Menu, null, /* @__PURE__ */ h2(C2.Menu.Trigger, null, /* @__PURE__ */ h2(C2.Button, { color: "secondary", variant: "ghost", size: "sm", "aria-label": `${t2("Sort")}: ${t2(sorts[market.sort])}` }, t2(sorts[market.sort]), /* @__PURE__ */ h2(I2.ChevronDown, null))), /* @__PURE__ */ h2(C2.Menu.Content, { align: "end", minWidth: 144 }, Object.entries(sorts).map(([value, label2]) => /* @__PURE__ */ h2(C2.Menu.Item, { key: value, "aria-current": market.sort === value ? "true" : void 0, onSelect: () => manager2.marketSet({ sort: value }) }, t2(label2))))))), market.onlyDevice && /* @__PURE__ */ h2(Copy2, null, t2("Only declared or reviewed packages with support for this device are shown.")), s.operationError && /* @__PURE__ */ h2(Copy2, { error: true, role: "alert" }, t2(s.operationError)), market.error && /* @__PURE__ */ h2("div", { className: "codlet-empty market-empty", role: "alert" }, /* @__PURE__ */ h2(C2.EmptyMessage, null, /* @__PURE__ */ h2(C2.EmptyMessage.Title, null, t2("Marketplace unavailable")), /* @__PURE__ */ h2(C2.EmptyMessage.Description, null, t2(market.error))), /* @__PURE__ */ h2(C2.Button, { color: "secondary", variant: "soft", size: "sm", onClick: () => manager2.marketSearch(true) }, /* @__PURE__ */ h2(I2.Regenerate, null), t2("Retry"))), market.loading && !market.items.length && /* @__PURE__ */ h2("div", { className: "codlet-empty codlet-loading", role: "status", "aria-label": t2("Loading marketplace") }, /* @__PURE__ */ h2(C2.LoadingIndicator, { size: 24 })), !market.loading && !market.error && !items.length && /* @__PURE__ */ h2("div", { className: "codlet-empty market-empty", role: "status" }, /* @__PURE__ */ h2(C2.EmptyMessage, null, /* @__PURE__ */ h2(C2.EmptyMessage.Description, null, t2("No matching plugins"))), !!market.query.trim() && /* @__PURE__ */ h2(Copy2, null, t2("Search covers public repository names, descriptions and tags.")), /* @__PURE__ */ h2(C2.Button, { color: "secondary", variant: "ghost", size: "sm", onClick: () => {
+      manager2.marketSet({ origin: "all", onlyDevice: false });
+      manager2.marketChangeQuery("");
+    } }, t2("Clear filters"))), !!items.length && /* @__PURE__ */ h2("div", { className: "codlet-plugin-list" }, items.map((item) => {
+      const declared = declaredPackageFor(item), manifest = item.preparedManifest ?? declared?.manifest, compatibility = manager2.marketKnownCompatibility(item);
+      const topicTags = visibleTopics(item.topics), declaredTags = Array.isArray(manifest?.tags) ? manifest.tags : [];
+      return /* @__PURE__ */ h2("article", { className: "codlet-plugin-row market-row", key: marketItemKey(item) }, /* @__PURE__ */ h2("div", { className: "codlet-plugin-copy" }, /* @__PURE__ */ h2("div", { className: "codlet-plugin-title" }, /* @__PURE__ */ h2("span", { className: "codlet-plugin-name" }, manifest?.name || item.name || item.fullName), /* @__PURE__ */ h2("span", { className: "codlet-version" }, manifest?.version ?? `${t2("Release candidate")} ${item.latestRelease?.tag ?? ""}`), declared && !item.preparedManifest && /* @__PURE__ */ h2("span", { className: "market-declared-note" }, t2("Publisher declared")), manifest ? /* @__PURE__ */ h2(PluginTags2, { tags: declaredTags, show: showTags }) : /* @__PURE__ */ h2(PluginTags2, { tags: topicTags, show: showTags, query: market.query, onSelect: (tag) => manager2.marketChangeQuery(insertTag(market.query, tag).query) })), (manifest?.description || item.description) && /* @__PURE__ */ h2("div", { className: "codlet-plugin-description" }, manifest?.description || item.description), /* @__PURE__ */ h2("div", { className: "market-meta" }, /* @__PURE__ */ h2(Origin, { item }), /* @__PURE__ */ h2(Metrics, { item }), /* @__PURE__ */ h2("span", { className: "market-platform-note market-unknown" }, /* @__PURE__ */ h2(I2.InfoCircle, null), t2(compatibility === "compatible" ? item.preparedManifest ? "Package declares this device compatible" : "Author declares this device compatible" : compatibility === "incompatible" ? item.preparedManifest ? "Package declares this device incompatible" : "Author declares this device incompatible" : declared || item.preparedManifest ? "Compatibility unknown" : "Systems unknown until package review")))), /* @__PURE__ */ h2("div", { className: "codlet-plugin-actions" }, /* @__PURE__ */ h2(C2.Button, { color: "secondary", variant: "ghost", size: "sm", "aria-label": t2(`Details for ${manifest?.name || item.name || item.fullName}`), onClick: () => manager2.marketDetails(item) }, t2("Details")), /* @__PURE__ */ h2(Action, { item, s })));
+    })), market.hasMore && /* @__PURE__ */ h2(C2.Button, { color: "secondary", variant: "ghost", size: "sm", disabled: market.loading, loading: market.loading, onClick: () => manager2.marketLoadMore() }, t2("Load more")), market.hasMore && /* @__PURE__ */ h2(Copy2, null, t2("Sorting currently covers loaded repositories. Load more to include additional results.")), market.loading && market.items.length > 0 && /* @__PURE__ */ h2("p", { className: "codlet-copy", role: "status" }, t2("Loading more plugins...")));
+  }
+  function MarketplaceDetails2({ s }) {
+    const item = s.market.selected;
+    if (!item) return /* @__PURE__ */ h2("section", { className: "codlet-page" }, /* @__PURE__ */ h2(Back2, null));
+    const declared = declaredPackageFor(item), manifest = item.preparedManifest ?? declared?.manifest, installed = manager2.marketInstalled(item), metadata = item.preparedMetadata ?? declared?.metadata ?? null, assets = marketAssets(item);
+    return /* @__PURE__ */ h2("section", { className: "codlet-page market-detail" }, /* @__PURE__ */ h2(Back2, null), /* @__PURE__ */ h2("div", { className: "market-detail-top" }, /* @__PURE__ */ h2("div", { className: "market-detail-title" }, /* @__PURE__ */ h2("div", { className: "codlet-details-heading" }, /* @__PURE__ */ h2("h2", null, manifest?.name || item.name || item.fullName), /* @__PURE__ */ h2("span", { className: "codlet-version" }, manifest?.version ?? `${t2("Release candidate")} ${item.latestRelease?.tag ?? ""}`), declared && !item.preparedManifest && /* @__PURE__ */ h2("span", { className: "market-declared-note" }, t2("Publisher declared"))), (manifest?.description || item.description) && /* @__PURE__ */ h2(Copy2, null, manifest?.description || item.description), /* @__PURE__ */ h2("div", { className: "market-meta" }, /* @__PURE__ */ h2(Origin, { item }), /* @__PURE__ */ h2(Metrics, { item }))), /* @__PURE__ */ h2(Action, { item, s })), /* @__PURE__ */ h2(Compatibility2, { metadata, device: s.deviceCompatibility, status: manager2.marketKnownCompatibility(item), clientStatus: s.clientStatus, declared: !!declared && !item.preparedManifest }), declared && !item.preparedManifest && /* @__PURE__ */ h2("section", { className: "market-detail-section" }, /* @__PURE__ */ h2("h2", null, t2("Publisher declaration")), /* @__PURE__ */ h2(Copy2, null, `${declared.manifest.name || declared.manifest.id} \xB7 ${declared.manifest.id} \xB7 ${declared.manifest.version}`), /* @__PURE__ */ h2(PluginTags2, { tags: declared.manifest.tags, show: s.settings?.effective?.showPluginTags !== false }), /* @__PURE__ */ h2(Copy2, null, t2("The actual ZIP is checked before installation."))), item.preparedManifest && /* @__PURE__ */ h2("section", { className: "market-detail-section" }, /* @__PURE__ */ h2("h2", null, t2("Verified package")), /* @__PURE__ */ h2(Copy2, null, `${item.preparedManifest.name || item.preparedManifest.id} \xB7 ${item.preparedManifest.id} \xB7 ${item.preparedManifest.version}`), /* @__PURE__ */ h2(PluginTags2, { tags: item.preparedManifest.tags, show: s.settings?.effective?.showPluginTags !== false }), item.preparedManifest.description && /* @__PURE__ */ h2(Copy2, null, item.preparedManifest.description)), /* @__PURE__ */ h2("section", { className: "market-detail-section" }, /* @__PURE__ */ h2("h2", null, t2("Package and source")), /* @__PURE__ */ h2(Copy2, null, `${item.fullName}
+${t2("Release")}: ${item.latestRelease?.tag ?? t2("Unknown")}
+${t2("ZIP assets")}: ${assets.length}`), /* @__PURE__ */ h2(Copy2, null, t2("The package ID, permissions, dependencies and compatibility are checked before installation.")), !assets.length && /* @__PURE__ */ h2(Copy2, null, t2("No installable ZIP asset was found in the latest release.")), assets.length > 1 && /* @__PURE__ */ h2("div", { className: "codlet-field" }, /* @__PURE__ */ h2("label", { htmlFor: "market-asset" }, t2("Choose a ZIP asset")), /* @__PURE__ */ h2(C2.Select, { id: "market-asset", value: s.market.assetId ?? "", placeholder: t2("Choose a ZIP asset"), options: assets.map((asset) => ({ value: String(asset.id), label: asset.name, description: `${asset.size.toLocaleString()} ${t2("bytes")}` })), onChange: (option) => manager2.marketSet({ assetId: option.value }) }))), installed?.plugin && /* @__PURE__ */ h2(Copy2, null, `${t2("Installed version")}: ${installed.plugin.version}`), /* @__PURE__ */ h2(C2.TextLink, { href: item.repositoryUrl, className: "market-repo-link", target: "_blank", rel: "noopener noreferrer" }, t2("GitHub repository"), /* @__PURE__ */ h2(I2.ArrowUpRight, null)));
+  }
+  return { Marketplace: Marketplace2, MarketplaceDetails: MarketplaceDetails2, Compatibility: Compatibility2 };
+}
+
+// src/codlet/marketplace.css
+var marketplace_default = "[data-codlet-panel] .market-breadcrumb { display:flex;align-items:center;gap:16px;margin-bottom:24px; }\n[data-codlet-panel] .market-breadcrumb h2 { font-size:19px;line-height:28px; }\n[data-codlet-panel] .market-search { margin-bottom:16px; }\n[data-codlet-panel] .market-filterbar { display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding-bottom:8px; }\n[data-codlet-panel] .market-filter-actions { display:flex;align-items:center;gap:12px;flex-wrap:wrap; }\n[data-codlet-panel] .market-device { display:flex;align-items:center;gap:6px;font-size:12px;color:var(--color-text-secondary); }\n[data-codlet-panel] .market-row { padding-block:20px; }\n[data-codlet-panel] .market-meta { display:flex;align-items:center;flex-wrap:wrap;gap:5px 10px;margin-top:8px;color:var(--color-text-secondary);font-size:12px;line-height:18px; }\n[data-codlet-panel] .market-meta .market-origin { display:inline-flex;align-items:center;gap:6px; }\n[data-codlet-panel] .market-official { font-size:10px;line-height:15px;padding:0 4px;border-radius:4px;color:var(--color-text-secondary);background:var(--color-surface-secondary,light-dark(#f1f2f3,#303030)); }\n[data-codlet-panel] .market-meta>time,[data-codlet-panel] .market-meta>span { white-space:nowrap; }\n[data-codlet-panel] .market-inherited { display:block;color:var(--color-text-secondary);font-size:12px;margin-top:4px; }\n[data-codlet-panel] .market-platform-note { display:inline-flex;align-items:center;gap:4px; }\n[data-codlet-panel] .market-platform-note svg { width:14px;height:14px; }\n[data-codlet-panel] .market-unknown { color:light-dark(#967023,#dfba77); }\n[data-codlet-panel] .market-incompatible { color:var(--color-text-secondary); }\n[data-codlet-panel] .market-status { font-size:12px;white-space:nowrap;color:var(--color-text-secondary);padding:4px 10px; }\n[data-codlet-panel] .market-detail { gap:24px; }\n[data-codlet-panel] .market-detail .codlet-details-heading h2 { font-size:20px;line-height:28px; }\n[data-codlet-panel] .market-detail-top { display:flex;align-items:flex-start;justify-content:space-between;gap:16px; }\n[data-codlet-panel] .market-detail-title { display:flex;flex-direction:column;gap:8px;min-width:0; }\n[data-codlet-panel] .market-detail-section { display:flex;flex-direction:column;gap:14px; }\n[data-codlet-panel] .market-compatibility { border-block:1px solid var(--color-border);padding:20px 0; }\n[data-codlet-panel] .market-compatibility dl { display:grid;grid-template-columns:118px minmax(0,1fr);gap:12px 22px;font-size:13px;line-height:21px;margin:0; }\n[data-codlet-panel] .market-compatibility dt { color:var(--color-text-secondary); }\n[data-codlet-panel] .market-compatibility dd { margin:0; }\n[data-codlet-panel] .market-compat-heading { display:flex;justify-content:space-between;align-items:center;gap:12px; }\n[data-codlet-panel] .market-compatible { font-size:12px;color:light-dark(#55765f,#a3c5af); }\n[data-codlet-panel] .market-permissions { margin:0;padding-left:18px;display:flex;flex-direction:column;gap:8px;font-size:13px;line-height:21px;color:var(--color-text-secondary); }\n[data-codlet-panel] .market-permissions li span { color:var(--color-text); }\n[data-codlet-panel] .market-repo-link { display:inline-flex;align-items:center;gap:5px;align-self:flex-start;font-size:13px; }\n[data-codlet-panel] .market-repo-link svg { width:14px;height:14px; }\n[data-codlet-panel] .market-review-summary { display:flex;align-items:center;gap:8px;flex-wrap:wrap; }\n[data-codlet-panel] .market-review-warning { padding:12px 14px;border-radius:10px;background:light-dark(#faf5e9,#332c20);color:light-dark(#896a2c,#dfba77);font-size:13px;line-height:21px; }\n[data-codlet-official-ui] .market-menu-divider { height:1px;margin:5px 4px;background:var(--color-border); }\n[data-codlet-panel] .market-empty { gap:12px; }\n[data-codlet-panel] .market-back { display:flex;align-items:center;gap:6px; }\n[data-codlet-panel] .market-search-anchor { position:relative; }\n[data-codlet-panel] .codlet-review-official {display:inline-block;vertical-align:middle;margin-left:10px;font-size:11px;line-height:18px;}\n[data-codlet-panel] .market-declared-note {font-size:11px;line-height:18px;color:var(--color-text-secondary);}\n@media(max-width:600px){[data-codlet-panel] .market-detail-top{flex-wrap:wrap;}[data-codlet-panel] .market-compatibility dl{grid-template-columns:88px minmax(0,1fr);gap:10px 12px;}[data-codlet-panel] .market-filterbar{align-items:flex-start;}[data-codlet-panel] .market-row{padding-block:16px;}}\n";
+
 // src/codlet/app.jsx
 var React;
 var h;
@@ -1639,13 +2123,16 @@ var manager;
 var Settings;
 var CodletIcon;
 var ProjectLinks;
+var Marketplace;
+var MarketplaceDetails;
+var Compatibility;
 var epoch = 0;
 var t = (value) => manager.messages.t(value);
 var name = (plugin) => manager.messages.name(plugin);
 var description = (plugin) => manager.messages.description(plugin);
 var mutationBusy = (s) => !!manager.pending || !!s.confirmation || !!s.combinedConfirmation || manager.combiningUpdates() || manager.installingPlugins();
-function IconAction({ icon: Icon, label, onClick, disabled, loading, iconClassName, ...rest }) {
-  return /* @__PURE__ */ h(C.Tooltip, { content: t(label) }, /* @__PURE__ */ h(C.Button, { color: "secondary", variant: "ghost", size: "sm", uniform: true, "aria-label": t(label), disabled, loading, onClick, ...rest }, /* @__PURE__ */ h(Icon, { className: iconClassName })));
+function IconAction({ icon: Icon, label: label2, onClick, disabled, loading, iconClassName, ...rest }) {
+  return /* @__PURE__ */ h(C.Tooltip, { content: t(label2) }, /* @__PURE__ */ h(C.Button, { color: "secondary", variant: "ghost", size: "sm", uniform: true, "aria-label": t(label2), disabled, loading, onClick, ...rest }, /* @__PURE__ */ h(Icon, { className: iconClassName })));
 }
 function Back() {
   return /* @__PURE__ */ h(C.Button, { color: "secondary", variant: "ghost", size: "md", opticallyAlign: "start", "aria-label": t("Back"), "data-codlet-back-button": "", onClick: () => manager.back() }, /* @__PURE__ */ h(I.ArrowLeft, null), t("Back"));
@@ -1653,11 +2140,11 @@ function Back() {
 function Copy({ children, error = false, role }) {
   return /* @__PURE__ */ h("p", { className: "codlet-copy" + (error ? " codlet-error" : ""), role }, error ? children : descriptionText(children));
 }
-function ReleaseTrigger({ label }) {
-  return /* @__PURE__ */ h(React.Fragment, null, /* @__PURE__ */ h("span", { className: "codlet-sr-only" }, t("GitHub release"), ": "), label);
+function ReleaseTrigger({ label: label2 }) {
+  return /* @__PURE__ */ h(React.Fragment, null, /* @__PURE__ */ h("span", { className: "codlet-sr-only" }, t("GitHub release"), ": "), label2);
 }
-function AssetTrigger({ label }) {
-  return /* @__PURE__ */ h(React.Fragment, null, /* @__PURE__ */ h("span", { className: "codlet-sr-only" }, t("GitHub ZIP asset"), ": "), label);
+function AssetTrigger({ label: label2 }) {
+  return /* @__PURE__ */ h(React.Fragment, null, /* @__PURE__ */ h("span", { className: "codlet-sr-only" }, t("GitHub ZIP asset"), ": "), label2);
 }
 function Source({ source, metadata }) {
   if (!source) return null;
@@ -1665,8 +2152,7 @@ function Source({ source, metadata }) {
 Release/tag: ${source.tag}
 Asset: ${source.assetName}
 SHA-256: ${source.sha256}
-GitHub digest: ${source.upstreamDigestVerified ? "matched" : "not available for verification"}`)), /* @__PURE__ */ h(Copy, null, t(`Runtime compatibility: ${metadata?.runtimeApi == null ? "unknown (not declared)" : `author declared API ${metadata.runtimeApi}`}
-Platforms: ${metadata?.platforms?.length ? `author declared ${metadata.platforms.join(", ")}` : "unknown (not declared)"}`)));
+GitHub digest: ${source.upstreamDigestVerified ? "matched" : "not available for verification"}`)));
 }
 function TagHash() {
   return /* @__PURE__ */ h("svg", { className: "codlet-tag-hash", width: "16", height: "16", viewBox: "0 0 16 16", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", "aria-hidden": "true", focusable: "false" }, /* @__PURE__ */ h("path", { d: "M6.3 2.7L4.7 13.3 M11.3 2.7L9.7 13.3 M2.7 5.5H13.3 M2.7 10.5H13.3" }));
@@ -1674,8 +2160,8 @@ function TagHash() {
 function PluginTags({ tags, show = true, query, onSelect }) {
   if (!show) return null;
   if (!tags?.length) return null;
-  const selected = new Set(query.toLowerCase().split(/\s/u));
-  return /* @__PURE__ */ h("span", { className: "codlet-plugin-tags" }, tags.map((tag) => /* @__PURE__ */ h("button", { type: "button", className: "codlet-plugin-tag", key: tag, "aria-label": `#${tag}`, "aria-pressed": selected.has(`#${tag.toLowerCase()}`), onClick: () => onSelect(tag) }, /* @__PURE__ */ h(TagHash, null), tag)));
+  const selected = new Set((query ?? "").toLowerCase().split(/\s/u));
+  return /* @__PURE__ */ h("span", { className: "codlet-plugin-tags" }, tags.map((tag) => onSelect ? /* @__PURE__ */ h("button", { type: "button", className: "codlet-plugin-tag", key: tag, "aria-label": `#${tag}`, "aria-pressed": selected.has(`#${tag.toLowerCase()}`), onClick: () => onSelect(tag) }, /* @__PURE__ */ h(TagHash, null), tag) : /* @__PURE__ */ h("span", { className: "codlet-plugin-tag", key: tag }, /* @__PURE__ */ h(TagHash, null), tag)));
 }
 function PluginRow({ plugin, s, showTags, onSelectTag }) {
   const busy = mutationBusy(s) || s.loading || s.listStale, enabled = plugin.enabled === true, registered = plugin.registered !== false;
@@ -1797,22 +2283,24 @@ function PluginList({ s }) {
       },
       onKeyDown: keyDown
     }
-  ), open && /* @__PURE__ */ h("div", { className: "codlet-tag-menu" }, /* @__PURE__ */ h("div", { className: "codlet-tag-menu-title" }, t("Tags")), /* @__PURE__ */ h("div", { id: listId, ref: options, role: "listbox", "aria-label": t("Tag suggestions"), className: "codlet-tag-options" }, candidates.map((tag, index) => /* @__PURE__ */ h("div", { key: tag, id: `${listId}-${index}`, role: "option", "aria-label": `#${tag}`, "aria-selected": index === selected, className: "codlet-tag-option", onPointerMove: () => setActive(index), onPointerDown: (event) => event.preventDefault(), onMouseDown: (event) => event.preventDefault(), onClick: () => complete(tag) }, /* @__PURE__ */ h(TagHash, null), /* @__PURE__ */ h("span", null, tag))), !candidates.length && /* @__PURE__ */ h("div", { className: "codlet-tag-empty", role: "status" }, t("No matching tags"))))))), /* @__PURE__ */ h("div", { className: "codlet-body codlet-width" }, /* @__PURE__ */ h("div", { className: "codlet-list-toolbar" }, /* @__PURE__ */ h("div", { className: "codlet-filters", role: "group", "aria-label": t("Filter plugins") }, [["all", "All"], ["enabled", "Enabled"], ["disabled", "Not enabled"]].map(([value, label]) => /* @__PURE__ */ h(C.Button, { key: value, color: "secondary", variant: s.filter === value ? "soft" : "ghost", size: "sm", "aria-pressed": s.filter === value, onClick: () => manager.setFilter(value) }, t(label)))), /* @__PURE__ */ h("div", { className: "codlet-update-actions" }, /* @__PURE__ */ h(C.Tooltip, { content: t("Check plugins imported from GitHub") }, /* @__PURE__ */ h(C.Button, { color: "secondary", variant: "ghost", size: "sm", "aria-label": t("Check for plugin updates"), disabled: mutationBusy(s) || s.loading || s.listStale || checking || !s.githubAvailable || !manager.githubPlugins().length, loading: checking, onClick: () => manager.checkPluginUpdates() }, /* @__PURE__ */ h(I.Regenerate, null), t("Check for updates"))), (updates > 0 || manager.installingPlugins()) && /* @__PURE__ */ h(C.Button, { color: "info", variant: "soft", size: "sm", disabled: mutationBusy(s) || s.loading || s.listStale || checking, loading: manager.installingPlugins(), onClick: () => manager.updatePlugins() }, /* @__PURE__ */ h(I.Download, null), t("Update all"), " (", updates, ")"))), checkMessage && /* @__PURE__ */ h("p", { className: "codlet-update-status codlet-copy", role: "status" }, t(checkMessage)), [...new Set([s.pluginUpdateError, s.pluginUpdates?.error].filter(Boolean))].map((error) => /* @__PURE__ */ h(Copy, { error: true, role: "alert", key: error }, t(error))), s.error && /* @__PURE__ */ h("p", { className: "codlet-status codlet-error", role: "alert" }, t(s.error)), s.pluginInstallError && /* @__PURE__ */ h(Copy, { error: true, role: "alert" }, t(s.pluginInstallError)), s.operationStatus && /* @__PURE__ */ h("p", { className: "codlet-sr-only", role: "status" }, t(s.operationStatus)), s.loading && !s.plugins.length ? /* @__PURE__ */ h("div", { className: "codlet-empty codlet-loading", role: "status" }, /* @__PURE__ */ h(C.LoadingIndicator, { size: 24, "aria-hidden": "true" }), /* @__PURE__ */ h("span", { className: "codlet-sr-only" }, t("Loading plugins..."))) : !plugins.length ? /* @__PURE__ */ h("div", { className: "codlet-empty", role: "status" }, /* @__PURE__ */ h(C.EmptyMessage, null, /* @__PURE__ */ h(C.EmptyMessage.Description, null, t(s.query || s.filter !== "all" ? "No matching plugins" : "No plugins")))) : null, /* @__PURE__ */ h("div", { className: "codlet-list-scroll" }, plugins.length > 0 && /* @__PURE__ */ h("div", { className: "codlet-plugin-list" }, plugins.map((plugin) => /* @__PURE__ */ h(PluginRow, { key: plugin.id, plugin, s, showTags, onSelectTag: addTag }))))));
+  ), open && /* @__PURE__ */ h("div", { className: "codlet-tag-menu" }, /* @__PURE__ */ h("div", { className: "codlet-tag-menu-title" }, t("Tags")), /* @__PURE__ */ h("div", { id: listId, ref: options, role: "listbox", "aria-label": t("Tag suggestions"), className: "codlet-tag-options" }, candidates.map((tag, index) => /* @__PURE__ */ h("div", { key: tag, id: `${listId}-${index}`, role: "option", "aria-label": `#${tag}`, "aria-selected": index === selected, className: "codlet-tag-option", onPointerMove: () => setActive(index), onPointerDown: (event) => event.preventDefault(), onMouseDown: (event) => event.preventDefault(), onClick: () => complete(tag) }, /* @__PURE__ */ h(TagHash, null), /* @__PURE__ */ h("span", null, tag))), !candidates.length && /* @__PURE__ */ h("div", { className: "codlet-tag-empty", role: "status" }, t("No matching tags"))))))), /* @__PURE__ */ h("div", { className: "codlet-body codlet-width" }, /* @__PURE__ */ h("div", { className: "codlet-list-toolbar" }, /* @__PURE__ */ h("div", { className: "codlet-filters", role: "group", "aria-label": t("Filter plugins") }, [["all", "All"], ["enabled", "Enabled"], ["disabled", "Not enabled"]].map(([value, label2]) => /* @__PURE__ */ h(C.Button, { key: value, color: "secondary", variant: s.filter === value ? "soft" : "ghost", size: "sm", "aria-pressed": s.filter === value, onClick: () => manager.setFilter(value) }, t(label2)))), /* @__PURE__ */ h("div", { className: "codlet-update-actions" }, /* @__PURE__ */ h(C.Tooltip, { content: t("Check plugins imported from GitHub") }, /* @__PURE__ */ h(C.Button, { color: "secondary", variant: "ghost", size: "sm", "aria-label": t("Check for plugin updates"), disabled: mutationBusy(s) || s.loading || s.listStale || checking || !s.githubAvailable || !manager.githubPlugins().length, loading: checking, onClick: () => manager.checkPluginUpdates() }, /* @__PURE__ */ h(I.Regenerate, null), t("Check for updates"))), (updates > 0 || manager.installingPlugins()) && /* @__PURE__ */ h(C.Button, { color: "info", variant: "soft", size: "sm", disabled: mutationBusy(s) || s.loading || s.listStale || checking, loading: manager.installingPlugins(), onClick: () => manager.updatePlugins() }, /* @__PURE__ */ h(I.Download, null), t("Update all"), " (", updates, ")"))), checkMessage && /* @__PURE__ */ h("p", { className: "codlet-update-status codlet-copy", role: "status" }, t(checkMessage)), [...new Set([s.pluginUpdateError, s.pluginUpdates?.error].filter(Boolean))].map((error) => /* @__PURE__ */ h(Copy, { error: true, role: "alert", key: error }, t(error))), s.error && /* @__PURE__ */ h("p", { className: "codlet-status codlet-error", role: "alert" }, t(s.error)), s.pluginInstallError && /* @__PURE__ */ h(Copy, { error: true, role: "alert" }, t(s.pluginInstallError)), s.operationStatus && /* @__PURE__ */ h("p", { className: "codlet-sr-only", role: "status" }, t(s.operationStatus)), s.loading && !s.plugins.length ? /* @__PURE__ */ h("div", { className: "codlet-empty codlet-loading", role: "status" }, /* @__PURE__ */ h(C.LoadingIndicator, { size: 24, "aria-hidden": "true" }), /* @__PURE__ */ h("span", { className: "codlet-sr-only" }, t("Loading plugins..."))) : !plugins.length ? /* @__PURE__ */ h("div", { className: "codlet-empty", role: "status" }, /* @__PURE__ */ h(C.EmptyMessage, null, /* @__PURE__ */ h(C.EmptyMessage.Description, null, t(s.query || s.filter !== "all" ? "No matching plugins" : "No plugins")))) : null, /* @__PURE__ */ h("div", { className: "codlet-list-scroll" }, plugins.length > 0 && /* @__PURE__ */ h("div", { className: "codlet-plugin-list" }, plugins.map((plugin) => /* @__PURE__ */ h(PluginRow, { key: plugin.id, plugin, s, showTags, onSelectTag: addTag }))))));
 }
 function Preview({ s }) {
   const p = s.preview, m = p.manifest;
+  const marketItem = s.market.reviewReturn ? s.market.selected : null, source = p.source;
+  const official = !!marketItem && source?.repositoryId === marketItem.repositoryId && source?.ownerId === marketItem.ownerId && isOfficialPlugin({ id: m.id, source: { kind: "github", repository: marketItem.fullName, repositoryId: source.repositoryId, ownerId: source.ownerId } });
   const requirements = [...m.renderer ? m.requires ?? [] : [], ...m.host ? m.renderer ? m.host.requires ?? [] : m.requires ?? [] : []];
   const choices = [["host.fs", "readRoots", "Allowed read folders \u2014 one full path per line"], ["host.fs.write", "writeRoots", "Allowed write folders \u2014 one full path per line"], ["host.fs.watch", "watchRoots", "Allowed watch folders \u2014 one full path per line"], ["host.network", "networkOrigins", "Allowed network origins \u2014 one HTTP(S) origin per line"], [m.permissions.includes("host.process.spawn") ? "host.process.spawn" : "host.process", "executables", "Allowed child programs \u2014 one full path per line"], ["host.process.spawn", "cwdRoots", "Allowed working folders \u2014 one full path per line"], ["host.process.spawn", "envKeys", "Allowed environment keys \u2014 one name per line"], ["core.shortcuts", "shortcuts", "Allowed global shortcuts \u2014 one combination per line"]];
-  return /* @__PURE__ */ h("div", { className: "codlet-local-preview" }, /* @__PURE__ */ h("h2", null, name(m)), /* @__PURE__ */ h(Copy, null, m.id, " \xB7 ", m.version), requirements.length > 0 && /* @__PURE__ */ h(Copy, null, t("Dependencies"), "\n", requirements.map((r) => `${r.name}@${r.api} (${r.scope})`).join("\n")), (p.dependencyCheck?.requirements ?? []).some((r) => r.status === "unavailable") && /* @__PURE__ */ h(Copy, null, t(`Currently unavailable: ${p.dependencyCheck.requirements.filter((r) => r.status === "unavailable").map((r) => `${r.capability.name}@${r.capability.api}`).join(", ")}. You can import the folder while disabled, then enable its providers first.`)), s.mode === "github" && /* @__PURE__ */ h(Source, { source: p.source, metadata: p.metadata }), p.currentVersion && /* @__PURE__ */ h(React.Fragment, null, /* @__PURE__ */ h(Copy, null, t(`Version: ${p.currentVersion.manifest.version} \u2192 ${m.version}
+  return /* @__PURE__ */ h("div", { className: "codlet-local-preview" }, /* @__PURE__ */ h("h2", null, name(m), official && /* @__PURE__ */ h("span", { className: "market-official codlet-review-official" }, t("Official"))), /* @__PURE__ */ h(Copy, null, m.id, " \xB7 ", m.version), /* @__PURE__ */ h(PluginTags, { tags: m.tags, show: s.settings?.effective?.showPluginTags !== false }), p.metadata?.author && /* @__PURE__ */ h(Copy, null, t(`Declared author: ${p.metadata.author}`)), requirements.length > 0 && /* @__PURE__ */ h(Copy, null, t("Dependencies"), "\n", requirements.map((r) => `${r.name}@${r.api} (${r.scope})`).join("\n")), (p.dependencyCheck?.requirements ?? []).some((r) => r.status === "unavailable") && /* @__PURE__ */ h(Copy, null, t(`Currently unavailable: ${p.dependencyCheck.requirements.filter((r) => r.status === "unavailable").map((r) => `${r.capability.name}@${r.capability.api}`).join(", ")}. You can import the folder while disabled, then enable its providers first.`)), s.mode === "github" && /* @__PURE__ */ h(Source, { source: p.source, metadata: p.metadata }), /* @__PURE__ */ h(Compatibility, { metadata: p.metadata, device: p.deviceCompatibility ?? s.deviceCompatibility, clientStatus: s.clientStatus }), p.deviceCompatibility?.status === "unknown" && /* @__PURE__ */ h("div", { className: "market-review-warning", role: "status" }, t("The author has not declared compatible systems; suitability for this device is unknown.")), p.deviceCompatibility?.status === "incompatible" && /* @__PURE__ */ h("div", { className: "market-review-warning", role: "alert" }, t("Core reports this package is incompatible with this device. Installation is unavailable.")), s.importOperation === "adopt" && s.target && /* @__PURE__ */ h(Copy, null, `${t("Installed version")}: ${s.target.version} \u2192 ${m.version}`), p.currentVersion && /* @__PURE__ */ h(React.Fragment, null, /* @__PURE__ */ h(Copy, null, t(`Version: ${p.currentVersion.manifest.version} \u2192 ${m.version}
 Repository: ${p.currentVersion.source.repositoryUrl} \u2192 ${p.source.repositoryUrl}
-Release: ${p.currentVersion.source.tag} \u2192 ${p.source.tag}`)), [["Permissions added", "permissionsAdded"], ["Permissions removed", "permissionsRemoved"], ["Dependencies added", "requirementsAdded"], ["Dependencies removed", "requirementsRemoved"]].map(([label, key]) => /* @__PURE__ */ h(Copy, { key }, t(`${label}: ${(p.changes?.[key] ?? []).map((v) => typeof v === "string" ? v : `${v.name}@${v.api} (${v.scope})`).join(", ") || t("None")}`)))), p.existingRegistration && s.mode === "local" && /* @__PURE__ */ h(Copy, null, t(`Already registered at this folder. Confirm all grants again to replace its permission settings.
-Current grants: ${p.existingRegistration.grants.join(", ") || "None"}. Stop the package before importing it again.`)), /* @__PURE__ */ h("h2", null, t("Requested permissions")), !m.permissions.length && /* @__PURE__ */ h(Copy, null, t("No permissions requested.")), m.permissions.map((permission) => /* @__PURE__ */ h(C.Checkbox, { key: permission, checked: s.grants.includes(permission), "aria-label": t(`Grant ${permission}`), label: `${permission} \u2014 ${t(PERMISSION_COPY[permission])}`, onCheckedChange: (next) => manager.grant(permission, next) })), choices.filter(([permission]) => m.permissions.includes(permission)).map(([, key, label]) => /* @__PURE__ */ h("div", { className: "codlet-field", key }, /* @__PURE__ */ h("label", { htmlFor: key }, t(label)), /* @__PURE__ */ h(C.Textarea, { id: key, "aria-label": t(label), rows: 2, value: s.policy[key] ?? "", onChange: (e) => manager.set({ policy: { ...s.policy, [key]: e.currentTarget.value } }) }))), choices.some(([permission]) => m.permissions.includes(permission)) && /* @__PURE__ */ h(Copy, null, t("Empty lists grant no access through the file, network or child-process broker. Native Host code still runs with your OS user permissions.")), /* @__PURE__ */ h(C.Checkbox, { checked: s.trusted, "aria-label": t(s.mode === "local" ? "Trust this local plugin" : "Trust this GitHub source"), label: t(s.mode === "local" ? "I trust this plugin\u2019s author and this local folder." : `I trust the author and this exact source: ${p.source.repositoryUrl}, release ${p.source.tag}, asset ${p.source.assetName}.`), onCheckedChange: (trusted) => manager.set({ trusted }) }), /* @__PURE__ */ h(C.Checkbox, { checked: s.enableAfter, "aria-label": t("Enable after import"), label: t("Enable immediately after importing"), onCheckedChange: (enableAfter) => manager.set({ enableAfter }) }));
+Release: ${p.currentVersion.source.tag} \u2192 ${p.source.tag}`)), [["Permissions added", "permissionsAdded"], ["Permissions removed", "permissionsRemoved"], ["Dependencies added", "requirementsAdded"], ["Dependencies removed", "requirementsRemoved"]].map(([label2, key]) => /* @__PURE__ */ h(Copy, { key }, t(`${label2}: ${(p.changes?.[key] ?? []).map((v) => typeof v === "string" ? v : `${v.name}@${v.api} (${v.scope})`).join(", ") || t("None")}`)))), p.existingRegistration && s.mode === "local" && /* @__PURE__ */ h(Copy, null, t(`Already registered at this folder. Confirm all grants again to replace its permission settings.
+Current grants: ${p.existingRegistration.grants.join(", ") || "None"}. Stop the package before importing it again.`)), /* @__PURE__ */ h("h2", null, t("Requested permissions")), !m.permissions.length && /* @__PURE__ */ h(Copy, null, t("No permissions requested.")), m.permissions.map((permission) => /* @__PURE__ */ h(C.Checkbox, { key: permission, checked: s.grants.includes(permission), "aria-label": t(`Grant ${permission}`), label: `${permission} \u2014 ${t(PERMISSION_COPY[permission])}`, onCheckedChange: (next) => manager.grant(permission, next) })), choices.filter(([permission]) => m.permissions.includes(permission)).map(([, key, label2]) => /* @__PURE__ */ h("div", { className: "codlet-field", key }, /* @__PURE__ */ h("label", { htmlFor: key }, t(label2)), /* @__PURE__ */ h(C.Textarea, { id: key, "aria-label": t(label2), rows: 2, value: s.policy[key] ?? "", onChange: (e) => manager.set({ policy: { ...s.policy, [key]: e.currentTarget.value } }) }))), choices.some(([permission]) => m.permissions.includes(permission)) && /* @__PURE__ */ h(Copy, null, t("Empty lists grant no access through the file, network or child-process broker. Native Host code still runs with your OS user permissions.")), /* @__PURE__ */ h(C.Checkbox, { checked: s.trusted, "aria-label": t(s.mode === "local" ? "Trust this local plugin" : "Trust this GitHub source"), label: t(s.mode === "local" ? "I trust this plugin\u2019s author and this local folder." : `I trust the author and this exact source: ${p.source.repositoryUrl}, release ${p.source.tag}, asset ${p.source.assetName}.`), onCheckedChange: (trusted) => manager.set({ trusted }) }), /* @__PURE__ */ h(C.Checkbox, { checked: s.enableAfter, "aria-label": t("Enable after import"), label: t("Enable immediately after importing"), onCheckedChange: (enableAfter) => manager.set({ enableAfter }) }));
 }
 function ImportPage({ s }) {
   const composing = React.useRef(false), release = manager.selectedRelease(), assets = release?.assets.filter((a) => /\.zip$/i.test(a.name)) ?? [];
-  const submitText = s.importOperation === "update" ? "Update plugin" : "Import plugin";
-  const submitLabel = s.mode === "local" ? "Confirm local import" : s.importOperation === "update" ? "Confirm managed update" : "Confirm GitHub import";
-  return /* @__PURE__ */ h("section", { className: "codlet-page" }, /* @__PURE__ */ h(Back, null), /* @__PURE__ */ h(C.SegmentedControl, { className: "codlet-import-source", value: s.mode, onChange: (mode) => manager.importPage(mode), "aria-label": t("Import source"), size: "sm", pill: true }, /* @__PURE__ */ h(C.SegmentedControl.Option, { value: "local", "aria-label": t("Local folder") }, t("Local folder")), /* @__PURE__ */ h(C.SegmentedControl.Option, { value: "github", "aria-label": t("Import from GitHub"), disabled: !s.githubAvailable }, "GitHub")), s.mode === "local" ? /* @__PURE__ */ h("div", { className: "codlet-field" }, /* @__PURE__ */ h("label", { htmlFor: "codlet-import-path" }, t("Plugin folder")), /* @__PURE__ */ h("div", { className: "codlet-folder-input" }, /* @__PURE__ */ h(
+  const submitText = ["update", "adopt"].includes(s.importOperation) ? "Update plugin" : "Import plugin";
+  const submitLabel = s.mode === "local" ? "Confirm local import" : ["update", "adopt"].includes(s.importOperation) ? "Confirm managed update" : "Confirm GitHub import";
+  return /* @__PURE__ */ h("section", { className: "codlet-page" }, /* @__PURE__ */ h(Back, null), !s.market.reviewReturn && /* @__PURE__ */ h(C.SegmentedControl, { className: "codlet-import-source", value: s.mode, onChange: (mode) => manager.importPage(mode), "aria-label": t("Import source"), size: "sm", pill: true }, /* @__PURE__ */ h(C.SegmentedControl.Option, { value: "local", "aria-label": t("Local folder") }, t("Local folder")), /* @__PURE__ */ h(C.SegmentedControl.Option, { value: "github", "aria-label": t("Import from GitHub"), disabled: !s.githubAvailable }, "GitHub")), s.mode === "local" ? /* @__PURE__ */ h("div", { className: "codlet-field" }, /* @__PURE__ */ h("label", { htmlFor: "codlet-import-path" }, t("Plugin folder")), /* @__PURE__ */ h("div", { className: "codlet-folder-input" }, /* @__PURE__ */ h(
     C.Input,
     {
       id: "codlet-import-path",
@@ -1830,7 +2318,7 @@ function ImportPage({ s }) {
       },
       onChange: (e) => manager.setPath(e.currentTarget.value, composing.current)
     }
-  ), s.localManagement?.folderPicker && /* @__PURE__ */ h(IconAction, { icon: I.FolderOpen, label: "Choose plugin folder", disabled: s.importBusy, onClick: () => manager.chooseFolder() }))) : !s.preview && /* @__PURE__ */ h(React.Fragment, null, /* @__PURE__ */ h("div", { className: "codlet-field" }, /* @__PURE__ */ h("label", { htmlFor: "codlet-github-url" }, t("GitHub repository or release URL")), /* @__PURE__ */ h(C.Input, { id: "codlet-github-url", "aria-label": t("GitHub repository or release URL"), value: s.url, onChange: (e) => manager.setUrl(e.currentTarget.value) })), /* @__PURE__ */ h(C.Button, { color: "secondary", variant: "soft", size: "md", "aria-label": t("Find versions"), loading: s.importBusy && manager.job?.kind === "releases", disabled: s.importBusy, onClick: () => manager.readReleases() }, /* @__PURE__ */ h(I.Regenerate, null), t("Find versions")), s.catalog && /* @__PURE__ */ h(React.Fragment, null, /* @__PURE__ */ h("div", { className: "codlet-field" }, /* @__PURE__ */ h("label", { htmlFor: "codlet-github-release" }, t("GitHub release")), /* @__PURE__ */ h(C.Select, { id: "codlet-github-release", TriggerView: ReleaseTrigger, placeholder: t("Choose a release"), searchPlaceholder: t("Search releases"), searchEmptyMessage: t("No matching releases"), value: s.release, disabled: s.importBusy, options: s.catalog.releases.map((r) => ({ value: String(r.id), label: r.tag, description: r.name })), onChange: (r) => manager.selectRelease(r.value) })), release && /* @__PURE__ */ h("div", { className: "codlet-field" }, /* @__PURE__ */ h("label", { htmlFor: "codlet-github-asset" }, t("GitHub ZIP asset")), /* @__PURE__ */ h(C.Select, { id: "codlet-github-asset", TriggerView: AssetTrigger, placeholder: t("Choose a ZIP asset"), searchPlaceholder: t("Search assets"), searchEmptyMessage: t("No matching assets"), value: s.asset, disabled: s.importBusy || !assets.length, options: assets.map((a) => ({ value: String(a.id), label: a.name, description: `${a.size.toLocaleString()} ${t("bytes")}` })), onChange: (a) => manager.selectAsset(a.value) })), release && !assets.length && /* @__PURE__ */ h(Copy, null, t("This release has no ZIP assets. Repository source archives are not plugin release packages. Ask the author for a built package or use local folder import.")), /* @__PURE__ */ h(C.Button, { color: "secondary", variant: "soft", size: "md", "aria-label": t("Download selected GitHub asset"), disabled: s.importBusy || !manager.selectedAsset(), onClick: () => manager.downloadAsset() }, /* @__PURE__ */ h(I.Download, null), t("Download and inspect ZIP"))), s.importBusy && manager.job && /* @__PURE__ */ h(C.Button, { color: "secondary", variant: "ghost", size: "sm", "aria-label": t("Cancel GitHub task"), onClick: () => manager.cancelImportJob() }, t("Cancel GitHub task")), s.jobRetry && /* @__PURE__ */ h(C.Button, { color: "secondary", variant: "ghost", size: "sm", "aria-label": t("Check GitHub task status"), onClick: () => manager.pollJob() }, t("Check task status"))), s.importStatus && /* @__PURE__ */ h("p", { id: "codlet-import-status", className: "codlet-copy", role: "status" }, t(s.importStatus)), s.importError && /* @__PURE__ */ h("details", null, /* @__PURE__ */ h("summary", null, t("Error details")), /* @__PURE__ */ h(Copy, { error: true }, s.importError)), s.preview && /* @__PURE__ */ h(Preview, { s }), /* @__PURE__ */ h(ImportNotice, { s, submitLabel, submitText }), /* @__PURE__ */ h(C.TextLink, { href: "https://github.com/topics/codlet-plugin", target: "_blank", rel: "noopener noreferrer", className: "codlet-community-link" }, t("Browse community plugins"), /* @__PURE__ */ h(I.ExternalLink, null)));
+  ), s.localManagement?.folderPicker && /* @__PURE__ */ h(IconAction, { icon: I.FolderOpen, label: "Choose plugin folder", disabled: s.importBusy, onClick: () => manager.chooseFolder() }))) : !s.preview && !s.market.reviewReturn && /* @__PURE__ */ h(React.Fragment, null, /* @__PURE__ */ h("div", { className: "codlet-field" }, /* @__PURE__ */ h("label", { htmlFor: "codlet-github-url" }, t("GitHub repository or release URL")), /* @__PURE__ */ h(C.Input, { id: "codlet-github-url", "aria-label": t("GitHub repository or release URL"), value: s.url, onChange: (e) => manager.setUrl(e.currentTarget.value) })), /* @__PURE__ */ h(C.Button, { color: "secondary", variant: "soft", size: "md", "aria-label": t("Find versions"), loading: s.importBusy && manager.job?.kind === "releases", disabled: s.importBusy, onClick: () => manager.readReleases() }, /* @__PURE__ */ h(I.Regenerate, null), t("Find versions")), s.catalog && /* @__PURE__ */ h(React.Fragment, null, /* @__PURE__ */ h("div", { className: "codlet-field" }, /* @__PURE__ */ h("label", { htmlFor: "codlet-github-release" }, t("GitHub release")), /* @__PURE__ */ h(C.Select, { id: "codlet-github-release", TriggerView: ReleaseTrigger, placeholder: t("Choose a release"), searchPlaceholder: t("Search releases"), searchEmptyMessage: t("No matching releases"), value: s.release, disabled: s.importBusy, options: s.catalog.releases.map((r) => ({ value: String(r.id), label: r.tag, description: r.name })), onChange: (r) => manager.selectRelease(r.value) })), release && /* @__PURE__ */ h("div", { className: "codlet-field" }, /* @__PURE__ */ h("label", { htmlFor: "codlet-github-asset" }, t("GitHub ZIP asset")), /* @__PURE__ */ h(C.Select, { id: "codlet-github-asset", TriggerView: AssetTrigger, placeholder: t("Choose a ZIP asset"), searchPlaceholder: t("Search assets"), searchEmptyMessage: t("No matching assets"), value: s.asset, disabled: s.importBusy || !assets.length, options: assets.map((a) => ({ value: String(a.id), label: a.name, description: `${a.size.toLocaleString()} ${t("bytes")}` })), onChange: (a) => manager.selectAsset(a.value) })), release && !assets.length && /* @__PURE__ */ h(Copy, null, t("This release has no ZIP assets. Repository source archives are not plugin release packages. Ask the author for a built package or use local folder import.")), /* @__PURE__ */ h(C.Button, { color: "secondary", variant: "soft", size: "md", "aria-label": t("Download selected GitHub asset"), disabled: s.importBusy || !manager.selectedAsset(), onClick: () => manager.downloadAsset() }, /* @__PURE__ */ h(I.Download, null), t("Download and inspect ZIP"))), s.importBusy && manager.job && /* @__PURE__ */ h(C.Button, { color: "secondary", variant: "ghost", size: "sm", "aria-label": t("Cancel GitHub task"), onClick: () => manager.cancelImportJob() }, t("Cancel GitHub task")), s.jobRetry && /* @__PURE__ */ h(C.Button, { color: "secondary", variant: "ghost", size: "sm", "aria-label": t("Check GitHub task status"), onClick: () => manager.pollJob() }, t("Check task status"))), s.market.reviewReturn && s.importBusy && /* @__PURE__ */ h("div", { className: "codlet-empty codlet-loading", role: "status", "aria-label": t("Inspecting marketplace package") }, /* @__PURE__ */ h(C.LoadingIndicator, { size: 24 })), s.market.reviewReturn && !s.importBusy && !s.preview && /* @__PURE__ */ h(C.Button, { color: "secondary", variant: "soft", size: "sm", onClick: () => manager.retryMarketReview() }, /* @__PURE__ */ h(I.Regenerate, null), t("Retry inspection")), s.importStatus && /* @__PURE__ */ h("p", { id: "codlet-import-status", className: "codlet-copy", role: "status" }, t(s.importStatus)), s.importError && /* @__PURE__ */ h("details", null, /* @__PURE__ */ h("summary", null, t("Error details")), /* @__PURE__ */ h(Copy, { error: true }, s.importError)), s.preview && /* @__PURE__ */ h(Preview, { s }), /* @__PURE__ */ h(ImportNotice, { s, submitLabel, submitText }), !s.market.reviewReturn && /* @__PURE__ */ h(C.TextLink, { href: "https://github.com/topics/codlet-plugin", target: "_blank", rel: "noopener noreferrer", className: "codlet-community-link" }, t("Browse community plugins"), /* @__PURE__ */ h(I.ExternalLink, null)));
 }
 function ImportNotice({ s, submitLabel, submitText }) {
   return /* @__PURE__ */ h(C.Dialog.Root, { open: !!s.importWarning, onOpenChange: (open) => {
@@ -1839,7 +2327,7 @@ function ImportNotice({ s, submitLabel, submitText }) {
 }
 function Details({ s }) {
   const p = s.details;
-  return /* @__PURE__ */ h("section", { className: "codlet-page" }, /* @__PURE__ */ h(Back, null), s.detailsError && /* @__PURE__ */ h(Copy, { error: true, role: "alert" }, t(s.detailsError)), s.detailsBusy ? /* @__PURE__ */ h(Copy, { role: "status" }, t("Loading permissions...")) : p && /* @__PURE__ */ h(React.Fragment, null, /* @__PURE__ */ h("div", { className: "codlet-details-identity" }, /* @__PURE__ */ h("div", { className: "codlet-details-heading" }, /* @__PURE__ */ h("h2", null, name(p)), p.version && /* @__PURE__ */ h("span", { className: "codlet-version" }, p.version), p.source !== "bundled" && /* @__PURE__ */ h(IconAction, { icon: I.FolderOpen, label: "Open plugin folder", onClick: () => manager.openFolder() })), /* @__PURE__ */ h(Copy, null, p.id), description(p) && /* @__PURE__ */ h(Copy, null, description(p))), p.ownership === "core-managed-github" && /* @__PURE__ */ h(Source, { source: p.managedSource, metadata: p.metadata }), p.grants?.length > 0 && /* @__PURE__ */ h("h2", null, t("Granted permissions")), (p.grants ?? []).map((permission) => /* @__PURE__ */ h("div", { className: "codlet-permission-line", key: permission }, /* @__PURE__ */ h(Copy, null, permission, "\n", t(PERMISSION_COPY[permission] || "")), p.source !== "bundled" && /* @__PURE__ */ h(C.Button, { color: "secondary", variant: "ghost", size: "sm", "data-codlet-focus-key": `revoke:${p.id}:${permission}`, "aria-label": t(`Revoke ${permission}`), onClick: () => manager.requestRemoval(p, permission) }, t("Revoke")))), [["readRoots", "Allowed read folders"], ["writeRoots", "Allowed write folders"], ["watchRoots", "Allowed watch folders"], ["networkOrigins", "Allowed network origins"], ["executables", "Allowed child programs"], ["cwdRoots", "Allowed working folders"], ["envKeys", "Allowed environment keys"], ["shortcuts", "Allowed global shortcuts"]].filter(([key]) => p.brokerPolicy?.[key]?.length).map(([key, label]) => /* @__PURE__ */ h(Copy, { key }, t(label), "\n", p.brokerPolicy[key].join("\n"))), manager.removalRequiresCli(p) ? /* @__PURE__ */ h("div", { className: "codlet-removal-notice" }, /* @__PURE__ */ h(Copy, null, t("The GUI plugin cannot uninstall itself or its dependencies")), /* @__PURE__ */ h("p", { className: "codlet-copy codlet-removal-actions" }, /* @__PURE__ */ h("span", null, t("To uninstall, use the CLI or ")), /* @__PURE__ */ h("button", { type: "button", className: "codlet-inline-link", disabled: s.createBusy || s.detailsBusy || mutationBusy(s), onClick: () => manager.uninstallWithCodex() }, t("use Codex"), /* @__PURE__ */ h(I.ArrowUpRight, { "aria-hidden": "true" })))) : p.source !== "bundled" && /* @__PURE__ */ h(C.Button, { color: "danger", variant: "soft", size: "md", "data-codlet-focus-key": `remove:${p.id}`, "aria-label": t(`Remove ${name(p)}`), onClick: () => manager.requestRemoval(p) }, t("Remove plugin")), p.ownership === "core-managed-github" && /* @__PURE__ */ h(React.Fragment, null, /* @__PURE__ */ h(C.Button, { color: "secondary", variant: "soft", size: "md", "aria-label": t("Check GitHub versions"), onClick: () => manager.importPage("github", p) }, t("Check GitHub versions")))));
+  return /* @__PURE__ */ h("section", { className: "codlet-page" }, /* @__PURE__ */ h(Back, null), s.detailsError && /* @__PURE__ */ h(Copy, { error: true, role: "alert" }, t(s.detailsError)), s.detailsBusy ? /* @__PURE__ */ h(Copy, { role: "status" }, t("Loading permissions...")) : p && /* @__PURE__ */ h(React.Fragment, null, /* @__PURE__ */ h("div", { className: "codlet-details-identity" }, /* @__PURE__ */ h("div", { className: "codlet-details-heading" }, /* @__PURE__ */ h("h2", null, name(p)), p.version && /* @__PURE__ */ h("span", { className: "codlet-version" }, p.version), p.source !== "bundled" && /* @__PURE__ */ h(IconAction, { icon: I.FolderOpen, label: "Open plugin folder", onClick: () => manager.openFolder() })), /* @__PURE__ */ h(Copy, null, p.id), description(p) && /* @__PURE__ */ h(Copy, null, description(p))), p.ownership === "core-managed-github" && /* @__PURE__ */ h(Source, { source: p.managedSource, metadata: p.metadata }), /* @__PURE__ */ h(Compatibility, { metadata: p.metadata, device: p.deviceCompatibility ?? s.deviceCompatibility, clientStatus: s.clientStatus }), p.grants?.length > 0 && /* @__PURE__ */ h("h2", null, t("Granted permissions")), (p.grants ?? []).map((permission) => /* @__PURE__ */ h("div", { className: "codlet-permission-line", key: permission }, /* @__PURE__ */ h(Copy, null, permission, "\n", t(PERMISSION_COPY[permission] || "")), p.source !== "bundled" && /* @__PURE__ */ h(C.Button, { color: "secondary", variant: "ghost", size: "sm", "data-codlet-focus-key": `revoke:${p.id}:${permission}`, "aria-label": t(`Revoke ${permission}`), onClick: () => manager.requestRemoval(p, permission) }, t("Revoke")))), [["readRoots", "Allowed read folders"], ["writeRoots", "Allowed write folders"], ["watchRoots", "Allowed watch folders"], ["networkOrigins", "Allowed network origins"], ["executables", "Allowed child programs"], ["cwdRoots", "Allowed working folders"], ["envKeys", "Allowed environment keys"], ["shortcuts", "Allowed global shortcuts"]].filter(([key]) => p.brokerPolicy?.[key]?.length).map(([key, label2]) => /* @__PURE__ */ h(Copy, { key }, t(label2), "\n", p.brokerPolicy[key].join("\n"))), manager.removalRequiresCli(p) ? /* @__PURE__ */ h("div", { className: "codlet-removal-notice" }, /* @__PURE__ */ h(Copy, null, t("The GUI plugin cannot uninstall itself or its dependencies")), /* @__PURE__ */ h("p", { className: "codlet-copy codlet-removal-actions" }, /* @__PURE__ */ h("span", null, t("To uninstall, use the CLI or ")), /* @__PURE__ */ h("button", { type: "button", className: "codlet-inline-link", disabled: s.createBusy || s.detailsBusy || mutationBusy(s), onClick: () => manager.uninstallWithCodex() }, t("use Codex"), /* @__PURE__ */ h(I.ArrowUpRight, { "aria-hidden": "true" })))) : p.source !== "bundled" && /* @__PURE__ */ h(C.Button, { color: "danger", variant: "soft", size: "md", "data-codlet-focus-key": `remove:${p.id}`, "aria-label": t(`Remove ${name(p)}`), onClick: () => manager.requestRemoval(p) }, t("Remove plugin")), p.ownership === "core-managed-github" && /* @__PURE__ */ h(React.Fragment, null, /* @__PURE__ */ h(C.Button, { color: "secondary", variant: "soft", size: "md", "aria-label": t("Check GitHub versions"), onClick: () => manager.importPage("github", p) }, t("Check GitHub versions")))));
 }
 function Confirmation({ s }) {
   const c = s.confirmation, p = c.plugin, verb = c.kind === "remove" ? "Remove" : c.kind === "revoke" ? "Revoke" : "Disable";
@@ -1871,7 +2359,7 @@ function Page({ s, toolbar }) {
       const scroll = panel.current?.querySelector(".codlet-scroll");
       if (scroll) scroll.scrollTop = 0;
     }
-    const target = trigger || panel.current?.querySelector(s.confirmation ? "[data-codlet-cancel]" : jumping ? "#codlet-version-heading" : s.page === "plugins" ? "[data-codlet-plugin-search]" : s.page === "settings" ? "[data-codlet-page-heading]" : "[data-codlet-back-button]");
+    const target = trigger || panel.current?.querySelector(s.confirmation ? "[data-codlet-cancel]" : jumping ? "#codlet-version-heading" : s.page === "plugins" ? "[data-codlet-plugin-search]" : s.page === "market" ? "[data-codlet-market-search]" : s.page === "settings" ? "[data-codlet-page-heading]" : "[data-codlet-back-button]");
     target?.focus({ preventScroll: !returning });
     if (jumping) {
       panel.current?.querySelector("#codlet-version-section")?.scrollIntoView({ block: "start", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
@@ -1900,7 +2388,7 @@ function Page({ s, toolbar }) {
     return () => document.removeEventListener("visibilitychange", changed);
   }, []);
   const settings = s.page === "settings", notices = versionWarnings(s);
-  const navigation = /* @__PURE__ */ h("div", { className: "codlet-top-toolbar" }, /* @__PURE__ */ h("nav", { className: "codlet-top-navigation", "aria-label": t("Codlet pages") }, [["plugins", "Plugin management"], ["settings", "Settings"]].map(([page, label]) => /* @__PURE__ */ h(C.Button, { key: page, color: "secondary", variant: (settings ? "settings" : "plugins") === page ? "soft" : "ghost", size: "sm", "aria-label": t(label), "aria-current": (settings ? "settings" : "plugins") === page ? "page" : void 0, disabled: !!s.confirmation, onClick: () => page === "settings" ? manager.settingsPage() : manager.pluginsPage() }, t(label)))), s.page === "plugins" && !s.confirmation && /* @__PURE__ */ h("div", { className: "codlet-toolbar-actions" }, /* @__PURE__ */ h(IconAction, { icon: I.Regenerate, label: "Refresh plugins", disabled: s.loading && !manager.pending, loading: s.loading, onClick: () => manager.refresh() }), s.localManagement?.available && /* @__PURE__ */ h(C.Menu, null, /* @__PURE__ */ h(C.Menu.Trigger, null, /* @__PURE__ */ h(C.Button, { color: "primary", variant: "solid", size: "sm", "aria-label": t("Add"), disabled: mutationBusy(s) || s.loading || s.listStale }, t("Add"), /* @__PURE__ */ h(I.ChevronDown, null))), /* @__PURE__ */ h(C.Menu.Content, { align: "end", minWidth: 180 }, /* @__PURE__ */ h(C.Menu.Item, { disabled: s.createBusy, onSelect: () => manager.createPlugin() }, /* @__PURE__ */ h(I.Cube, { className: "codlet-add-menu-icon" }), t("Create plugin")), /* @__PURE__ */ h(C.Menu.Item, { onSelect: () => manager.importPage() }, /* @__PURE__ */ h(I.Plus, { className: "codlet-add-menu-icon" }), t("Import plugin"))))));
+  const navigation = /* @__PURE__ */ h("div", { className: "codlet-top-toolbar" }, /* @__PURE__ */ h("nav", { className: "codlet-top-navigation", "aria-label": t("Codlet pages") }, [["plugins", "Plugin management"], ["settings", "Settings"]].map(([page, label2]) => /* @__PURE__ */ h(C.Button, { key: page, color: "secondary", variant: (settings ? "settings" : "plugins") === page ? "soft" : "ghost", size: "sm", "aria-label": t(label2), "aria-current": (settings ? "settings" : "plugins") === page ? "page" : void 0, disabled: !!s.confirmation, onClick: () => page === "settings" ? manager.settingsPage() : manager.pluginsPage() }, t(label2)))), ["plugins", "market"].includes(s.page) && !s.confirmation && /* @__PURE__ */ h("div", { className: "codlet-toolbar-actions" }, /* @__PURE__ */ h(IconAction, { icon: I.Regenerate, label: s.page === "market" ? "Refresh marketplace" : "Refresh plugins", disabled: s.page === "market" ? s.market.loading : s.loading && !manager.pending, loading: s.page === "market" ? s.market.loading : s.loading, onClick: () => s.page === "market" ? manager.marketSearch(true) : manager.refresh() }), (s.localManagement?.available || s.githubAvailable) && /* @__PURE__ */ h(C.Menu, null, /* @__PURE__ */ h(C.Menu.Trigger, null, /* @__PURE__ */ h(C.Button, { color: "primary", variant: "solid", size: "sm", "aria-label": t("Add"), disabled: mutationBusy(s) || s.loading || s.listStale }, t("Add"), /* @__PURE__ */ h(I.ChevronDown, null))), /* @__PURE__ */ h(C.Menu.Content, { align: "end", minWidth: 180 }, /* @__PURE__ */ h(C.Menu.Item, { disabled: !s.githubAvailable, onSelect: () => manager.marketPage() }, /* @__PURE__ */ h(I.Globe, { className: "codlet-add-menu-icon" }), t("Plugin marketplace")), /* @__PURE__ */ h("div", { className: "market-menu-divider", role: "separator" }), /* @__PURE__ */ h(C.Menu.Item, { disabled: s.createBusy || !s.localManagement?.available, onSelect: () => manager.createPlugin() }, /* @__PURE__ */ h(I.Cube, { className: "codlet-add-menu-icon" }), t("Create plugin")), /* @__PURE__ */ h(C.Menu.Item, { disabled: !s.localManagement?.available, onSelect: () => manager.importPage() }, /* @__PURE__ */ h(I.Plus, { className: "codlet-add-menu-icon" }), t("Import plugin"))))));
   return /* @__PURE__ */ h(React.Fragment, null, toolbar && ui.createPortal(navigation, toolbar), /* @__PURE__ */ h(
     "section",
     {
@@ -1919,15 +2407,15 @@ function Page({ s, toolbar }) {
       "data-codlet-view": s.confirmation ? "confirmation" : s.page,
       "aria-label": t(s.confirmation ? "Confirm action" : settings ? "Settings" : "Codlet")
     },
-    /* @__PURE__ */ h("div", { className: "codlet-scroll" }, /* @__PURE__ */ h("header", { className: "codlet-heading codlet-width" }, /* @__PURE__ */ h("div", { className: "codlet-heading-inner" }, /* @__PURE__ */ h("div", { className: "codlet-brand" }, !settings && /* @__PURE__ */ h(CodletIcon, { size: 32 }), /* @__PURE__ */ h("h1", { "data-codlet-page-heading": "", tabIndex: -1 }, settings ? t("Settings") : "Codlet"), !settings && /* @__PURE__ */ h(React.Fragment, null, /* @__PURE__ */ h("span", { className: "codlet-version" }, s.runtimeVersion), s.page === "plugins" && /* @__PURE__ */ h(SkillHelp, { s }), " ", notices.length > 0 && /* @__PURE__ */ h(IconAction, { icon: I.ExclamationMarkCircle, iconClassName: "codlet-warning-icon", label: notices.join("\n") + "\n" + t("View version information in settings"), onClick: () => manager.settingsPage(true), disabled: !!s.confirmation }))), /* @__PURE__ */ h("p", { className: "codlet-subtitle" }, descriptionText(t(settings ? "Manage Codlet preferences and version updates." : "Create or manage Codlet plugins")))), settings && !s.confirmation && /* @__PURE__ */ h(ProjectLinks, null)), s.page === "plugins" && !s.confirmation ? /* @__PURE__ */ h(PluginList, { s }) : /* @__PURE__ */ h("div", { className: "codlet-body codlet-width" }, s.confirmation ? /* @__PURE__ */ h(Confirmation, { s }) : s.page === "import" ? /* @__PURE__ */ h(ImportPage, { s }) : s.page === "details" ? /* @__PURE__ */ h(Details, { s }) : /* @__PURE__ */ h(Settings, { s, highlight: versionHighlight })))
+    /* @__PURE__ */ h("div", { className: "codlet-scroll" }, /* @__PURE__ */ h("header", { className: "codlet-heading codlet-width" }, /* @__PURE__ */ h("div", { className: "codlet-heading-inner" }, /* @__PURE__ */ h("div", { className: "codlet-brand" }, !settings && /* @__PURE__ */ h(CodletIcon, { size: 32 }), /* @__PURE__ */ h("h1", { "data-codlet-page-heading": "", tabIndex: -1 }, settings ? t("Settings") : "Codlet"), !settings && /* @__PURE__ */ h(React.Fragment, null, /* @__PURE__ */ h("span", { className: "codlet-version" }, s.runtimeVersion), s.page === "plugins" && /* @__PURE__ */ h(SkillHelp, { s }), " ", notices.length > 0 && /* @__PURE__ */ h(IconAction, { icon: I.ExclamationMarkCircle, iconClassName: "codlet-warning-icon", label: notices.join("\n") + "\n" + t("View version information in settings"), onClick: () => manager.settingsPage(true), disabled: !!s.confirmation }))), /* @__PURE__ */ h("p", { className: "codlet-subtitle" }, descriptionText(t(settings ? "Manage Codlet preferences and version updates." : "Create or manage Codlet plugins")))), settings && !s.confirmation && /* @__PURE__ */ h(ProjectLinks, null)), s.page === "plugins" && !s.confirmation ? /* @__PURE__ */ h(PluginList, { s }) : /* @__PURE__ */ h("div", { className: "codlet-body codlet-width" }, s.confirmation ? /* @__PURE__ */ h(Confirmation, { s }) : s.page === "market" ? /* @__PURE__ */ h(Marketplace, { s }) : s.page === "marketDetails" ? /* @__PURE__ */ h(MarketplaceDetails, { s }) : s.page === "import" ? /* @__PURE__ */ h(ImportPage, { s }) : s.page === "details" ? /* @__PURE__ */ h(Details, { s }) : /* @__PURE__ */ h(Settings, { s, highlight: versionHighlight })))
   ));
 }
 function App({ toolbar }) {
   const s = React.useSyncExternalStore(manager.subscribe, manager.snapshot);
-  return /* @__PURE__ */ h(React.Fragment, null, /* @__PURE__ */ h("style", null, layout_default), /* @__PURE__ */ h(Page, { s, toolbar }));
+  return /* @__PURE__ */ h(React.Fragment, null, /* @__PURE__ */ h("style", null, layout_default + marketplace_default), /* @__PURE__ */ h(Page, { s, toolbar }));
 }
 function releaseView() {
-  React = h = C = I = ui = Settings = CodletIcon = ProjectLinks = null;
+  React = h = C = I = ui = Settings = CodletIcon = ProjectLinks = Marketplace = MarketplaceDetails = Compatibility = null;
 }
 function deactivate() {
   epoch++;
@@ -1955,6 +2443,7 @@ async function activate(context) {
       Settings = createSettingsView({ React, C, I, manager, t, Copy, mutationBusy });
       CodletIcon = createCodletIcon(React);
       ProjectLinks = createProjectLinks({ React, C, I, t });
+      ({ Marketplace, MarketplaceDetails, Compatibility } = createMarketplaceView({ React, C, I, manager, t, Copy, Back, PluginTags }));
       return /* @__PURE__ */ h(App, { toolbar });
     }, onActivate: () => owned.open(document.visibilityState !== "hidden"), onDeactivate: () => {
       owned.close();

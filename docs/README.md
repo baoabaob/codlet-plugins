@@ -7,7 +7,7 @@ This repository owns Codex-specific behavior and official plugin UX. Generic plu
 | [Adapters](spec/adapters.md) | Native navigation, Desktop semantic capabilities, trust and compatibility |
 | [Traffic Adapter](spec/traffic.md) | Consumer-owned interception, backend/Electron integration and coverage limits |
 | [GUI](spec/gui.md) | Production management behavior and UI lifecycle |
-| [Marketplace](spec/marketplace.md) | Accepted interaction requirements, executable prototype and integration gaps |
+| [Marketplace](spec/marketplace.md) | Production discovery, metadata, installation review and preview tools |
 | [Development](development.md) | Contributions, clean builds, tests and previews |
 | [Distribution](publishing.md) | Package provenance, independent repositories and release rules |
 | [Known issues](known-issues.md) | Current limitations and evidence boundaries |

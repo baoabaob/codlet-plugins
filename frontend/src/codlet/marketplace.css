@@ -1,0 +1,41 @@
+[data-codlet-panel] .market-breadcrumb { display:flex;align-items:center;gap:16px;margin-bottom:24px; }
+[data-codlet-panel] .market-breadcrumb h2 { font-size:19px;line-height:28px; }
+[data-codlet-panel] .market-search { margin-bottom:16px; }
+[data-codlet-panel] .market-filterbar { display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding-bottom:8px; }
+[data-codlet-panel] .market-filter-actions { display:flex;align-items:center;gap:12px;flex-wrap:wrap; }
+[data-codlet-panel] .market-device { display:flex;align-items:center;gap:6px;font-size:12px;color:var(--color-text-secondary); }
+[data-codlet-panel] .market-row { padding-block:20px; }
+[data-codlet-panel] .market-meta { display:flex;align-items:center;flex-wrap:wrap;gap:5px 10px;margin-top:8px;color:var(--color-text-secondary);font-size:12px;line-height:18px; }
+[data-codlet-panel] .market-meta .market-origin { display:inline-flex;align-items:center;gap:6px; }
+[data-codlet-panel] .market-official { font-size:10px;line-height:15px;padding:0 4px;border-radius:4px;color:var(--color-text-secondary);background:var(--color-surface-secondary,light-dark(#f1f2f3,#303030)); }
+[data-codlet-panel] .market-meta>time,[data-codlet-panel] .market-meta>span { white-space:nowrap; }
+[data-codlet-panel] .market-inherited { display:block;color:var(--color-text-secondary);font-size:12px;margin-top:4px; }
+[data-codlet-panel] .market-platform-note { display:inline-flex;align-items:center;gap:4px; }
+[data-codlet-panel] .market-platform-note svg { width:14px;height:14px; }
+[data-codlet-panel] .market-unknown { color:light-dark(#967023,#dfba77); }
+[data-codlet-panel] .market-incompatible { color:var(--color-text-secondary); }
+[data-codlet-panel] .market-status { font-size:12px;white-space:nowrap;color:var(--color-text-secondary);padding:4px 10px; }
+[data-codlet-panel] .market-detail { gap:24px; }
+[data-codlet-panel] .market-detail .codlet-details-heading h2 { font-size:20px;line-height:28px; }
+[data-codlet-panel] .market-detail-top { display:flex;align-items:flex-start;justify-content:space-between;gap:16px; }
+[data-codlet-panel] .market-detail-title { display:flex;flex-direction:column;gap:8px;min-width:0; }
+[data-codlet-panel] .market-detail-section { display:flex;flex-direction:column;gap:14px; }
+[data-codlet-panel] .market-compatibility { border-block:1px solid var(--color-border);padding:20px 0; }
+[data-codlet-panel] .market-compatibility dl { display:grid;grid-template-columns:118px minmax(0,1fr);gap:12px 22px;font-size:13px;line-height:21px;margin:0; }
+[data-codlet-panel] .market-compatibility dt { color:var(--color-text-secondary); }
+[data-codlet-panel] .market-compatibility dd { margin:0; }
+[data-codlet-panel] .market-compat-heading { display:flex;justify-content:space-between;align-items:center;gap:12px; }
+[data-codlet-panel] .market-compatible { font-size:12px;color:light-dark(#55765f,#a3c5af); }
+[data-codlet-panel] .market-permissions { margin:0;padding-left:18px;display:flex;flex-direction:column;gap:8px;font-size:13px;line-height:21px;color:var(--color-text-secondary); }
+[data-codlet-panel] .market-permissions li span { color:var(--color-text); }
+[data-codlet-panel] .market-repo-link { display:inline-flex;align-items:center;gap:5px;align-self:flex-start;font-size:13px; }
+[data-codlet-panel] .market-repo-link svg { width:14px;height:14px; }
+[data-codlet-panel] .market-review-summary { display:flex;align-items:center;gap:8px;flex-wrap:wrap; }
+[data-codlet-panel] .market-review-warning { padding:12px 14px;border-radius:10px;background:light-dark(#faf5e9,#332c20);color:light-dark(#896a2c,#dfba77);font-size:13px;line-height:21px; }
+[data-codlet-official-ui] .market-menu-divider { height:1px;margin:5px 4px;background:var(--color-border); }
+[data-codlet-panel] .market-empty { gap:12px; }
+[data-codlet-panel] .market-back { display:flex;align-items:center;gap:6px; }
+[data-codlet-panel] .market-search-anchor { position:relative; }
+[data-codlet-panel] .codlet-review-official {display:inline-block;vertical-align:middle;margin-left:10px;font-size:11px;line-height:18px;}
+[data-codlet-panel] .market-declared-note {font-size:11px;line-height:18px;color:var(--color-text-secondary);}
+@media(max-width:600px){[data-codlet-panel] .market-detail-top{flex-wrap:wrap;}[data-codlet-panel] .market-compatibility dl{grid-template-columns:88px minmax(0,1fr);gap:10px 12px;}[data-codlet-panel] .market-filterbar{align-items:flex-start;}[data-codlet-panel] .market-row{padding-block:16px;}}

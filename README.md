@@ -38,7 +38,7 @@ node --test tests/*.test.mjs
 
 Edit plugins here, not in generated repositories. Add packages through `plugins.json`; change installer presets only as a separate product decision. Keep generated renderer bundles reproducible from their checked-in sources. Do not replace bytes under an existing release version.
 
-The [marketplace specification](docs/spec/marketplace.md) records an accepted interaction design and its executable preview. It is not yet connected to the production GUI or a live catalog. Package platform declarations, reviewed client profiles and native device acceptance are separate claims.
+The [marketplace](docs/spec/marketplace.md) is integrated into the production GUI. It discovers public GitHub plugin repositories, shows matched publisher release declarations, and sends the selected ZIP through Core's package and permission review before installation. Search follows public repository names, descriptions and tags; missing or incomplete declarations leave compatibility and download statistics unknown. Package platform declarations, reviewed client profiles and native device acceptance are separate claims.
 
 ## License
 

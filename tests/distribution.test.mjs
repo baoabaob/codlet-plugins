@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {readFile,mkdtemp,rm,realpath} from 'node:fs/promises';
+import {readFile,writeFile,mkdtemp,rm,realpath} from 'node:fs/promises';
 import {resolve,dirname,relative,isAbsolute,sep,basename} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {execFileSync} from 'node:child_process';
@@ -8,6 +8,7 @@ import {tmpdir} from 'node:os';
 import {validateConfig,safePath,hash,blobHash,prepareDistribution} from '../scripts/distribution.mjs';
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const config=JSON.parse(await readFile(resolve(root,'plugins.json'),'utf8'));
+const clientProfiles=JSON.parse(await readFile(resolve(root,'compatibility/client-profiles.json'),'utf8')).builds.map(({appVersion,buildNumber,appServerVersion})=>({appVersion,buildNumber,appServerVersion}));
 test('distribution destinations and discovery metadata are unique and cannot point at the development repository',()=>{
   assert.equal(validateConfig(structuredClone(config)).plugins.length,3);
   for(const edit of [c=>c.plugins.push(c.plugins[0]),c=>c.plugins[0].repository=c.sourceRepository,c=>c.plugins[0].repository='someone-else/plugin',c=>c.plugins[0].topics=[],c=>c.plugins[0].dependencies=['missing'],c=>c.installerPlugins=['missing'],c=>c.installerPlugins.push(c.installerPlugins[0])]){
@@ -34,6 +35,12 @@ test('each source snapshot contains its own installable bundle and build closure
       for(const file of plugin.files){const bytes=await readFile(resolve(folder,file.path));assert.equal(hash(bytes),file.sha256);assert.equal(blobHash(bytes),file.gitBlob);}
       const manifest=JSON.parse(await readFile(resolve(folder,'codlet.json'),'utf8'));
       assert.equal(manifest.id,plugin.id);assert.equal(manifest.version,plugin.version);assert.ok(paths.includes(manifest.renderer.entry));
+      const metadata=JSON.parse(await readFile(resolve(folder,'codlet-package.json'),'utf8'));
+      assert.deepEqual(metadata.platforms,['windows-x86_64','windows-aarch64','macos-aarch64']);
+      assert.deepEqual(metadata.adapters.codex.clientProfiles,clientProfiles);
+      assert.equal(Object.hasOwn(metadata.adapters.codex,'testedBuilds'),false);
+      assert.equal(Object.hasOwn(metadata.adapters.codex,'limitations'),false);
+      assert.equal(paths.includes('codlet-release.json'),false);
       if(manifest.host){
         for(const required of [manifest.host.entry,'frontend/build-host.mjs','host/desktop-launch.cjs','host/electron-main.cjs','host/backend-spawn.cjs','host/vendor/plaintext-source-client.cjs'])assert.ok(paths.includes(required),required);
         assert((await readFile(resolve(folder,'frontend/build.mjs'),'utf8')).includes('buildDesktopHost'));
@@ -46,7 +53,21 @@ test('each source snapshot contains its own installable bundle and build closure
       const packageJson=JSON.parse(await readFile(resolve(folder,'frontend/package.json'),'utf8'));assert.equal(packageJson.license,'Apache-2.0');
       if(plugin.id!=='codlet-gui')assert.equal(paths.includes('frontend/src/codlet/app.jsx'),false);
       const archive=await readFile(resolve(outputDirectory,plugin.archive.path));assert.equal(hash(archive),plugin.archive.sha256);
+      assert.deepEqual(Object.keys(plugin.releaseAsset).sort(),['bytes','name','path','sha256']);
+      assert.equal(plugin.releaseAsset.name,'codlet-release.json');
+      const declarationBytes=await readFile(resolve(outputDirectory,plugin.releaseAsset.path));
+      assert.equal(declarationBytes.length,plugin.releaseAsset.bytes);assert.equal(hash(declarationBytes),plugin.releaseAsset.sha256);
+      const declaration=JSON.parse(declarationBytes);
+      assert.deepEqual(declaration,{schema:1,kind:'codlet-plugin-release',manifest,metadata,asset:{name:basename(plugin.archive.path),bytes:archive.length,sha256:hash(archive)}});
+      assert.ok(declarationBytes.length<=16*1024);
+      const packageReadme=await readFile(resolve(folder,'README.md'),'utf8');
+      assert.ok(packageReadme.includes('known issues'));assert.equal(packageReadme.includes('Windows x64 Preview is tested'),false);
     }
+    const releasePath=resolve(outputDirectory,plan.plugins[0].releaseAsset.path);
+    const declaration=JSON.parse(await readFile(releasePath,'utf8'));
+    declaration.asset.sha256='0'.repeat(64);
+    await writeFile(releasePath,JSON.stringify(declaration)+'\n');
+    await assert.rejects(prepareDistribution(root,{allowDirty:true,outputDirectory}),/Release declaration differs from the actual package/);
   }finally{
     const cleanupPath=resolve(outputDirectory),cleanupRelative=relative(temporaryRoot,cleanupPath);
     if(!cleanupRelative||cleanupRelative.startsWith('..')||isAbsolute(cleanupRelative)||cleanupRelative.includes(sep)||!basename(cleanupPath).startsWith('codlet-distribution-test-'))throw Error(`Refusing to clean test output outside its temporary directory: ${cleanupPath}`);

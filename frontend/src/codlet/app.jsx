@@ -7,8 +7,11 @@ import layout from './layout.css';
 import { createCodletIcon } from '../brand.js';
 import { createCodletIcons } from '../icons.js';
 import { createProjectLinks } from './project-links.jsx';
+import { createMarketplaceView } from './marketplace.jsx';
+import marketplaceStyle from './marketplace.css';
 import { tagCatalog, tagAtCaret, suggestTags, insertTag } from './tag-search.js';
-let React,h,C,I,ui,manager,Settings,CodletIcon,ProjectLinks,epoch=0;
+import { isOfficialPlugin } from './marketplace-model.js';
+let React,h,C,I,ui,manager,Settings,CodletIcon,ProjectLinks,Marketplace,MarketplaceDetails,Compatibility,epoch=0;
 const t = value => manager.messages.t(value);
 const name = plugin => manager.messages.name(plugin);
 const description = plugin => manager.messages.description(plugin);
@@ -23,14 +26,14 @@ function AssetTrigger({label}){return <><span className="codlet-sr-only">{t('Git
 function Source({source,metadata}) {
   if(!source)return null;
   return <><Copy>{t(`Repository: ${source.repositoryUrl}\nRelease/tag: ${source.tag}\nAsset: ${source.assetName}\nSHA-256: ${source.sha256}\nGitHub digest: ${source.upstreamDigestVerified?'matched':'not available for verification'}`)}</Copy>
-    <Copy>{t(`Runtime compatibility: ${metadata?.runtimeApi==null?'unknown (not declared)':`author declared API ${metadata.runtimeApi}`}\nPlatforms: ${metadata?.platforms?.length?`author declared ${metadata.platforms.join(', ')}`:'unknown (not declared)'}`)}</Copy></>;
+    </>;
 }
 function TagHash(){return <svg className="codlet-tag-hash" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true" focusable="false"><path d="M6.3 2.7L4.7 13.3 M11.3 2.7L9.7 13.3 M2.7 5.5H13.3 M2.7 10.5H13.3"/></svg>;}
 function PluginTags({tags,show=true,query,onSelect}) {
   if(!show)return null;
   if(!tags?.length)return null;
-  const selected=new Set(query.toLowerCase().split(/\s/u));
-  return <span className="codlet-plugin-tags">{tags.map(tag=><button type="button" className="codlet-plugin-tag" key={tag} aria-label={`#${tag}`} aria-pressed={selected.has(`#${tag.toLowerCase()}`)} onClick={()=>onSelect(tag)}><TagHash/>{tag}</button>)}</span>;
+  const selected=new Set((query??'').toLowerCase().split(/\s/u));
+  return <span className="codlet-plugin-tags">{tags.map(tag=>onSelect?<button type="button" className="codlet-plugin-tag" key={tag} aria-label={`#${tag}`} aria-pressed={selected.has(`#${tag.toLowerCase()}`)} onClick={()=>onSelect(tag)}><TagHash/>{tag}</button>:<span className="codlet-plugin-tag" key={tag}><TagHash/>{tag}</span>)}</span>;
 }
 function PluginRow({plugin,s,showTags,onSelectTag}) {
   const busy=mutationBusy(s)||s.loading||s.listStale, enabled=plugin.enabled===true, registered=plugin.registered!==false;
@@ -110,13 +113,19 @@ function PluginList({s}) {
 }
 function Preview({s}) {
   const p=s.preview,m=p.manifest;
+  const marketItem=s.market.reviewReturn?s.market.selected:null,source=p.source;
+  const official=!!marketItem&&source?.repositoryId===marketItem.repositoryId&&source?.ownerId===marketItem.ownerId&&isOfficialPlugin({id:m.id,source:{kind:'github',repository:marketItem.fullName,repositoryId:source.repositoryId,ownerId:source.ownerId}});
   const requirements=[...(m.renderer?(m.requires??[]):[]),...(m.host?(m.renderer?m.host.requires??[]:m.requires??[]):[])];
   const choices=[['host.fs','readRoots','Allowed read folders — one full path per line'],['host.fs.write','writeRoots','Allowed write folders — one full path per line'],['host.fs.watch','watchRoots','Allowed watch folders — one full path per line'],['host.network','networkOrigins','Allowed network origins — one HTTP(S) origin per line'],[m.permissions.includes('host.process.spawn')?'host.process.spawn':'host.process','executables','Allowed child programs — one full path per line'],['host.process.spawn','cwdRoots','Allowed working folders — one full path per line'],['host.process.spawn','envKeys','Allowed environment keys — one name per line'],['core.shortcuts','shortcuts','Allowed global shortcuts — one combination per line']];
   return <div className="codlet-local-preview">
-    <h2>{name(m)}</h2><Copy>{m.id} · {m.version}</Copy>
+    <h2>{name(m)}{official&&<span className="market-official codlet-review-official">{t('Official')}</span>}</h2><Copy>{m.id} · {m.version}</Copy><PluginTags tags={m.tags} show={s.settings?.effective?.showPluginTags!==false}/>{p.metadata?.author&&<Copy>{t(`Declared author: ${p.metadata.author}`)}</Copy>}
     {requirements.length>0&&<Copy>{t('Dependencies')}{'\n'}{requirements.map(r=>`${r.name}@${r.api} (${r.scope})`).join('\n')}</Copy>}
     {(p.dependencyCheck?.requirements??[]).some(r=>r.status==='unavailable')&&<Copy>{t(`Currently unavailable: ${p.dependencyCheck.requirements.filter(r=>r.status==='unavailable').map(r=>`${r.capability.name}@${r.capability.api}`).join(', ')}. You can import the folder while disabled, then enable its providers first.`)}</Copy>}
     {s.mode==='github'&&<Source source={p.source} metadata={p.metadata}/>}
+    <Compatibility metadata={p.metadata} device={p.deviceCompatibility??s.deviceCompatibility} clientStatus={s.clientStatus}/>
+    {p.deviceCompatibility?.status==='unknown'&&<div className="market-review-warning" role="status">{t('The author has not declared compatible systems; suitability for this device is unknown.')}</div>}
+    {p.deviceCompatibility?.status==='incompatible'&&<div className="market-review-warning" role="alert">{t('Core reports this package is incompatible with this device. Installation is unavailable.')}</div>}
+    {s.importOperation==='adopt'&&s.target&&<Copy>{`${t('Installed version')}: ${s.target.version} → ${m.version}`}</Copy>}
     {p.currentVersion&&<><Copy>{t(`Version: ${p.currentVersion.manifest.version} → ${m.version}\nRepository: ${p.currentVersion.source.repositoryUrl} → ${p.source.repositoryUrl}\nRelease: ${p.currentVersion.source.tag} → ${p.source.tag}`)}</Copy>
       {[['Permissions added','permissionsAdded'],['Permissions removed','permissionsRemoved'],['Dependencies added','requirementsAdded'],['Dependencies removed','requirementsRemoved']].map(([label,key])=><Copy key={key}>{t(`${label}: ${(p.changes?.[key]??[]).map(v=>typeof v==='string'?v:`${v.name}@${v.api} (${v.scope})`).join(', ')||t('None')}`)}</Copy>)}</>}
     {p.existingRegistration&&s.mode==='local'&&<Copy>{t(`Already registered at this folder. Confirm all grants again to replace its permission settings.\nCurrent grants: ${p.existingRegistration.grants.join(', ')||'None'}. Stop the package before importing it again.`)}</Copy>}
@@ -131,19 +140,19 @@ function Preview({s}) {
 }
 function ImportPage({s}) {
   const composing=React.useRef(false),release=manager.selectedRelease(),assets=release?.assets.filter(a=>/\.zip$/i.test(a.name))??[];
-  const submitText=s.importOperation==='update'?'Update plugin':'Import plugin';
-  const submitLabel=s.mode==='local'?'Confirm local import':s.importOperation==='update'?'Confirm managed update':'Confirm GitHub import';
+  const submitText=['update','adopt'].includes(s.importOperation)?'Update plugin':'Import plugin';
+  const submitLabel=s.mode==='local'?'Confirm local import':['update','adopt'].includes(s.importOperation)?'Confirm managed update':'Confirm GitHub import';
   return <section className="codlet-page"><Back/>
-    <C.SegmentedControl className="codlet-import-source" value={s.mode} onChange={mode=>manager.importPage(mode)} aria-label={t('Import source')} size="sm" pill>
+    {!s.market.reviewReturn&&<C.SegmentedControl className="codlet-import-source" value={s.mode} onChange={mode=>manager.importPage(mode)} aria-label={t('Import source')} size="sm" pill>
       <C.SegmentedControl.Option value="local" aria-label={t('Local folder')}>{t('Local folder')}</C.SegmentedControl.Option>
       <C.SegmentedControl.Option value="github" aria-label={t('Import from GitHub')} disabled={!s.githubAvailable}>GitHub</C.SegmentedControl.Option>
-    </C.SegmentedControl>
+    </C.SegmentedControl>}
     {s.mode==='local'?<div className="codlet-field"><label htmlFor="codlet-import-path">{t('Plugin folder')}</label><div className="codlet-folder-input">
       <C.Input id="codlet-import-path" aria-label={t('Plugin folder')} aria-describedby="codlet-import-status" value={displayPath(s.path)} invalid={!!s.importError}
         onCompositionStart={()=>{composing.current=true;manager.setPath(s.path,true);}} onCompositionEnd={e=>{composing.current=false;manager.setPath(e.currentTarget.value);}}
         onChange={e=>manager.setPath(e.currentTarget.value,composing.current)}/>
       {s.localManagement?.folderPicker&&<IconAction icon={I.FolderOpen} label="Choose plugin folder" disabled={s.importBusy} onClick={()=>manager.chooseFolder()}/>}
-    </div></div>:!s.preview&&<>
+    </div></div>:!s.preview&&!s.market.reviewReturn&&<>
       <div className="codlet-field"><label htmlFor="codlet-github-url">{t('GitHub repository or release URL')}</label><C.Input id="codlet-github-url" aria-label={t('GitHub repository or release URL')} value={s.url} onChange={e=>manager.setUrl(e.currentTarget.value)}/></div>
       <C.Button color="secondary" variant="soft" size="md" aria-label={t('Find versions')} loading={s.importBusy&&manager.job?.kind==='releases'} disabled={s.importBusy} onClick={()=>manager.readReleases()}><I.Regenerate/>{t('Find versions')}</C.Button>
       {s.catalog&&<><div className="codlet-field"><label htmlFor="codlet-github-release">{t('GitHub release')}</label><C.Select id="codlet-github-release" TriggerView={ReleaseTrigger} placeholder={t('Choose a release')} searchPlaceholder={t('Search releases')} searchEmptyMessage={t('No matching releases')} value={s.release} disabled={s.importBusy} options={s.catalog.releases.map(r=>({value:String(r.id),label:r.tag,description:r.name}))} onChange={r=>manager.selectRelease(r.value)}/></div>
@@ -153,11 +162,13 @@ function ImportPage({s}) {
       {s.importBusy&&manager.job&&<C.Button color="secondary" variant="ghost" size="sm" aria-label={t('Cancel GitHub task')} onClick={()=>manager.cancelImportJob()}>{t('Cancel GitHub task')}</C.Button>}
       {s.jobRetry&&<C.Button color="secondary" variant="ghost" size="sm" aria-label={t('Check GitHub task status')} onClick={()=>manager.pollJob()}>{t('Check task status')}</C.Button>}
     </>}
+    {s.market.reviewReturn&&s.importBusy&&<div className="codlet-empty codlet-loading" role="status" aria-label={t('Inspecting marketplace package')}><C.LoadingIndicator size={24}/></div>}
+    {s.market.reviewReturn&&!s.importBusy&&!s.preview&&<C.Button color="secondary" variant="soft" size="sm" onClick={()=>manager.retryMarketReview()}><I.Regenerate/>{t('Retry inspection')}</C.Button>}
     {s.importStatus&&<p id="codlet-import-status" className="codlet-copy" role="status">{t(s.importStatus)}</p>}
     {s.importError&&<details><summary>{t('Error details')}</summary><Copy error>{s.importError}</Copy></details>}
     {s.preview&&<Preview s={s}/>}
     <ImportNotice s={s} submitLabel={submitLabel} submitText={submitText}/>
-    <C.TextLink href="https://github.com/topics/codlet-plugin" target="_blank" rel="noopener noreferrer" className="codlet-community-link">{t('Browse community plugins')}<I.ExternalLink/></C.TextLink>
+    {!s.market.reviewReturn&&<C.TextLink href="https://github.com/topics/codlet-plugin" target="_blank" rel="noopener noreferrer" className="codlet-community-link">{t('Browse community plugins')}<I.ExternalLink/></C.TextLink>}
   </section>;
 }
 function ImportNotice({s,submitLabel,submitText}){
@@ -180,6 +191,7 @@ function Details({s}){
       <div className="codlet-details-identity"><div className="codlet-details-heading"><h2>{name(p)}</h2>{p.version&&<span className="codlet-version">{p.version}</span>}{p.source!=='bundled'&&<IconAction icon={I.FolderOpen} label="Open plugin folder" onClick={()=>manager.openFolder()}/>}</div>
         <Copy>{p.id}</Copy>{description(p)&&<Copy>{description(p)}</Copy>}</div>
       {p.ownership==='core-managed-github'&&<Source source={p.managedSource} metadata={p.metadata}/>}
+      <Compatibility metadata={p.metadata} device={p.deviceCompatibility??s.deviceCompatibility} clientStatus={s.clientStatus}/>
       {p.grants?.length>0&&<h2>{t('Granted permissions')}</h2>}
       {(p.grants??[]).map(permission=><div className="codlet-permission-line" key={permission}><Copy>{permission}{'\n'}{t(PERMISSION_COPY[permission]||'')}</Copy>
         {p.source!=='bundled'&&<C.Button color="secondary" variant="ghost" size="sm" data-codlet-focus-key={`revoke:${p.id}:${permission}`} aria-label={t(`Revoke ${permission}`)} onClick={()=>manager.requestRemoval(p,permission)}>{t('Revoke')}</C.Button>}</div>)}
@@ -230,7 +242,7 @@ function Page({s,toolbar}){
     previous.current={page:s.page,confirmation:!!s.confirmation};
     if(!changed&&!jumping)return;
     if(changed){const scroll=panel.current?.querySelector('.codlet-scroll');if(scroll)scroll.scrollTop=0;}
-    const target=trigger||panel.current?.querySelector(s.confirmation?'[data-codlet-cancel]':jumping?'#codlet-version-heading':s.page==='plugins'?'[data-codlet-plugin-search]':s.page==='settings'?'[data-codlet-page-heading]':'[data-codlet-back-button]');
+    const target=trigger||panel.current?.querySelector(s.confirmation?'[data-codlet-cancel]':jumping?'#codlet-version-heading':s.page==='plugins'?'[data-codlet-plugin-search]':s.page==='market'?'[data-codlet-market-search]':s.page==='settings'?'[data-codlet-page-heading]':'[data-codlet-back-button]');
     target?.focus({preventScroll:!returning});
     if(jumping){
       panel.current?.querySelector('#codlet-version-section')?.scrollIntoView({block:'start',behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'});
@@ -249,9 +261,9 @@ function Page({s,toolbar}){
   React.useEffect(()=>{const changed=()=>manager.setVisible(document.visibilityState!=='hidden');changed();document.addEventListener('visibilitychange',changed);return()=>document.removeEventListener('visibilitychange',changed);},[]);
   const settings=s.page==='settings',notices=versionWarnings(s);
   const navigation=<div className="codlet-top-toolbar"><nav className="codlet-top-navigation" aria-label={t('Codlet pages')}>{[['plugins','Plugin management'],['settings','Settings']].map(([page,label])=><C.Button key={page} color="secondary" variant={(settings?'settings':'plugins')===page?'soft':'ghost'} size="sm" aria-label={t(label)} aria-current={(settings?'settings':'plugins')===page?'page':undefined} disabled={!!s.confirmation} onClick={()=>page==='settings'?manager.settingsPage():manager.pluginsPage()}>{t(label)}</C.Button>)}</nav>
-    {s.page==='plugins'&&!s.confirmation&&<div className="codlet-toolbar-actions"><IconAction icon={I.Regenerate} label="Refresh plugins" disabled={s.loading&&!manager.pending} loading={s.loading} onClick={()=>manager.refresh()}/>
-      {s.localManagement?.available&&<C.Menu><C.Menu.Trigger><C.Button color="primary" variant="solid" size="sm" aria-label={t('Add')} disabled={mutationBusy(s)||s.loading||s.listStale}>{t('Add')}<I.ChevronDown/></C.Button></C.Menu.Trigger>
-        <C.Menu.Content align="end" minWidth={180}><C.Menu.Item disabled={s.createBusy} onSelect={()=>manager.createPlugin()}><I.Cube className="codlet-add-menu-icon"/>{t('Create plugin')}</C.Menu.Item><C.Menu.Item onSelect={()=>manager.importPage()}><I.Plus className="codlet-add-menu-icon"/>{t('Import plugin')}</C.Menu.Item></C.Menu.Content>
+    {['plugins','market'].includes(s.page)&&!s.confirmation&&<div className="codlet-toolbar-actions"><IconAction icon={I.Regenerate} label={s.page==='market'?'Refresh marketplace':'Refresh plugins'} disabled={s.page==='market'?s.market.loading:s.loading&&!manager.pending} loading={s.page==='market'?s.market.loading:s.loading} onClick={()=>s.page==='market'?manager.marketSearch(true):manager.refresh()}/>
+      {(s.localManagement?.available||s.githubAvailable)&&<C.Menu><C.Menu.Trigger><C.Button color="primary" variant="solid" size="sm" aria-label={t('Add')} disabled={mutationBusy(s)||s.loading||s.listStale}>{t('Add')}<I.ChevronDown/></C.Button></C.Menu.Trigger>
+        <C.Menu.Content align="end" minWidth={180}><C.Menu.Item disabled={!s.githubAvailable} onSelect={()=>manager.marketPage()}><I.Globe className="codlet-add-menu-icon"/>{t('Plugin marketplace')}</C.Menu.Item><div className="market-menu-divider" role="separator"/><C.Menu.Item disabled={s.createBusy||!s.localManagement?.available} onSelect={()=>manager.createPlugin()}><I.Cube className="codlet-add-menu-icon"/>{t('Create plugin')}</C.Menu.Item><C.Menu.Item disabled={!s.localManagement?.available} onSelect={()=>manager.importPage()}><I.Plus className="codlet-add-menu-icon"/>{t('Import plugin')}</C.Menu.Item></C.Menu.Content>
       </C.Menu>}
     </div>}
   </div>;
@@ -265,15 +277,15 @@ function Page({s,toolbar}){
         <div className="codlet-brand">{!settings&&<CodletIcon size={32}/>}<h1 data-codlet-page-heading="" tabIndex={-1}>{settings?t('Settings'):'Codlet'}</h1>{!settings&&<><span className="codlet-version">{s.runtimeVersion}</span>{s.page==='plugins'&&<SkillHelp s={s}/>} {notices.length>0&&<IconAction icon={I.ExclamationMarkCircle} iconClassName="codlet-warning-icon" label={notices.join('\n')+'\n'+t('View version information in settings')} onClick={()=>manager.settingsPage(true)} disabled={!!s.confirmation}/>}</>}</div>
         <p className="codlet-subtitle">{descriptionText(t(settings?'Manage Codlet preferences and version updates.':'Create or manage Codlet plugins'))}</p>
       </div>{settings&&!s.confirmation&&<ProjectLinks/>}</header>
-      {s.page==='plugins'&&!s.confirmation?<PluginList s={s}/>:<div className="codlet-body codlet-width">{s.confirmation?<Confirmation s={s}/>:s.page==='import'?<ImportPage s={s}/>:s.page==='details'?<Details s={s}/>:<Settings s={s} highlight={versionHighlight}/>}</div>}
+      {s.page==='plugins'&&!s.confirmation?<PluginList s={s}/>:<div className="codlet-body codlet-width">{s.confirmation?<Confirmation s={s}/>:s.page==='market'?<Marketplace s={s}/>:s.page==='marketDetails'?<MarketplaceDetails s={s}/>:s.page==='import'?<ImportPage s={s}/>:s.page==='details'?<Details s={s}/>:<Settings s={s} highlight={versionHighlight}/>}</div>}
     </div>
   </section></>;
 }
 function App({toolbar}){
   const s=React.useSyncExternalStore(manager.subscribe,manager.snapshot);
-  return <><style>{layout}</style><Page s={s} toolbar={toolbar}/></>;
+  return <><style>{layout+marketplaceStyle}</style><Page s={s} toolbar={toolbar}/></>;
 }
-function releaseView(){React=h=C=I=ui=Settings=CodletIcon=ProjectLinks=null;}
+function releaseView(){React=h=C=I=ui=Settings=CodletIcon=ProjectLinks=Marketplace=MarketplaceDetails=Compatibility=null;}
 export function deactivate(){epoch++;try{ui?.dispose();}finally{manager?.dispose();manager=null;releaseView();}}
 export async function activate(context){
     deactivate();const current=epoch;context.onDeactivate(deactivate);
@@ -284,6 +296,7 @@ export async function activate(context){
       const options={label:'Codlet',icon:'Codlet',toolbar:true,render:({ui:activeUI,toolbar})=>{
         ui=activeUI??ui;({React,components:C,icons:I}=ui);h=React.createElement;I=createCodletIcons(React,I);
         Settings=createSettingsView({React,C,I,manager,t,Copy,mutationBusy});CodletIcon=createCodletIcon(React);ProjectLinks=createProjectLinks({React,C,I,t});
+        ({Marketplace,MarketplaceDetails,Compatibility}=createMarketplaceView({React,C,I,manager,t,Copy,Back,PluginTags}));
         return <App toolbar={toolbar}/>;
       },onActivate:()=>owned.open(document.visibilityState!=='hidden'),onDeactivate:()=>{owned.close();if(context.ui.page)releaseView();}};
       if(context.ui.page)await context.ui.page(options);
