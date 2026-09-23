@@ -35,7 +35,7 @@ export async function prepareDistribution(root,{allowDirty=false,outputDirectory
   const config=validateConfig(JSON.parse(await readFile(resolve(root,'plugins.json'),'utf8')));
   const compatibility=JSON.parse(await readFile(resolve(root,'compatibility/client-profiles.json'),'utf8'));
   if(compatibility.schema!==1||!Array.isArray(compatibility.builds))throw Error('Invalid reviewed client profile source');
-  const reviewedClientProfiles=compatibility.builds.map(({appVersion,buildNumber,appServerVersion})=>({appVersion,buildNumber,appServerVersion}));
+  const reviewedClientProfiles=[...new Map(compatibility.builds.map(({appVersion,buildNumber,appServerVersion})=>[`${appVersion}/${buildNumber}`,{appVersion,buildNumber,appServerVersion}])).values()];
   const git=(...args)=>execFileSync('git',args,{cwd:root,encoding:'utf8',windowsHide:true}).trim();
   const sourceCommit=git('rev-parse','HEAD'),dirty=!!git('status','--porcelain','--untracked-files=normal');
   if(dirty&&!allowDirty)throw Error('Commit the tested development files before preparing a synchronized distribution (use --allow-dirty for local inspection only)');

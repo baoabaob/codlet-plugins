@@ -1,7 +1,7 @@
 {
   "schema": 2,
   "platforms": {
-    "windows-x86_64": ["26.908.4834.0"],
+    "windows-x86_64": ["26.908.4834.0", "26.917.8451.0"],
     "windows-aarch64": [],
     "macos-aarch64": []
   }

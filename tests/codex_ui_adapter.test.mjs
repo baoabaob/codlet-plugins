@@ -84,7 +84,7 @@ test('Apple Silicon build 10640 selects its reviewed shared and initial modules'
   assert.throws(()=>f.adapter.pageProfile({appVersion:'26.917.61114',buildNumber:10492}),{code:'ui_build_drift'});
 });
 test('Apple Silicon build 10789 resolves the reviewed native page and connection exports',t=>{
-  const f=fixture(t),profile=f.adapter.pageProfile({appVersion:'26.917.62051',buildNumber:10789});
+  const f=fixture(t),profile=f.adapter.pageProfile({appVersion:'26.917.62051',buildNumber:10789},'app://-/assets/index-88e5ba1e2117.js');
   assert.equal(profile.entry,'app://-/assets/index-88e5ba1e2117.js');
   assert.equal(profile.module,'app://-/assets/app-initial-37097744327a.js');
   assert.equal(profile.scopeModule,'app://-/assets/app-shared-70a4f71efb70.js');
@@ -92,6 +92,22 @@ test('Apple Silicon build 10789 resolves the reviewed native page and connection
   assert.deepEqual(JSON.parse(JSON.stringify(profile.exports)),{scope:'ZI',manager:'vZt',client:'yZt',services:'pnt',postbox:'X3'});
   assert.deepEqual(JSON.parse(JSON.stringify(profile.page.exports)),{react:'e6',dom:'P3',client:'N3',sidebar:'bC',headerInit:'p7',header:'f7',newTaskInit:'d2',newTask:'h2'});
   assert.throws(()=>f.adapter.pageProfile({appVersion:'26.917.62051',buildNumber:10640}),{code:'ui_build_drift'});
+});
+test('Windows build 10789 uses its own reviewed entry and modules without claiming the Mac page',t=>{
+  const f=fixture(t),build={appVersion:'26.917.62051',buildNumber:10789};
+  const windows=f.adapter.pageProfile(build,'app://-/assets/index-897000035213.js');
+  const mac=f.adapter.pageProfile(build,'app://-/assets/index-88e5ba1e2117.js');
+  assert.equal(windows.platform,'windows-x86_64');
+  assert.equal(windows.module,'app://-/assets/app-initial-8f0e46979798.js');
+  assert.equal(windows.scopeModule,'app://-/assets/app-shared-baf181f346ac.js');
+  assert.equal(windows.page.primary,windows.module);
+  assert.deepEqual(JSON.parse(JSON.stringify(windows.page.exports)),{react:'e6',dom:'P3',client:'N3',sidebar:'bC',headerInit:'p7',header:'f7',newTaskInit:'d2',newTask:'h2'});
+  assert.equal(mac.platform,'macos-aarch64');
+  assert.throws(()=>f.adapter.pageProfile(build,[],'complete'),{code:'ui_build_drift'});
+  assert.throws(()=>f.adapter.pageProfile(build,'app://-/assets/unreviewed.js','complete'),{code:'ui_build_drift'});
+  assert.throws(()=>f.adapter.pageProfile(build,[],'loading'),{code:'ui_host_pending'});
+  assert.throws(()=>f.adapter.pageProfile(build,'app://-/assets/unreviewed.js','loading'),{code:'ui_host_pending'});
+  assert.throws(()=>f.adapter.pageProfile(build,[windows.entry,mac.entry],'loading'),{code:'ui_build_drift'});
 });
 test('only a boolean toolbar request is accepted and an unavailable native header does not add a route',async t=>{
   const f=fixture(t),count=f.shell.routes.length;

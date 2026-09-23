@@ -206,6 +206,7 @@ var client_profiles_default = {
     {
       appVersion: "26.917.62051",
       buildNumber: "10789",
+      platform: "macos-aarch64",
       appServerVersion: "0.155.0-alpha.16.3",
       navigation: true,
       runtimeSkill: true,
@@ -223,6 +224,28 @@ var client_profiles_default = {
         primary: "app://-/assets/app-initial-37097744327a.js",
         exports: { react: "e6", dom: "P3", client: "N3", sidebar: "bC", headerInit: "p7", header: "f7", newTaskInit: "d2", newTask: "h2" }
       }
+    },
+    {
+      appVersion: "26.917.62051",
+      buildNumber: "10789",
+      platform: "windows-x86_64",
+      appServerVersion: "0.155.0-alpha.16.3",
+      navigation: true,
+      runtimeSkill: true,
+      threadConfiguration: true,
+      officialUpdates: { stateSelector: "Pet" },
+      entry: "app://-/assets/index-897000035213.js",
+      module: "app://-/assets/app-initial-8f0e46979798.js",
+      scopeModule: "app://-/assets/app-shared-baf181f346ac.js",
+      postboxModule: "app://-/assets/app-shared-baf181f346ac.js",
+      exports: { scope: "ZI", manager: "vZt", client: "yZt", services: "pnt", postbox: "X3" },
+      page: {
+        react: "app://-/assets/app-shared-baf181f346ac.js",
+        dom: "app://-/assets/app-shared-baf181f346ac.js",
+        client: "app://-/assets/app-shared-baf181f346ac.js",
+        primary: "app://-/assets/app-initial-8f0e46979798.js",
+        exports: { react: "e6", dom: "P3", client: "N3", sidebar: "bC", headerInit: "p7", header: "f7", newTaskInit: "d2", newTask: "h2" }
+      }
     }
   ]
 };
@@ -236,14 +259,24 @@ function freeze(value) {
   return value;
 }
 var CLIENT_PROFILES = freeze(client_profiles_default.builds);
-function clientProfile(build) {
-  return CLIENT_PROFILES.find((profile) => profile.appVersion === build?.appVersion && profile.buildNumber === String(build?.buildNumber));
+function clientProfile(build, entries = []) {
+  const candidates = CLIENT_PROFILES.filter((profile) => profile.appVersion === build?.appVersion && profile.buildNumber === String(build?.buildNumber));
+  if (candidates.length === 1) return candidates[0];
+  const sources = Array.isArray(entries) ? entries : [entries];
+  const matches = candidates.filter((profile) => sources.includes(profile.entry));
+  return matches.length === 1 ? matches[0] : void 0;
 }
 
 // src/adapter/navigation.js
-function pageProfile(build) {
-  const profile = clientProfile(build);
-  if (!profile?.page) throw fail("ui_build_drift", "No reviewed sidebar/page profile for this Desktop build");
+function pageProfile(build, entries = Array.from(document.scripts, (script) => script.src), readyState = document.readyState) {
+  const profile = clientProfile(build, entries);
+  if (!profile?.page) {
+    const sources = Array.isArray(entries) ? entries : [entries];
+    const candidates = CLIENT_PROFILES.filter((profile2) => profile2.appVersion === build?.appVersion && profile2.buildNumber === String(build?.buildNumber));
+    if (candidates.length && !candidates.some((profile2) => sources.includes(profile2.entry)) && readyState !== "complete")
+      throw fail("ui_host_pending", "Waiting for the reviewed Desktop entry resource");
+    throw fail("ui_build_drift", "No reviewed sidebar/page profile for this Desktop build");
+  }
   return profile;
 }
 var CAPABILITY = Object.freeze({ name: "codex.ui.navigation.page", api: 1, scope: "target" });
@@ -496,7 +529,8 @@ async function loadNative() {
   if (location.origin !== "app://-" || location.pathname !== "/index.html")
     throw fail("ui_build_drift", "No reviewed sidebar/page profile for this Desktop build");
   const profile = pageProfile(build), page = profile.page, names = page.exports;
-  if (![...document.scripts].some((script) => script.src === profile.entry)) throw fail("ui_host_pending", "Waiting for the Desktop entry");
+  if (![...document.scripts].some((script) => script.src === profile.entry))
+    throw fail(document.readyState === "complete" ? "ui_build_drift" : "ui_host_pending", "The Desktop entry resource does not match this adapter");
   const [react, dom, client, primary, initial] = await Promise.all([import(page.react), import(page.dom), import(page.client), import(page.primary), import(profile.module)]);
   const native = { React: react[names.react ?? "t"](), DOM: dom[names.dom ?? "t"](), Client: client[names.client ?? "t"](), SidebarItem: primary[names.sidebar], ...reviewedHeader(initial, names) };
   if (typeof initial[names.newTaskInit] !== "function") throw fail("ui_build_drift", "The reviewed new-task initializer changed");

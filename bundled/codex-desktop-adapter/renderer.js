@@ -165,6 +165,7 @@ var client_profiles_default = {
     {
       appVersion: "26.917.62051",
       buildNumber: "10789",
+      platform: "macos-aarch64",
       appServerVersion: "0.155.0-alpha.16.3",
       navigation: true,
       runtimeSkill: true,
@@ -182,6 +183,28 @@ var client_profiles_default = {
         primary: "app://-/assets/app-initial-37097744327a.js",
         exports: { react: "e6", dom: "P3", client: "N3", sidebar: "bC", headerInit: "p7", header: "f7", newTaskInit: "d2", newTask: "h2" }
       }
+    },
+    {
+      appVersion: "26.917.62051",
+      buildNumber: "10789",
+      platform: "windows-x86_64",
+      appServerVersion: "0.155.0-alpha.16.3",
+      navigation: true,
+      runtimeSkill: true,
+      threadConfiguration: true,
+      officialUpdates: { stateSelector: "Pet" },
+      entry: "app://-/assets/index-897000035213.js",
+      module: "app://-/assets/app-initial-8f0e46979798.js",
+      scopeModule: "app://-/assets/app-shared-baf181f346ac.js",
+      postboxModule: "app://-/assets/app-shared-baf181f346ac.js",
+      exports: { scope: "ZI", manager: "vZt", client: "yZt", services: "pnt", postbox: "X3" },
+      page: {
+        react: "app://-/assets/app-shared-baf181f346ac.js",
+        dom: "app://-/assets/app-shared-baf181f346ac.js",
+        client: "app://-/assets/app-shared-baf181f346ac.js",
+        primary: "app://-/assets/app-initial-8f0e46979798.js",
+        exports: { react: "e6", dom: "P3", client: "N3", sidebar: "bC", headerInit: "p7", header: "f7", newTaskInit: "d2", newTask: "h2" }
+      }
     }
   ]
 };
@@ -195,6 +218,13 @@ function freeze(value) {
   return value;
 }
 var CLIENT_PROFILES = freeze(client_profiles_default.builds);
+function clientProfile(build, entries = []) {
+  const candidates = CLIENT_PROFILES.filter((profile) => profile.appVersion === build?.appVersion && profile.buildNumber === String(build?.buildNumber));
+  if (candidates.length === 1) return candidates[0];
+  const sources = Array.isArray(entries) ? entries : [entries];
+  const matches = candidates.filter((profile) => sources.includes(profile.entry));
+  return matches.length === 1 ? matches[0] : void 0;
+}
 
 // src/desktop/thread-configuration.js
 var fail = (code, message) => Object.assign(new Error(message), { code });
@@ -477,10 +507,15 @@ function locateScope(token) {
   }
   throw fail2("desktop_scope_missing", "Desktop AppScope is not mounted; reload the adapter after Desktop is ready");
 }
-function validateDesktopBuild(checkEntry = true) {
+function validateDesktopBuild(checkEntry = true, allowPending = false) {
   const detected = globalThis.electronBridge?.getSentryInitOptions?.();
-  const build = BUILDS.find((build2) => detected?.appVersion === build2.appVersion && String(detected?.buildNumber) === build2.buildNumber);
-  if (location.origin !== "app://-" || location.pathname !== "/index.html" || !build || checkEntry && !Array.from(document.scripts).some((script) => script.src === build.entry)) {
+  const entries = Array.from(document.scripts, (script) => script.src);
+  const build = clientProfile(detected, entries);
+  const candidates = BUILDS.filter((profile) => profile.appVersion === detected?.appVersion && profile.buildNumber === String(detected?.buildNumber));
+  if (allowPending && location.origin === "app://-" && location.pathname === "/index.html" && !build && candidates.length && !candidates.some((profile) => entries.includes(profile.entry)) && document.readyState !== "complete") {
+    throw fail2("desktop_entry_pending", "Waiting for the reviewed Desktop entry resource");
+  }
+  if (location.origin !== "app://-" || location.pathname !== "/index.html" || !build || checkEntry && !entries.includes(build.entry)) {
     throw fail2("desktop_build_drift", `Codex Desktop Adapter has no verified profile for ${optionalText(detected?.appVersion)} / ${optionalText(String(detected?.buildNumber))}`);
   }
   if (typeof globalThis.electronBridge?.sendMessageFromView !== "function") throw fail2("desktop_preload_missing", "Desktop preload bridge is unavailable");
@@ -501,8 +536,18 @@ function probeTick(signal, delay) {
   });
 }
 async function probeDesktop(loadModule = (source) => import(source), readyTimeoutMs = 3e3, signal) {
-  const build = validateDesktopBuild(false);
   const readyDeadline = Date.now() + readyTimeoutMs;
+  let build;
+  for (; ; ) {
+    try {
+      build = validateDesktopBuild(false, true);
+      break;
+    } catch (error) {
+      if (error.code !== "desktop_entry_pending") throw error;
+      if (Date.now() >= readyDeadline) throw fail2("desktop_build_drift", "The Desktop entry resource does not match this adapter");
+      await probeTick(signal, Math.min(50, readyDeadline - Date.now()));
+    }
+  }
   while (!Array.from(document.scripts).some((script) => script.src === build.entry)) {
     if (document.readyState === "complete" || Date.now() >= readyDeadline) throw fail2("desktop_build_drift", "The Desktop entry resource does not match this adapter");
     await probeTick(signal, Math.min(50, readyDeadline - Date.now()));

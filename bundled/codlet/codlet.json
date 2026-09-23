@@ -8,7 +8,7 @@
     "zh": { "name": "Codlet 管理界面", "description": "管理插件、导入、权限和 Codlet 更新。" },
     "en": { "name": "Codlet GUI", "description": "Manage plugins, imports, permissions, and Codlet updates." }
   },
-  "version": "0.1.2",
+  "version": "0.1.3",
   "renderer": {
     "entry": "dist/renderer.js",
     "world": "isolated"

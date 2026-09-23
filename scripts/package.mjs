@@ -28,11 +28,17 @@ const license=await readFile(resolve(root,'LICENSE')),notice=await readFile(reso
 const config=JSON.parse(await readFile(resolve(root,'plugins.json'),'utf8'));
 const compatibility=JSON.parse(await readFile(resolve(root,'compatibility/client-profiles.json'),'utf8'));
 if(compatibility.schema!==1||!Array.isArray(compatibility.builds)||!compatibility.builds.length)throw Error('Invalid reviewed client profile source');
-const clientProfiles=compatibility.builds.map(profile=>{
-  if(typeof profile.appVersion!=='string'||typeof profile.buildNumber!=='string'||typeof profile.appServerVersion!=='string')throw Error('Client profile is missing stable version identifiers');
-  return {appVersion:profile.appVersion,buildNumber:profile.buildNumber,appServerVersion:profile.appServerVersion};
-});
-if(new Set(clientProfiles.map(profile=>`${profile.appVersion}/${profile.buildNumber}`)).size!==clientProfiles.length)throw Error('Duplicate reviewed client profile');
+const reviewedEntries=new Set(),clientProfilesByBuild=new Map();
+for(const profile of compatibility.builds){
+  if(typeof profile.appVersion!=='string'||typeof profile.buildNumber!=='string'||typeof profile.appServerVersion!=='string'||typeof profile.entry!=='string')throw Error('Client profile is missing stable version identifiers or entry');
+  const buildKey=`${profile.appVersion}/${profile.buildNumber}`,entryKey=`${buildKey}/${profile.entry}`;
+  if(reviewedEntries.has(entryKey))throw Error('Duplicate reviewed client entry');
+  reviewedEntries.add(entryKey);
+  const existing=clientProfilesByBuild.get(buildKey);
+  if(existing&&existing.appServerVersion!==profile.appServerVersion)throw Error('Conflicting App Server versions for one client build');
+  if(!existing)clientProfilesByBuild.set(buildKey,{appVersion:profile.appVersion,buildNumber:profile.buildNumber,appServerVersion:profile.appServerVersion});
+}
+const clientProfiles=[...clientProfilesByBuild.values()];
 const platforms=['windows-x86_64','windows-aarch64','macos-aarch64'];
 for(const plugin of config.plugins){
   const dir=plugin.directory;

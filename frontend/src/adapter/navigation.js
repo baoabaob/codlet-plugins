@@ -1,11 +1,17 @@
 import { createCodletIcons } from '../icons.js';
-import { clientProfile } from '../../../compatibility/client-profiles.js';
+import { CLIENT_PROFILES, clientProfile } from '../../../compatibility/client-profiles.js';
 
 // Host internals belong only to this optional adapter. Never run these imports
 // outside the reviewed Desktop build, or create another app-host connection.
-export function pageProfile(build) {
-  const profile = clientProfile(build);
-  if (!profile?.page) throw fail('ui_build_drift', 'No reviewed sidebar/page profile for this Desktop build');
+export function pageProfile(build, entries = Array.from(document.scripts, script => script.src), readyState = document.readyState) {
+  const profile = clientProfile(build, entries);
+  if (!profile?.page) {
+    const sources = Array.isArray(entries) ? entries : [entries];
+    const candidates = CLIENT_PROFILES.filter(profile => profile.appVersion === build?.appVersion && profile.buildNumber === String(build?.buildNumber));
+    if (candidates.length && !candidates.some(profile => sources.includes(profile.entry)) && readyState !== 'complete')
+      throw fail('ui_host_pending', 'Waiting for the reviewed Desktop entry resource');
+    throw fail('ui_build_drift', 'No reviewed sidebar/page profile for this Desktop build');
+  }
   return profile;
 }
 export const CAPABILITY = Object.freeze({ name: 'codex.ui.navigation.page', api: 1, scope: 'target' });
@@ -228,7 +234,8 @@ async function loadNative() {
   if (location.origin !== 'app://-' || location.pathname !== '/index.html')
     throw fail('ui_build_drift', 'No reviewed sidebar/page profile for this Desktop build');
   const profile = pageProfile(build), page = profile.page, names = page.exports;
-  if (![...document.scripts].some(script => script.src === profile.entry)) throw fail('ui_host_pending', 'Waiting for the Desktop entry');
+  if (![...document.scripts].some(script => script.src === profile.entry))
+    throw fail(document.readyState === 'complete' ? 'ui_build_drift' : 'ui_host_pending', 'The Desktop entry resource does not match this adapter');
   const [react, dom, client, primary, initial] = await Promise.all([import(page.react), import(page.dom), import(page.client), import(page.primary), import(profile.module)]);
   const native = { React: react[names.react??'t'](), DOM: dom[names.dom??'t'](), Client: client[names.client??'t'](), SidebarItem: primary[names.sidebar], ...reviewedHeader(initial, names) };
   // Same lazy initializer and hook used by the official Create plugin/skill

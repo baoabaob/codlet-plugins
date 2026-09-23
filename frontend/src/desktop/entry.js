@@ -1,4 +1,4 @@
-import { CLIENT_PROFILES } from '../../../compatibility/client-profiles.js';
+import { CLIENT_PROFILES, clientProfile } from '../../../compatibility/client-profiles.js';
 import { createThreadConfiguration } from './thread-configuration.js';
 'use strict';
 
@@ -57,11 +57,17 @@ function locateScope(token) {
     throw fail('desktop_scope_missing', 'Desktop AppScope is not mounted; reload the adapter after Desktop is ready');
 }
 
-function validateDesktopBuild(checkEntry = true) {
+function validateDesktopBuild(checkEntry = true, allowPending = false) {
     const detected = globalThis.electronBridge?.getSentryInitOptions?.();
-    const build = BUILDS.find(build => detected?.appVersion === build.appVersion && String(detected?.buildNumber) === build.buildNumber);
+    const entries = Array.from(document.scripts, script => script.src);
+    const build = clientProfile(detected, entries);
+    const candidates = BUILDS.filter(profile => profile.appVersion === detected?.appVersion && profile.buildNumber === String(detected?.buildNumber));
+    if (allowPending && location.origin === 'app://-' && location.pathname === '/index.html' &&
+        !build && candidates.length && !candidates.some(profile => entries.includes(profile.entry)) && document.readyState !== 'complete') {
+        throw fail('desktop_entry_pending', 'Waiting for the reviewed Desktop entry resource');
+    }
     if (location.origin !== 'app://-' || location.pathname !== '/index.html' ||
-        !build || (checkEntry && !Array.from(document.scripts).some(script => script.src === build.entry))) {
+        !build || (checkEntry && !entries.includes(build.entry))) {
         throw fail('desktop_build_drift', `Codex Desktop Adapter has no verified profile for ${optionalText(detected?.appVersion)} / ${optionalText(String(detected?.buildNumber))}`);
     }
     if (typeof globalThis.electronBridge?.sendMessageFromView !== 'function') throw fail('desktop_preload_missing', 'Desktop preload bridge is unavailable');
@@ -79,8 +85,16 @@ function probeTick(signal, delay) {
 }
 
 async function probeDesktop(loadModule = source => import(source), readyTimeoutMs = 3000, signal) {
-    const build = validateDesktopBuild(false);
     const readyDeadline = Date.now() + readyTimeoutMs;
+    let build;
+    for (;;) {
+        try { build = validateDesktopBuild(false, true); break; }
+        catch (error) {
+            if (error.code !== 'desktop_entry_pending') throw error;
+            if (Date.now() >= readyDeadline) throw fail('desktop_build_drift', 'The Desktop entry resource does not match this adapter');
+            await probeTick(signal, Math.min(50, readyDeadline - Date.now()));
+        }
+    }
     while (!Array.from(document.scripts).some(script => script.src === build.entry)) {
         if (document.readyState === 'complete' || Date.now() >= readyDeadline) throw fail('desktop_build_drift', 'The Desktop entry resource does not match this adapter');
         await probeTick(signal, Math.min(50, readyDeadline - Date.now()));

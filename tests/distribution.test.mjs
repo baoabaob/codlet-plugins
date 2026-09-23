@@ -8,7 +8,7 @@ import {tmpdir} from 'node:os';
 import {validateConfig,safePath,hash,blobHash,prepareDistribution} from '../scripts/distribution.mjs';
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const config=JSON.parse(await readFile(resolve(root,'plugins.json'),'utf8'));
-const clientProfiles=JSON.parse(await readFile(resolve(root,'compatibility/client-profiles.json'),'utf8')).builds.map(({appVersion,buildNumber,appServerVersion})=>({appVersion,buildNumber,appServerVersion}));
+const clientProfiles=[...new Map(JSON.parse(await readFile(resolve(root,'compatibility/client-profiles.json'),'utf8')).builds.map(({appVersion,buildNumber,appServerVersion})=>[`${appVersion}/${buildNumber}`,{appVersion,buildNumber,appServerVersion}])).values()];
 test('distribution destinations and discovery metadata are unique and cannot point at the development repository',()=>{
   assert.equal(validateConfig(structuredClone(config)).plugins.length,3);
   for(const edit of [c=>c.plugins.push(c.plugins[0]),c=>c.plugins[0].repository=c.sourceRepository,c=>c.plugins[0].repository='someone-else/plugin',c=>c.plugins[0].topics=[],c=>c.plugins[0].dependencies=['missing'],c=>c.installerPlugins=['missing'],c=>c.installerPlugins.push(c.installerPlugins[0])]){

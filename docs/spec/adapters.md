@@ -4,7 +4,7 @@ The adapters translate reviewed Codex Desktop internals into plugin capabilities
 
 ## Compatibility and ownership
 
-`compatibility/client-profiles.json` is the reviewed mapping of app version/build number, AppServer schema, module URLs and native exports. Matching a marketing version or finding a similarly named function is insufficient. `bundled/codex-ui-adapter/client-versions.json` separately records versions accepted in real UI tests; source review or simulated tests alone do not add an acceptance record. Do not delete working older profiles merely because newer builds exist.
+`compatibility/client-profiles.json` is the reviewed mapping of app version/build number, AppServer schema, module URLs and native exports. Builds with the same reported version and number on different platforms are selected by the exact renderer entry URL observed in `document.scripts`; an absent or unknown entry fails closed. Matching a marketing version or finding a similarly named function is insufficient. `bundled/codex-ui-adapter/client-versions.json` separately records versions accepted in real UI tests; source review or simulated tests alone do not add an acceptance record. Do not delete working older profiles merely because newer builds exist.
 
 Adapters use the existing local Desktop connection, React scope and native navigation. They must not create another `connect-app-host` connection that replaces the Desktop view. Missing modules, changed object identity or a replaced patch make affected capabilities unavailable and produce diagnostics. Teardown restores only hooks still owned by that instance; conflicting patches can produce `reloadRequired`.
 

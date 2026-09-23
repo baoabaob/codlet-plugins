@@ -386,6 +386,56 @@ test('each reviewed profile waits for live exports, reuses its initialized conne
     }
 });
 
+test('same numbered Windows and Mac builds require their exact renderer entry', () => {
+    const scope = vm.createContext({ module: { exports: {} }, location: { origin: 'app://-', pathname: '/index.html' } });
+    vm.runInContext(source, scope);
+    const selected = vm.runInContext('validateDesktopBuild', scope);
+    scope.electronBridge = { getSentryInitOptions: () => ({ appVersion: '26.917.62051', buildNumber: 10789 }), sendMessageFromView() {} };
+    scope.document = { scripts: [{ src: 'app://-/assets/index-897000035213.js' }] };
+    assert.equal(selected().platform, 'windows-x86_64');
+    assert.equal(selected().module, 'app://-/assets/app-initial-8f0e46979798.js');
+    scope.document.scripts[0].src = 'app://-/assets/index-88e5ba1e2117.js';
+    assert.equal(selected().platform, 'macos-aarch64');
+    scope.document.scripts.push({ src: 'app://-/assets/index-897000035213.js' });
+    assert.throws(() => selected(), { code: 'desktop_build_drift' });
+    scope.document.scripts.pop();
+    scope.document.scripts[0].src = 'app://-/assets/unreviewed.js';
+    assert.throws(() => selected(), { code: 'desktop_build_drift' });
+    assert.throws(() => selected(false), { code: 'desktop_build_drift' });
+});
+
+test('same numbered Mac and Windows builds wait for their own delayed entry before importing', async () => {
+    for (const platform of ['macos-aarch64', 'windows-x86_64']) {
+        const scope = vm.createContext({ module: { exports: {} }, setTimeout, clearTimeout, location: { origin: 'app://-', pathname: '/index.html' } });
+        vm.runInContext(source, scope);
+        scope.platform = platform;
+        const native = vm.runInContext(`(() => {
+            const build = BUILDS.find(item => item.platform === platform), token = { id: 'AppScope' };
+            const client = { requestPromises: new Map(), getAppServerVersion: () => build.appServerVersion, onError() {} };
+            const manager = { requestClient: client, getHostId: () => 'local' };
+            for (const name of ['sendRequest', 'getConversation', 'getStreamRole', 'addNotificationCallback', 'addConversationStateCallback', 'replyWithCommandExecutionApprovalDecision', 'replyWithFileChangeApprovalDecision', 'replyWithPermissionsRequestApprovalResponse', 'replyWithUserInputResponse']) manager[name] = () => {};
+            const managerFamily = { read: () => manager }, clientFamily = { read: () => client };
+            const node = { token, store: {}, familyBindings: new Map([[managerFamily, new Map([['local', {}]])], [clientFamily, new Map([['local', {}]])]]) };
+            const root = { __reactContainer$test: { memoizedProps: { value: new Map([[token.id, node]]) } } };
+            globalThis.document = { scripts: [], readyState: 'loading', getElementById: () => root };
+            globalThis.electronBridge = { getSentryInitOptions: () => build, sendMessageFromView() {} };
+            return { build, appModule: { [build.exports.manager]: managerFamily, [build.exports.client]: clientFamily, [build.exports.services]: {} },
+                shared: { [build.exports.scope]: token, [build.exports.postbox]: { postMessage() {} } } };
+        })()`, scope);
+        const imports = [];
+        const pending = vm.runInContext('probeDesktop', scope)(async resource => {
+            imports.push(resource);
+            return resource === native.build.module ? native.appModule : resource === native.build.scopeModule ? native.shared : null;
+        }, 500);
+        assert.equal(imports.length, 0);
+        setTimeout(() => scope.document.scripts.push({ src: native.build.entry }), 10);
+        const connection = await pending;
+        assert.equal(connection.build, native.build);
+        assert.deepEqual(imports, [native.build.module, native.build.scopeModule]);
+        connection.check();
+    }
+});
+
 test('current reviewed build reads AppScope and postbox from one shared module', async () => {
     const scope = vm.createContext({ module: { exports: {} }, setTimeout, clearTimeout, location: { origin: 'app://-', pathname: '/index.html' } });
     vm.runInContext(source, scope);
