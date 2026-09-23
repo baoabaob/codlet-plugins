@@ -9,13 +9,13 @@ import { createInterface } from 'node:readline';
 import { once } from 'node:events';
 import { createRequire } from 'node:module';
 import { WebSocketServer } from '../frontend/node_modules/ws/wrapper.mjs';
-import { createThreadTransport } from '../frontend/src/desktop/transport.js';
+import { createThreadConfiguration } from '../frontend/src/desktop/thread-configuration.js';
 const { createTrafficRuntime } = createRequire(import.meta.url)('../.core-sdk/runtime/host-traffic-bundle.cjs');
 
 // Opt-in native acceptance: isolated home, synthetic prompt, loopback Responses
 // fixture only. No user auth file or actual model endpoint is used.
 const cli = process.env.CODLET_TEST_OFFICIAL_CLI;
-for (const mode of ['http', 'websocket']) test(`official AppServer starts and resumes real ${mode} traffic through the Adapter-selected channel`, { skip: !cli, timeout: 40000 }, async t => {
+for (const mode of ['http', 'websocket']) test(`official AppServer starts and resumes real ${mode} traffic through a task-configured private provider`, { skip: !cli, timeout: 60000 }, async t => {
     const root = await mkdtemp(path.join(tmpdir(), 'codlet-transport-native-'));
     const requests = [], sockets = new Set();
     let responseSequence = 0;
@@ -72,7 +72,7 @@ for (const mode of ['http', 'websocket']) test(`official AppServer starts and re
     });
     const sqliteHome = path.join(root, 'sqlite');
     await mkdir(sqliteHome);
-    await writeFile(path.join(root, 'config.toml'), 'cli_auth_credentials_store = "file"\n');
+    await writeFile(path.join(root, 'config.toml'), 'cli_auth_credentials_store = "file"\n[features]\ncode_mode_host = false\n');
     // A test started from a Desktop/Core shell may inherit its SQLite location.
     // Keep both persistence and credentials inside this fixture's owned home.
     const env = { ...process.env, CODEX_HOME: root, CODEX_SQLITE_HOME: sqliteHome };
@@ -89,7 +89,8 @@ for (const mode of ['http', 'websocket']) test(`official AppServer starts and re
         pending.clear();
         child.stdin.end();
         const kill = setTimeout(() => child.kill(), 1500);
-        await closed; clearTimeout(kill); reader.close(); child = null;
+        await closed; clearTimeout(kill); reader.close();
+        child.stdout.destroy(); child.stderr.destroy(); child = null;
     }
     async function startNative() {
         notifications.length = 0;
@@ -110,6 +111,7 @@ for (const mode of ['http', 'websocket']) test(`official AppServer starts and re
     t.after(async () => {
         await stopNative();
         trafficAbort.abort(); await channel.close(); managed.closeAll();
+        for (const socket of webSockets.clients) socket.terminate();
         for (const socket of sockets) socket.destroy();
         await new Promise(resolve => webSockets.close(resolve));
         await new Promise(resolve => server.close(resolve));
@@ -118,9 +120,10 @@ for (const mode of ['http', 'websocket']) test(`official AppServer starts and re
         await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     });
     await startNative();
-    const attached = createThreadTransport({ check() {}, owner: ctx => ({ pluginId: ctx.pluginId, generation: 1 }), capability: {}, build: { threadTransport: true }, client: { requestPromises: new Map([['fixture-thread', {}]]), onError(_id, error) { throw error; } } });
+    const attached = createThreadConfiguration({ check() {}, owner: ctx => ({ pluginId: ctx.pluginId, generation: 1 }), capability: {}, build: { threadConfiguration: true }, client: { requestPromises: new Map([['fixture-thread', {}]]), onError(_id, error) { throw error; } } });
     t.after(() => attached.dispose());
-    attached.register({ pluginId: 'fixture', onDeactivate: () => () => {} }, { id: 'channel' }, () => ({ channel, model: 'codlet-fixture' }));
+    attached.register({ pluginId: 'fixture', onDeactivate: () => () => {} }, { id: 'provider' }, () => ({ provider: { baseUrl: `${channel.endpoint}/v1`, supportsWebSockets: channel.protocols.includes('websocket') }, model: 'codlet-fixture' }));
+    attached.register({ pluginId: 'fixture', onDeactivate: () => () => {} }, { id: 'turn-model', appliesAt: ['turn.start'] }, () => ({ model: 'codlet-fixture' }));
     const routed = await new Promise(resolve => attached.intercept({ type: 'mcp-request', hostId: 'local', request: { id: 'fixture-thread', method: 'thread/start', params: { ephemeral: false, cwd: root, approvalPolicy: 'never', sandbox: 'read-only' } } }, resolve));
     const started = await request('thread/start', routed.request.params);
     const threadId = started.thread.id;
@@ -133,7 +136,13 @@ for (const mode of ['http', 'websocket']) test(`official AppServer starts and re
         });
     };
     async function runTurn() {
-        const turn = await request('turn/start', { threadId, input: [{ type: 'text', text: 'Return the local fixture response', text_elements: [] }] });
+        const guiParams = { threadId, model: null, collaborationMode: { mode: 'default', settings: { model: 'stale-ui-model', reasoning_effort: null, developer_instructions: null } },
+            input: [{ type: 'text', text: 'Return the local fixture response', text_elements: [] }] };
+        const routed = await new Promise(resolve => attached.intercept({ type: 'mcp-request', hostId: 'local', request: { id: 'fixture-thread', method: 'turn/start', params: guiParams } }, resolve));
+        assert.equal(routed.request.params.model, 'codlet-fixture');
+        assert.equal(routed.request.params.collaborationMode.settings.model, 'codlet-fixture');
+        assert.equal(guiParams.collaborationMode.settings.model, 'stale-ui-model');
+        const turn = await request('turn/start', routed.request.params);
         const complete = await waitFor(value => value.method === 'turn/completed' && value.params.threadId === threadId && value.params.turn.id === turn.turn.id, 'turn completion');
         assert.equal(complete.params.turn.status, 'completed');
     }

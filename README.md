@@ -14,6 +14,7 @@ Build and package with Node 24 and the locked npm dependencies:
 
 ```text
 npm ci --prefix frontend
+node scripts/prepare-core-sdk.mjs ABSOLUTE_CORE_CHECKOUT
 node frontend/build.mjs
 node scripts/package.mjs
 ```
@@ -21,11 +22,11 @@ node scripts/package.mjs
 Run the plugin suite against the SDK built from the matching Core checkout:
 
 ```text
-node scripts/prepare-core-sdk.mjs ABSOLUTE_CORE_CHECKOUT
 node --test tests/*.test.mjs
 ```
 
 `dist/` contains one versioned ZIP per plugin and a catalog with file hashes. Packaging does not execute plugins or publish a release. Local installers consume this same catalog. The UI and Desktop adapters maintain their own reviewed client profiles in `compatibility/`.
+`prepare-core-sdk.mjs` also refreshes the tracked generic Desktop source client in `host/vendor/`; the generated distribution keeps this dependency so its build remains self-contained.
 
 ## Development and contracts
 

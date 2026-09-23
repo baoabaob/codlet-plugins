@@ -8,6 +8,7 @@ const { readCodexJsonBody, rewrittenCodexJsonBody } = require('../host/codex-tra
 test('fixture evidence never upgrades automatic/OAuth/desktop/attachment coverage', () => {
   const verified = probeCodexTraffic({ platform: 'win32', binarySha256: 'BC45017E8239DC150258F69309CED9DF6BBCDF5B8E4F346DECF780AC0999E226' });
   assert.equal(verified.fixtureVerified, true); assert.equal(verified.available, false); assert.equal(verified.officialOAuth, false); assert.equal(verified.existingLoadedThreads, false); assert.equal(verified.attachments, false);
+  assert.equal(probeCodexTraffic({ platform:'win32',binarySha256:'97d4d67419d0ac2f71342f9a5e850f9468aa622618de8ea823223edb9a91926a' }).fixtureVerified,true);
   for (const platform of ['darwin', 'linux']) assert.equal(probeCodexTraffic({ platform }).fixtureVerified, false);
   assert.equal(probeCodexTraffic({ platform: 'win32', binarySha256: 'changed' }).reason, 'backend_build_unverified');
 });

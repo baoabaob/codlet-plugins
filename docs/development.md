@@ -14,7 +14,7 @@ node scripts/prepare-core-sdk.mjs ABSOLUTE_CORE_CHECKOUT
 node --test tests/*.test.mjs
 ```
 
-Build the matching Core SDK according to its development guide before preparing the snapshot. `prepare-core-sdk.mjs` copies Core's UI, page, i18n and Host traffic bundles to ignored `.core-sdk/` and records the Core commit. It neither registers plugins nor needs a personal installation. Build/package alone do not require `.core-sdk/`; tests that use it intentionally require this explicit preparation step. The distribution tests require the preceding package command and Git metadata.
+Build the matching Core SDK according to its development guide before preparing the snapshot. `prepare-core-sdk.mjs` copies Core's UI, page, i18n and Host traffic bundles to ignored `.core-sdk/` and records the Core commit. It neither registers plugins nor needs a personal installation. Build/package alone do not require `.core-sdk/`; tests that use it intentionally require this explicit preparation step. The distribution test packages current sources into a temporary output directory and requires Git metadata; it does not read or replace `dist/`.
 
 `frontend/build.mjs` builds every entry in `plugins.json`. The three generated renderer files under `bundled/` are intentional checked-in distribution inputs; rebuild them after source changes. The build includes required third-party license notices and rejects missing notices. Do not strip notices or manually edit bundles.
 
@@ -32,11 +32,11 @@ The production plugins use Core's supplied UI SDK. This repository does not rebu
 
 | Tests | What they establish |
 | --- | --- |
-| `codex_ui_adapter`, `codex_desktop_adapter`, `desktop_transport` | Native shell ownership, semantic mapping, drift, hooks, cancellation and retirement |
+| `codex_ui_adapter`, `codex_desktop_adapter`, `thread_configuration` | Native shell ownership, semantic mapping, drift, hooks, cancellation and retirement |
 | `codlet_controller`, `codlet_gui`, notices, tag search, `combined_update` | Management receipts, stale async replies, permissions, update states, focus and UI cleanup |
 | `marketplace-model` | Prototype provenance, sorting, compatibility inference and bounded portability audit; not live catalog acceptance |
 | `distribution.test.mjs`, `distribution.ps1` | Build closure, package hashes, traversal rejection and remote snapshot ownership |
-| `desktop_transport_cli` | Opt-in real AppServer HTTP/WebSocket fixture; skipped unless `CODLET_TEST_OFFICIAL_CLI` points to an executable |
+| `thread_configuration_cli` | Opt-in real AppServer HTTP/WebSocket fixture; skipped unless `CODLET_TEST_OFFICIAL_CLI` points to an executable |
 
 The native CLI fixture uses its own temporary home, synthetic prompt and loopback server. It does not use a user auth file or a real model endpoint. A passing jsdom or CLI test is not a native Desktop visual/accessibility or OS installer acceptance result.
 

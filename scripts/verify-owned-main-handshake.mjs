@@ -1,28 +1,82 @@
-// Attach only to the exact new child already paused by Native. This script does
-// not discover, start, terminate or operate on any existing user client.
-import fs from 'node:fs/promises';
+// Exact-child handshake shared by the production-owned acceptance runner.
+// The caller has already paused and identified this private Desktop child.
 import path from 'node:path';
 import { createRequire } from 'node:module';
-const { attachClientLaunch } = createRequire(import.meta.url)('../bundled/codex-desktop-adapter/host.cjs');
-const args = process.argv.slice(2), values = {};
-for (let index = 0; index < args.length; index += 2) {
-  if (!['--owned-pid', '--executable', '--inspector-file', '--traffic-file', '--original-environment-file'].includes(args[index]) || args[index + 1] == null) throw new Error('invalid_arguments');
-  values[args[index]] = args[index + 1];
+
+const require = createRequire(import.meta.url);
+const safeError = error => typeof error?.code === 'string' && /^[a-z_]{1,80}$/u.test(error.code) ? error.code : 'main_handshake_failed';
+const fail = code => Object.assign(new Error(code), { code });
+
+function validTraffic(value) {
+  const source = value?.source, endpoint = source?.endpoint;
+  if (!source || source.version !== 1 || source.kind !== 'plaintext' || endpoint?.host !== '127.0.0.1'
+    || !Number.isSafeInteger(endpoint.port) || endpoint.port < 1 || endpoint.port > 65535
+    || typeof endpoint.token !== 'string' || !/^[A-Za-z0-9_-]{43}$/u.test(endpoint.token)
+    || typeof source.routeBaseUrl !== 'string' || !Array.isArray(source.protocols) || !Array.isArray(source.operations)
+    || value.environmentPatch?.set == null || !Array.isArray(value.environmentPatch?.removeCaseInsensitive)) throw fail('traffic_descriptor_invalid');
+  const route = new URL(source.routeBaseUrl);
+  if (route.protocol !== 'http:' || route.hostname !== '127.0.0.1' || !route.port || route.username || route.password || route.search || route.hash) throw fail('traffic_descriptor_invalid');
 }
-const expectedPid = Number(values['--owned-pid']);
-if (!Number.isSafeInteger(expectedPid) || expectedPid <= 0 || !path.isAbsolute(values['--executable'] ?? '')) throw new Error('owned_process_identity_required');
-async function read(file, json = true) {
-  if (!path.isAbsolute(file ?? '')) throw new Error('private_file_required');
-  const handle = await fs.open(file, 'r');
-  try { const stat = await handle.stat(); if (!stat.isFile() || stat.size > 1024 * 1024) throw new Error('private_file_invalid'); const text = await handle.readFile('utf8'); return json ? JSON.parse(text) : text.trim(); }
-  finally { await handle.close(); }
+
+function compactSources(values) {
+  if (!Array.isArray(values)) return [];
+  return values.slice(0, 16).map(value => ({
+    id: typeof value?.id === 'string' && /^[A-Za-z0-9_.-]{1,64}$/u.test(value.id) ? value.id : 'unknown',
+    protocols: Array.isArray(value?.protocols) ? value.protocols.filter(item => ['http', 'sse', 'webSocket'].includes(item)).slice(0, 8) : [],
+    operations: Array.isArray(value?.operations) ? value.operations.filter(item => ['route.register', 'route.update', 'route.close', 'http.intercept'].includes(item)).slice(0, 8) : [],
+    coverage: Array.isArray(value?.coverage) ? value.coverage.filter(item => typeof item === 'string' && /^[A-Za-z0-9_.-]{1,96}$/u.test(item)).slice(0, 16) : [],
+  }));
 }
-const signal = AbortSignal.timeout(10000);
-try {
-  const [inspectorUrl, traffic, originalEnvironment] = await Promise.all([read(values['--inspector-file'], false), read(values['--traffic-file']), read(values['--original-environment-file'])]);
-  const result = await attachClientLaunch({ inspectorUrl, expectedPid, executable: values['--executable'], traffic, originalEnvironment, signal });
-  process.stdout.write(JSON.stringify({ installed: result.installed === true, exactChildVerified: result.exactChildVerified === true, configuredSessions: result.configuredSessions, actualTrafficObserved: false }) + '\n');
-} catch (error) {
-  const allowed = new Set(['invalid_main_bootstrap', 'main_bootstrap_cancelled', 'main_bootstrap_protocol_failed', 'main_bootstrap_timeout', 'main_bootstrap_connect_failed', 'main_bootstrap_not_paused', 'main_bootstrap_identity_mismatch', 'main_bootstrap_install_failed', 'main_bootstrap_session_failed', 'main_bootstrap_detach_failed', 'electron_transport_unverified', 'electron_proxy_failed', 'backend_launch_not_observed', 'backend_tool_environment_unsupported']);
-  process.stdout.write(JSON.stringify({ installed: false, reason: allowed.has(error.code) ? error.code : 'main_handshake_failed' }) + '\n'); process.exitCode = 1;
+
+export async function verifyOwnedMainHandshake({ inspectorUrl, expectedPid, executable, traffic, signal }) {
+  if (process.platform !== 'win32' || process.versions.node.split('.')[0] !== '24'
+    || !Number.isSafeInteger(expectedPid) || expectedPid < 1 || !path.isAbsolute(executable ?? '') || !signal) throw fail('owned_process_identity_required');
+  try {
+    const url = new URL(inspectorUrl);
+    if (url.protocol !== 'ws:' || url.hostname !== '127.0.0.1' || !url.port || url.username || url.password || url.search || url.hash || !/^\/[a-f0-9-]{36}$/u.test(url.pathname)) throw fail('inspector_descriptor_invalid');
+    validTraffic(traffic);
+    const { attachClientLaunch } = require('../bundled/codex-desktop-adapter/host.cjs');
+    const value = await attachClientLaunch({ inspectorUrl, expectedPid, executable, traffic, signal });
+    const report = {
+      installed: value?.installed === true,
+      exactChildVerified: value?.exactChildVerified === true,
+      activatedSources: compactSources(value?.activatedSources),
+      unsupportedSources: Array.isArray(value?.unsupportedSources) ? value.unsupportedSources.slice(0, 16).map(item => ({
+        id: typeof item?.id === 'string' && /^[A-Za-z0-9_.-]{1,64}$/u.test(item.id) ? item.id : 'unknown',
+        reason: typeof item?.reason === 'string' && /^[a-z_]{1,80}$/u.test(item.reason) ? item.reason : 'unsupported',
+      })) : [],
+    };
+    if (!report.installed || !report.exactChildVerified || !report.activatedSources.length) throw fail('main_source_not_activated');
+    return report;
+  } catch (error) {
+    const wrapped = fail(safeError(error));
+    const stages = new Set(['connect', 'pause', 'identity', 'install', 'resume', 'ready', 'detach']);
+    const methods = new Set(['Debugger.enable', 'Runtime.runIfWaitingForDebugger', 'Debugger.evaluateOnCallFrame', 'Debugger.resume', 'Runtime.evaluate']);
+    const input = error?.details ?? {};
+    const details = {
+      ...(stages.has(error?.details?.stage) ? { stage: error.details.stage } : {}),
+      ...(methods.has(error?.details?.method) ? { method: error.details.method } : {}),
+    };
+    const versions = input.runtime;
+    if (versions && typeof versions === 'object') details.runtime = Object.fromEntries(['electron', 'chrome', 'node'].flatMap(key => {
+      const value = versions[key]; return typeof value === 'string' && /^\d{1,3}(?:\.\d{1,4}){1,3}(?:[-+][A-Za-z0-9.-]{1,24})?$/u.test(value) ? [[key, value]] : [];
+    }));
+    const owned = input.owned;
+    if (owned && typeof owned === 'object') details.owned = {
+      ...(typeof owned.installed === 'boolean' ? { installed: owned.installed } : {}),
+      ...(owned.source && typeof owned.source === 'object' ? { source: { connected: owned.source.connected === true,
+        ...(typeof owned.source.reason === 'string' && /^[a-z_]{1,80}$/u.test(owned.source.reason) ? { reason: owned.source.reason } : {}) } } : {}),
+      ...(owned.desktop && typeof owned.desktop === 'object' ? { desktop: { available: owned.desktop.available === true,
+        taskConfigurationAvailable: owned.desktop.taskConfigurationAvailable === true,
+        modules: Object.fromEntries(['bootstrap', 'main', 'src', 'stdio', 'connection'].map(key => [key, owned.desktop.modules?.[key] === true])),
+        ...(typeof owned.desktop.reason === 'string' && /^[a-z_]{1,80}$/u.test(owned.desktop.reason) ? { reason: owned.desktop.reason } : {}) } } : {}),
+      ...(owned.backend && typeof owned.backend === 'object' ? { backend: { available: owned.backend.available === true,
+        ...(typeof owned.backend.reason === 'string' && /^[a-z_]{1,80}$/u.test(owned.backend.reason) ? { reason: owned.backend.reason } : {}) } } : {}),
+    };
+    if (Array.isArray(input.pauseReasons)) details.pauseReasonCount = Math.min(input.pauseReasons.length, 32);
+    if (Array.isArray(input.timings)) details.timings = input.timings.slice(-12).flatMap(value => methods.has(value?.method)
+      && Number.isSafeInteger(value.ms) && value.ms >= 0 ? [{ method: value.method, ms: Math.min(value.ms, 60000) }] : []);
+    if (Object.keys(details).length) wrapped.details = details;
+    throw wrapped;
+  }
 }

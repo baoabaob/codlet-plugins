@@ -106,7 +106,7 @@ var client_profiles_default = {
       appServerVersion: "0.155.0-alpha.9.2",
       navigation: true,
       runtimeSkill: true,
-      threadTransport: true,
+      threadConfiguration: true,
       officialUpdates: { stateSelector: "s7" },
       entry: "app://-/assets/index-399eac8299b8.js",
       module: "app://-/assets/app-initial-6c4523b43a11.js",
@@ -118,6 +118,27 @@ var client_profiles_default = {
         client: "app://-/assets/app-shared-8f4fbb856ceb.js",
         primary: "app://-/assets/app-initial-6c4523b43a11.js",
         exports: { react: "qB", dom: "jB", client: "AB", sidebar: "PS", headerInit: "a8", header: "i8", newTaskInit: "n1", newTask: "a1" }
+      }
+    },
+    {
+      appVersion: "26.917.51856",
+      buildNumber: "10492",
+      appServerVersion: "0.155.0-alpha.16",
+      navigation: true,
+      runtimeSkill: true,
+      threadConfiguration: true,
+      officialUpdates: { stateSelector: "Ket" },
+      entry: "app://-/assets/index-aa24a76f5d14.js",
+      module: "app://-/assets/app-initial-78d977413c37.js",
+      scopeModule: "app://-/assets/app-shared-4d3eb8fed85c.js",
+      postboxModule: "app://-/assets/app-shared-4d3eb8fed85c.js",
+      exports: { scope: "ZI", manager: "AZt", client: "jZt", services: "Tnt", postbox: "X3" },
+      page: {
+        react: "app://-/assets/app-shared-4d3eb8fed85c.js",
+        dom: "app://-/assets/app-shared-4d3eb8fed85c.js",
+        client: "app://-/assets/app-shared-4d3eb8fed85c.js",
+        primary: "app://-/assets/app-initial-78d977413c37.js",
+        exports: { react: "e6", dom: "P3", client: "N3", sidebar: "MC", headerInit: "T7", header: "w7", newTaskInit: "C2", newTask: "D2" }
       }
     }
   ]
@@ -133,45 +154,71 @@ function freeze(value) {
 }
 var CLIENT_PROFILES = freeze(client_profiles_default.builds);
 
-// src/desktop/transport.js
+// src/desktop/thread-configuration.js
 var fail = (code, message) => Object.assign(new Error(message), { code });
 var fields = (value, allowed) => {
-  if (!value || typeof value !== "object" || Array.isArray(value) || Object.keys(value).some((key) => !allowed.includes(key))) throw fail("invalid_argument", "Unexpected transport argument");
+  if (!value || typeof value !== "object" || Array.isArray(value) || Object.keys(value).some((key) => !allowed.includes(key))) throw fail("invalid_argument", "Unexpected task configuration field");
 };
 var text = (value, name, max = 256) => {
   if (typeof value !== "string" || !value.length || value.length > max || /[\u0000-\u001f\u007f]/u.test(value)) throw fail("invalid_argument", `Invalid ${name}`);
   return value;
 };
+var providerId = (value) => {
+  text(value, "provider id", 128);
+  if (!/^[A-Za-z0-9_-]+$/u.test(value)) throw fail("invalid_argument", "Invalid provider id");
+  return value;
+};
 var optional = (value) => typeof value === "string" ? value : null;
-function createThreadTransport({ check, owner, capability, client, build }) {
+var phases = Object.freeze(["thread.start", "thread.resume", "turn.start"]);
+var defaultPhases = Object.freeze(["thread.start", "thread.resume"]);
+function privateBaseUrl(value) {
+  let url;
+  try {
+    url = new URL(text(value, "provider base URL", 4096));
+  } catch {
+    throw fail("invalid_argument", "Invalid provider base URL");
+  }
+  if (url.protocol !== "http:" || !["127.0.0.1", "[::1]"].includes(url.hostname) || !url.port || url.username || url.password || url.hash || url.search || !/^\/(?:[A-Za-z0-9_-]+\/?)*$/u.test(url.pathname)) throw fail("invalid_argument", "A new provider requires a private loopback HTTP base URL");
+  return url.href.replace(/\/$/u, "");
+}
+function createThreadConfiguration({ check, owner, capability, client, build }) {
   const hooks = /* @__PURE__ */ new Map(), pending = /* @__PURE__ */ new Set();
   let alive = true, sequence = 0;
-  const supported = build.threadTransport === true;
+  const supported = build.threadConfiguration === true;
   const ordered = () => [...hooks.values()].sort((a, b) => a.priority - b.priority || a.pluginId.localeCompare(b.pluginId) || a.order - b.order);
-  const inspect = (hook) => ({ pluginId: hook.pluginId, generation: hook.generation, id: hook.id, enabled: hook.enabled, priority: hook.priority, timeoutMs: hook.timeoutMs, calls: hook.calls, applied: hook.applied, failures: hook.failures });
-  const probe = () => ({ available: alive && supported, protocol: "responses", protocols: ["http", "websocket"], appliesAt: ["thread.start", "thread.resume"], activeTurns: false, existingLoadedThreads: false, officialOAuth: false, hooks: hooks.size, pending: pending.size, unavailable: supported ? null : { code: "desktop_transport_unsupported", message: "Channel attachment is not verified for this client build" } });
+  const inspect = (hook) => ({ pluginId: hook.pluginId, generation: hook.generation, id: hook.id, enabled: hook.enabled, priority: hook.priority, timeoutMs: hook.timeoutMs, appliesAt: [...hook.appliesAt], calls: hook.calls, applied: hook.applied, failures: hook.failures });
+  const probe = () => ({
+    available: alive && supported,
+    appliesAt: [...phases],
+    existingLoadedThreads: true,
+    hooks: hooks.size,
+    pending: pending.size,
+    unavailable: supported ? null : { code: "desktop_configuration_unsupported", message: "Task configuration is not verified for this client build" }
+  });
   const assertReady = () => {
     check();
-    if (!alive) throw fail("adapter_deactivated", "Thread transport was deactivated");
-    if (!supported) throw fail("desktop_transport_unsupported", "Channel attachment is not verified for this client build");
+    if (!alive) throw fail("adapter_deactivated", "Task configuration was deactivated");
+    if (!supported) throw fail("desktop_configuration_unsupported", "Task configuration is not verified for this client build");
   };
-  function cancel(reason = fail("adapter_deactivated", "Thread transport was deactivated")) {
+  function cancel(reason = fail("adapter_deactivated", "Task configuration was deactivated")) {
     for (const item of pending) item.controller.abort(reason);
   }
   function register(ctx, options, handler) {
     assertReady();
-    fields(options, ["id", "priority", "timeoutMs", "enabled"]);
-    const principal = owner(ctx, capability), id = text(options.id, "transport id", 128);
+    fields(options, ["id", "priority", "timeoutMs", "enabled", "appliesAt"]);
+    const principal = owner(ctx, capability), id = text(options.id, "configuration id", 128);
     const key = `${principal.pluginId}:${principal.generation}:${id}`;
-    if (hooks.has(key)) throw fail("duplicate_interceptor", "Thread transport is already registered");
-    if (hooks.size >= 32 || typeof handler !== "function") throw fail("interceptor_limit", "Expected a callback and at most 32 thread transports");
+    if (hooks.has(key)) throw fail("duplicate_interceptor", "Task configuration is already registered");
+    if (hooks.size >= 32 || typeof handler !== "function") throw fail("interceptor_limit", "Expected a callback and at most 32 task configurations");
     const priority = options.priority ?? 0, timeoutMs = options.timeoutMs ?? 1e3;
-    if (!Number.isSafeInteger(priority) || Math.abs(priority) > 1e3 || !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 2e3 || options.enabled !== void 0 && typeof options.enabled !== "boolean") throw fail("invalid_argument", "Invalid thread transport limits");
-    const hook = { ...principal, id, key, handler, priority, timeoutMs, order: ++sequence, providerId: `codlet_${crypto.randomUUID().replaceAll("-", "")}`, active: true, enabled: options.enabled !== false, calls: 0, applied: 0, failures: 0 };
+    if (!Number.isSafeInteger(priority) || Math.abs(priority) > 1e3 || !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 2e3 || options.enabled !== void 0 && typeof options.enabled !== "boolean") throw fail("invalid_argument", "Invalid task configuration limits");
+    const appliesAt = options.appliesAt === void 0 ? defaultPhases : options.appliesAt;
+    if (!Array.isArray(appliesAt) || !appliesAt.length || appliesAt.some((phase) => !phases.includes(phase)) || new Set(appliesAt).size !== appliesAt.length) throw fail("invalid_argument", "Invalid task configuration phases");
+    const hook = { ...principal, id, key, handler, priority, timeoutMs, appliesAt: Object.freeze([...appliesAt]), order: ++sequence, providerId: `codlet_${crypto.randomUUID().replaceAll("-", "")}`, active: true, enabled: options.enabled !== false, calls: 0, applied: 0, failures: 0 };
     hooks.set(key, hook);
     let release;
     const cancelHook = () => {
-      for (const item of pending) if (item.hooks.includes(hook)) item.controller.abort(fail("transport_retired", "Thread transport retired before dispatch"));
+      for (const item of pending) if (item.hooks.includes(hook)) item.controller.abort(fail("configuration_retired", "Task configuration retired before dispatch"));
     };
     const dispose = () => {
       if (!hook.active) return;
@@ -190,94 +237,124 @@ function createThreadTransport({ check, owner, capability, client, build }) {
     return Object.freeze(Object.assign(dispose, {
       setEnabled(enabled) {
         assertReady();
-        if (!hook.active) throw fail("interceptor_retired", "Thread transport has retired");
+        if (!hook.active) throw fail("interceptor_retired", "Task configuration has retired");
         if (typeof enabled !== "boolean") throw fail("invalid_argument", "enabled must be boolean");
         hook.enabled = enabled;
         if (!enabled) cancelHook();
       },
       inspect() {
         assertReady();
-        if (!hook.active) throw fail("interceptor_retired", "Thread transport has retired");
+        if (!hook.active) throw fail("interceptor_retired", "Task configuration has retired");
         return inspect(hook);
       }
     }));
   }
   async function run(message, item) {
     const params = message.request.params;
-    if (!params || typeof params !== "object" || Array.isArray(params)) throw fail("desktop_transport_drift", "Native thread parameters changed");
-    const source = message.request.method === "thread/start" ? "thread.start" : "thread.resume";
-    if (source === "thread.resume") text(params.threadId, "threadId");
-    const draft = Object.freeze({ source, threadId: source === "thread.resume" ? params.threadId : null, cwd: optional(params.cwd), model: optional(params.model), provider: optional(params.modelProvider) });
+    if (!params || typeof params !== "object" || Array.isArray(params)) throw fail("desktop_configuration_drift", "Native task parameters changed");
+    const source = message.request.method.replace("/", ".");
+    if (source !== "thread.start") text(params.threadId, "threadId");
+    const draft = Object.freeze({
+      source,
+      threadId: source === "thread.start" ? null : params.threadId,
+      cwd: optional(params.cwd),
+      model: optional(params.model) ?? (source === "turn.start" ? optional(params.collaborationMode?.settings?.model) : null),
+      provider: optional(params.modelProvider)
+    });
     const deadline = Math.min(Date.now() + 5e3, Number.isFinite(message.expiresAtMs) ? message.expiresAtMs : Infinity);
     let chosen = null;
     for (const hook of item.hooks) {
       assertReady();
       const signal = item.controller.signal;
-      if (signal.aborted || !hook.active) throw signal.reason ?? fail("transport_retired", "Thread transport retired before dispatch");
+      if (signal.aborted || !hook.active) throw signal.reason ?? fail("configuration_retired", "Task configuration retired before dispatch");
       const budget = Math.min(hook.timeoutMs, deadline - Date.now());
-      if (budget < 1) throw fail("transport_timeout", "Thread transport deadline expired");
+      if (budget < 1) throw fail("configuration_timeout", "Task configuration deadline expired");
       let timer, abort;
       hook.calls++;
       try {
         const result = await new Promise((resolve, reject) => {
-          abort = () => reject(signal.reason ?? fail("transport_retired", "Thread transport retired"));
+          abort = () => reject(signal.reason ?? fail("configuration_retired", "Task configuration retired"));
           signal.addEventListener("abort", abort, { once: true });
-          timer = setTimeout(() => reject(fail("transport_timeout", "Thread transport callback timed out")), budget);
+          timer = setTimeout(() => reject(fail("configuration_timeout", "Task configuration callback timed out")), budget);
           Promise.resolve().then(() => hook.handler(draft, Object.freeze({ signal }))).then(resolve, reject);
         }).finally(() => {
           clearTimeout(timer);
           signal.removeEventListener("abort", abort);
         });
-        if (signal.aborted || !hook.active) throw signal.reason ?? fail("transport_retired", "Thread transport retired before dispatch");
+        if (signal.aborted || !hook.active) throw signal.reason ?? fail("configuration_retired", "Task configuration retired before dispatch");
         if (result == null) continue;
-        fields(result, ["channel", "path", "model"]);
-        if (!result.channel || typeof result.channel !== "object" || Array.isArray(result.channel)) throw fail("invalid_argument", "Expected a channel descriptor");
-        const baseUrl = text(result.channel.endpoint, "channel endpoint", 4096);
-        const protocols = result.channel.protocols;
-        if (!Array.isArray(protocols) || protocols.length < 1 || protocols.length > 2 || new Set(protocols).size !== protocols.length || protocols.some((value) => !["http", "websocket"].includes(value))) throw fail("invalid_argument", "A channel must declare HTTP and/or WebSocket support");
-        let url;
-        try {
-          url = new URL(baseUrl);
-        } catch {
-          throw fail("invalid_argument", "Invalid channel base URL");
+        fields(result, ["model", "modelProvider", "provider"]);
+        if (!Object.keys(result).length || result.modelProvider !== void 0 && result.provider !== void 0) throw fail("invalid_argument", "Select an existing provider or define one new provider");
+        if (source === "turn.start" && (result.modelProvider !== void 0 || result.provider !== void 0)) throw fail("configuration_turn_provider_unsupported", "A turn may only select its model");
+        if (source === "turn.start" && result.model === void 0) throw fail("invalid_argument", "A turn configuration requires a model");
+        const change = { hook };
+        if (result.model !== void 0) change.model = text(result.model, "model");
+        if (result.modelProvider !== void 0) change.modelProvider = providerId(result.modelProvider);
+        if (result.provider !== void 0) {
+          fields(result.provider, ["id", "baseUrl", "name", "supportsWebSockets"]);
+          const id = result.provider.id === void 0 ? hook.providerId : providerId(result.provider.id);
+          if (result.provider.supportsWebSockets !== void 0 && typeof result.provider.supportsWebSockets !== "boolean") throw fail("invalid_argument", "supportsWebSockets must be boolean");
+          change.modelProvider = id;
+          change.provider = {
+            name: result.provider.name === void 0 ? `Codlet ${hook.pluginId}` : text(result.provider.name, "provider name"),
+            base_url: privateBaseUrl(result.provider.baseUrl),
+            wire_api: "responses",
+            requires_openai_auth: false,
+            supports_websockets: result.provider.supportsWebSockets === true
+          };
         }
-        if (url.protocol !== "http:" || !["127.0.0.1", "[::1]"].includes(url.hostname) || !url.port || url.username || url.password || url.hash || url.search) throw fail("invalid_argument", "Thread transport requires an explicit loopback HTTP channel URL");
-        const path = result.path ?? "/v1";
-        if (typeof path !== "string" || path.length > 256 || path !== "" && !/^\/(?:[A-Za-z0-9_-]+\/?)*$/.test(path)) throw fail("invalid_argument", "Channel API path must be a plain absolute path");
-        if (chosen) throw fail("transport_conflict", "More than one plugin selected a channel for this thread request");
-        chosen = { hook, baseUrl: url.href.replace(/\/$/, "") + path.replace(/\/$/, ""), webSocket: protocols.includes("websocket"), model: result.model === void 0 ? void 0 : text(result.model, "model") };
+        if (chosen) throw fail("configuration_conflict", "More than one plugin configured this task request");
+        chosen = change;
       } catch (error) {
         hook.failures++;
-        const code = ["invalid_argument", "transport_timeout", "transport_retired", "transport_conflict", "adapter_deactivated", "desktop_transport_unsupported"].includes(error?.code) ? error.code : "transport_callback_failed";
+        const code = ["invalid_argument", "configuration_turn_provider_unsupported", "configuration_timeout", "configuration_retired", "configuration_conflict", "adapter_deactivated", "desktop_configuration_unsupported"].includes(error?.code) ? error.code : "configuration_callback_failed";
         throw fail(code, `${hook.pluginId}/${hook.id}: ${code}`);
       }
     }
     if (!chosen) return message;
+    if (source === "turn.start") {
+      const collaborationMode = params.collaborationMode;
+      if (collaborationMode != null && (typeof collaborationMode !== "object" || Array.isArray(collaborationMode) || !collaborationMode.settings || typeof collaborationMode.settings !== "object" || Array.isArray(collaborationMode.settings))) throw fail("desktop_configuration_drift", "Native collaboration mode changed");
+      const next2 = { ...message, request: { ...message.request, params: {
+        ...params,
+        model: chosen.model,
+        ...collaborationMode == null ? {} : { collaborationMode: { ...collaborationMode, settings: { ...collaborationMode.settings, model: chosen.model } } }
+      } } };
+      if (JSON.stringify(next2).length > 524288) throw fail("configuration_request_too_large", "Native turn request exceeds the adapter limit");
+      item.chosen = chosen.hook;
+      return next2;
+    }
     const config = params.config ?? {};
-    if (typeof config !== "object" || Array.isArray(config)) throw fail("desktop_transport_drift", "Native thread configuration changed");
-    const providerKey = `model_providers.${chosen.hook.providerId}`;
-    if (Object.prototype.hasOwnProperty.call(config, providerKey)) throw fail("transport_conflict", "Native configuration already owns this channel provider");
-    const next = { ...message, request: { ...message.request, params: { ...params, modelProvider: chosen.hook.providerId, config: { ...config, [providerKey]: { name: `Codlet ${chosen.hook.pluginId}`, base_url: chosen.baseUrl, wire_api: "responses", requires_openai_auth: false, supports_websockets: chosen.webSocket } }, ...chosen.model === void 0 ? {} : { model: chosen.model } } } };
-    if (JSON.stringify(next).length > 524288) throw fail("transport_request_too_large", "Native thread request exceeds the adapter limit");
+    if (typeof config !== "object" || Array.isArray(config)) throw fail("desktop_configuration_drift", "Native task configuration changed");
+    const providerKey = chosen.provider ? `model_providers.${chosen.modelProvider}` : null;
+    if (providerKey && Object.prototype.hasOwnProperty.call(config, providerKey)) throw fail("configuration_conflict", "Native configuration already owns this provider");
+    const next = { ...message, request: { ...message.request, params: {
+      ...params,
+      ...chosen.modelProvider === void 0 ? {} : { modelProvider: chosen.modelProvider },
+      ...chosen.model === void 0 ? {} : { model: chosen.model },
+      ...providerKey ? { config: { ...config, [providerKey]: chosen.provider } } : {}
+    } } };
+    if (JSON.stringify(next).length > 524288) throw fail("configuration_request_too_large", "Native task request exceeds the adapter limit");
     item.chosen = chosen.hook;
     return next;
   }
   function intercept(message, send) {
-    const selected = ordered().filter((hook) => hook.enabled);
+    const source = message.request.method.replace("/", ".");
+    const selected = ordered().filter((hook) => hook.enabled && hook.appliesAt.includes(source));
     if (!alive || !selected.length) return send(message);
     if (pending.size >= 16) {
-      client.onError(message.request.id, fail("transport_limit", "Too many pending thread transports"));
+      client.onError(message.request.id, fail("configuration_limit", "Too many pending task configurations"));
       return;
     }
     const item = { hooks: selected, controller: new AbortController(), chosen: null };
     pending.add(item);
     run(message, item).then((next) => {
       assertReady();
-      if (item.controller.signal.aborted || !client.requestPromises.has(message.request.id)) throw fail("transport_retired", "Native thread request retired before dispatch");
+      if (item.controller.signal.aborted || !client.requestPromises.has(message.request.id)) throw fail("configuration_retired", "Native task request retired before dispatch");
       send(next);
       if (item.chosen) item.chosen.applied++;
     }).catch((error) => {
-      if (client.requestPromises.has(message.request.id)) client.onError(message.request.id, fail(error.code ?? "transport_failed", error.message ?? "Thread transport failed"));
+      if (client.requestPromises.has(message.request.id)) client.onError(message.request.id, fail(error.code ?? "configuration_failed", error.message ?? "Task configuration failed"));
     }).finally(() => {
       pending.delete(item);
       item.controller.abort();
@@ -291,7 +368,7 @@ function createThreadTransport({ check, owner, capability, client, build }) {
     list(args = {}) {
       assertReady();
       fields(args, []);
-      return { interceptors: ordered().map(inspect) };
+      return { configurations: ordered().map(inspect) };
     },
     dispose() {
       if (!alive) return;
@@ -308,7 +385,7 @@ var BUILDS = CLIENT_PROFILES;
 var publicBuild = (build) => ({ appVersion: build.appVersion, buildNumber: build.buildNumber, appServerVersion: build.appServerVersion });
 var API_SYMBOL = "codlet.codex.desktop.v1";
 var cap = (name) => Object.freeze({ name, api: 1, scope: "target" });
-var CAPS = Object.freeze({ compatibility: cap("codex.desktop.compatibility"), submit: cap("codex.ui.preSubmit"), read: cap("codex.backend.read"), write: cap("codex.backend.write"), events: cap("codex.backend.events"), transport: cap("codex.backend.transport") });
+var CAPS = Object.freeze({ compatibility: cap("codex.desktop.compatibility"), submit: cap("codex.ui.preSubmit"), read: cap("codex.backend.read"), write: cap("codex.backend.write"), events: cap("codex.backend.events") });
 var fail2 = (code, message) => Object.assign(new Error(message), { code });
 var str = (value, name, max = 512) => {
   if (typeof value !== "string" || !value.length || value.length > max) throw fail2("invalid_argument", `${name} must be a nonempty string of at most ${max} characters`);
@@ -389,12 +466,18 @@ async function probeDesktop(loadModule = (source) => import(source), readyTimeou
     await probeTick(signal, Math.min(50, readyDeadline - Date.now()));
   }
   const module2 = await loadModule(build.module);
-  const transportModule = build.postboxModule ? await loadModule(build.postboxModule) : module2;
+  const imports = /* @__PURE__ */ new Map([[build.module, module2]]);
+  const additional = async (url) => {
+    if (!imports.has(url)) imports.set(url, await loadModule(url));
+    return imports.get(url);
+  };
+  const scopeModule = build.scopeModule ? await additional(build.scopeModule) : module2;
+  const transportModule = build.postboxModule ? await additional(build.postboxModule) : module2;
   let token, managerFamily, clientFamily, services, postbox, scope, manager, client;
   for (; ; ) {
     if (signal?.aborted) throw fail2("adapter_deactivated", "Desktop adapter was deactivated during initialization");
     try {
-      token = module2[build.exports.scope];
+      token = scopeModule[build.exports.scope];
       managerFamily = module2[build.exports.manager];
       clientFamily = module2[build.exports.client];
       services = module2[build.exports.services];
@@ -423,7 +506,7 @@ async function probeDesktop(loadModule = (source) => import(source), readyTimeou
     check() {
       if (validateDesktopBuild() !== build) throw fail2("desktop_build_drift", "Desktop build changed after adapter initialization");
       const current = locateScope(token);
-      if (current.node !== scope.node || module2[build.exports.scope] !== token || module2[build.exports.manager] !== managerFamily || module2[build.exports.client] !== clientFamily || module2[build.exports.services] !== services || transportModule[build.exports.postbox] !== postbox || !current.node.familyBindings.get(managerFamily)?.has("local") || !current.node.familyBindings.get(clientFamily)?.has("local") || managerFamily.read(current.node, current.chain, "local") !== manager || clientFamily.read(current.node, current.chain, "local") !== client || manager.requestClient !== client || client.getAppServerVersion() !== build.appServerVersion) throw fail2("desktop_connection_replaced", "Desktop connection changed; reload the adapter");
+      if (current.node !== scope.node || scopeModule[build.exports.scope] !== token || module2[build.exports.manager] !== managerFamily || module2[build.exports.client] !== clientFamily || module2[build.exports.services] !== services || transportModule[build.exports.postbox] !== postbox || !current.node.familyBindings.get(managerFamily)?.has("local") || !current.node.familyBindings.get(clientFamily)?.has("local") || managerFamily.read(current.node, current.chain, "local") !== manager || clientFamily.read(current.node, current.chain, "local") !== client || manager.requestClient !== client || client.getAppServerVersion() !== build.appServerVersion) throw fail2("desktop_connection_replaced", "Desktop connection changed; reload the adapter");
     }
   };
 }
@@ -595,7 +678,7 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
       throw error;
     }
   };
-  const status = () => ({ api: 1, initializing: false, available: unavailable === null, unavailable: unavailable ? { ...unavailable } : null, build: publicBuild(build), connection: "existing-desktop-local", transport: "existing-app-host-services-and-native-request-client", inputRewrite: true, contextInjection: true, presentationTransform: false, historyMutation: false, hooks: hooks.size, pendingSubmits: pendingSubmits.size, navigation: { available: navigation !== null && navigationFailure === null, unavailable: navigationFailure }, threadTransport: { ...threadTransport.probe(), available: unavailable === null && threadTransport.probe().available } });
+  const status = () => ({ api: 1, initializing: false, available: unavailable === null, unavailable: unavailable ? { ...unavailable } : null, build: publicBuild(build), connection: "existing-desktop-local", transport: "existing-app-host-services-and-native-request-client", inputRewrite: true, contextInjection: true, presentationTransform: false, historyMutation: false, hooks: hooks.size, pendingSubmits: pendingSubmits.size, navigation: { available: navigation !== null && navigationFailure === null, unavailable: navigationFailure }, threadConfiguration: { ...threadConfiguration.probe(), available: unavailable === null && threadConfiguration.probe().available } });
   const emit = (event) => {
     if (!alive) return;
     const value = freeze2({ ...copy(event), cursor: `${instance}:${++sequence}` });
@@ -615,13 +698,13 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
   function markUnavailable(error) {
     if (unavailable) return;
     unavailable = { code: error.code ?? "desktop_schema_drift", message: optionalText(error.message) ?? "Desktop schema changed; reload or update the adapter" };
-    for (const capability of [CAPS.submit, CAPS.read, CAPS.write, CAPS.transport]) context.rpc.unavailable(capability, `${unavailable.code}: ${unavailable.message}`.slice(0, 1024));
+    for (const capability of [CAPS.submit, CAPS.read, CAPS.write]) context.rpc.unavailable(capability, `${unavailable.code}: ${unavailable.message}`.slice(0, 1024));
     try {
       context.reportDiagnostic({ code: unavailable.code, message: unavailable.message });
     } catch {
     }
     for (const pending of pendingSubmits) pending.controller.abort(fail2("capability_unavailable", unavailable.message));
-    threadTransport.cancel(fail2("capability_unavailable", unavailable.message));
+    threadConfiguration.cancel(fail2("capability_unavailable", unavailable.message));
     emit({ type: "adapter.drift", ...unavailable });
   }
   function mapped(convert) {
@@ -663,7 +746,7 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
     if (!ctx || ctx.world !== "main" || typeof ctx.onDeactivate !== "function" || typeof ctx.pluginId !== "string" || !Number.isSafeInteger(ctx.generation)) throw fail2("invalid_owner", "Callback registration requires its live main-world RendererContext");
     return { pluginId: ctx.pluginId, generation: ctx.generation, capability };
   };
-  const threadTransport = createThreadTransport({ check, owner, capability: CAPS.transport, client, build });
+  const threadConfiguration = createThreadConfiguration({ check, owner, capability: CAPS.write, client, build });
   function navigationUnavailable(error) {
     if (navigationFailure) return;
     navigationFailure = { code: error.code ?? "desktop_navigation_unavailable", message: optionalText(error.message) ?? "Desktop navigation is unavailable" };
@@ -764,7 +847,11 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
     }));
   }
   function intercept(message, ...rest) {
-    if (alive && message?.type === "mcp-request" && message.hostId === "local" && ["thread/start", "thread/resume"].includes(message.request?.method)) return threadTransport.intercept(message, (next) => originalPost.call(this, next, ...rest));
+    if (alive && message?.type === "mcp-request" && message.hostId === "local" && ["thread/start", "thread/resume"].includes(message.request?.method)) return threadConfiguration.intercept(message, (next) => originalPost.call(this, next, ...rest));
+    if (alive && message?.type === "mcp-request" && message.hostId === "local" && message.request?.method === "turn/start") return threadConfiguration.intercept(message, (next) => interceptSubmit.call(this, next, ...rest));
+    return originalPost.call(this, message, ...rest);
+  }
+  function interceptSubmit(message, ...rest) {
     if (!alive || message?.type !== "mcp-request" || message.hostId !== "local" || message.request?.method !== "turn/start") return originalPost.call(this, message, ...rest);
     const submission = submissions.get(message.request.params?.clientUserMessageId);
     if (submission?.signal?.aborted || pendingSubmits.size >= 16) {
@@ -1128,9 +1215,9 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
       claimTicket(ctx, ticket, CAPS.submit);
       return registerPreSubmit(ctx, options, handler);
     },
-    registerThreadTransport(ctx, ticket, options, handler) {
-      claimTicket(ctx, ticket, CAPS.transport);
-      return threadTransport.register(ctx, options, handler);
+    registerThreadConfiguration(ctx, ticket, options, handler) {
+      claimTicket(ctx, ticket, CAPS.write);
+      return threadConfiguration.register(ctx, options, handler);
     },
     onEvent(ctx, ticket, handler) {
       claimTicket(ctx, ticket, CAPS.events);
@@ -1140,11 +1227,11 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
   const api = Object.freeze({ api: 1, status: () => {
     check();
     return status();
-  }, read, write, readEvents, onEvent, registerPreSubmit, listInterceptors, registerThreadTransport: threadTransport.register });
+  }, read, write, readEvents, onEvent, registerPreSubmit, listInterceptors, registerThreadConfiguration: threadConfiguration.register });
   function dispose() {
     if (!alive) return reloadReason ? { reloadRequired: true, reason: reloadReason } : void 0;
     alive = false;
-    threadTransport.dispose();
+    threadConfiguration.dispose();
     for (const pending of pendingSubmits) pending.controller.abort(fail2("adapter_deactivated", "Desktop adapter was deactivated"));
     for (const hook of hooks.values()) hook.active = false;
     hooks.clear();
@@ -1200,13 +1287,8 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
     if (!compatibilityProvided) context.rpc.provide(CAPS.compatibility, "probe", inspect);
     context.rpc.provide(CAPS.submit, "getApi", (_args, invocation) => issueTicket(CAPS.submit, invocation));
     context.rpc.provide(CAPS.submit, "interceptors.list", (args) => listInterceptors(args));
-    context.rpc.provide(CAPS.transport, "probe", (args) => {
-      check();
-      fields2(args ?? {}, []);
-      return threadTransport.probe();
-    });
-    context.rpc.provide(CAPS.transport, "getApi", (_args, invocation) => issueTicket(CAPS.transport, invocation));
-    context.rpc.provide(CAPS.transport, "interceptors.list", (args) => threadTransport.list(args ?? {}));
+    context.rpc.provide(CAPS.write, "getApi", (_args, invocation) => issueTicket(CAPS.write, invocation));
+    context.rpc.provide(CAPS.write, "configurations.list", (args) => threadConfiguration.list(args ?? {}));
     for (const method of ["selection.get", "threads.list", "threads.get", "turns.list", "items.list", "models.list", "skills.list", "providers.list", "approvals.list"]) context.rpc.provide(CAPS.read, method, (args, invocation) => read(method, args ?? {}, invocation.signal));
     for (const method of ["threads.open", "turns.start", "turns.steer", "turns.interrupt", "approvals.respond"]) context.rpc.provide(CAPS.write, method, (args, invocation) => write(method, args ?? {}, invocation.signal));
     context.rpc.provide(CAPS.events, "read", (args, invocation) => readEvents(args ?? {}, invocation.signal));
@@ -1222,7 +1304,7 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
 function startAdapter(context, probe = (signal) => probeDesktop(void 0, 3e4, signal)) {
   let alive = true, inner, failure = null, settled = false;
   const controller = new AbortController(), waits = /* @__PURE__ */ new Set();
-  for (const capability of [CAPS.submit, CAPS.read, CAPS.write, CAPS.events, CAPS.transport]) context.rpc.unavailable(capability, "Desktop adapter is waiting for the existing app-host services");
+  for (const capability of [CAPS.submit, CAPS.read, CAPS.write, CAPS.events]) context.rpc.unavailable(capability, "Desktop adapter is waiting for the existing app-host services");
   const status = () => {
     if (!alive) throw fail2("adapter_deactivated", "Desktop adapter was deactivated");
     if (inner) return inner.probe();
@@ -1271,7 +1353,7 @@ function startAdapter(context, probe = (signal) => probeDesktop(void 0, 3e4, sig
   }).catch((error) => {
     if (!alive) return;
     failure = { code: error.code ?? "desktop_initialization_failed", message: optionalText(error.message) ?? "Desktop adapter initialization failed" };
-    for (const capability of [CAPS.submit, CAPS.read, CAPS.write, CAPS.events, CAPS.transport]) context.rpc.unavailable(capability, `${failure.code}: ${failure.message}`.slice(0, 1024));
+    for (const capability of [CAPS.submit, CAPS.read, CAPS.write, CAPS.events]) context.rpc.unavailable(capability, `${failure.code}: ${failure.message}`.slice(0, 1024));
     try {
       context.reportDiagnostic({ code: failure.code, message: failure.message });
     } catch {

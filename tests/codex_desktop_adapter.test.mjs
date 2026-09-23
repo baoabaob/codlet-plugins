@@ -204,7 +204,7 @@ test('bounded event stream preserves UI ids, reports overflow, cancels waits, an
 test('public page API exposes only callbacks and requires one-use tickets from the declared Core capability', () => {
     const f = fixture(), owner = f.owner('consumer'), other = f.owner('other');
     const exposed = f.scope[Symbol.for('codlet.codex.desktop.v1')];
-    assert.deepEqual(Object.keys(exposed).sort(), ['api', 'onEvent', 'registerPreSubmit', 'registerThreadTransport']);
+    assert.deepEqual(Object.keys(exposed).sort(), ['api', 'onEvent', 'registerPreSubmit', 'registerThreadConfiguration']);
     const ticket = f.endpoints.get('codex.ui.preSubmit:getApi')({}, { caller: { pluginId: 'consumer', generation: 1 } }).ticket;
     assert.throws(() => exposed.registerPreSubmit(other.ctx, ticket, { id: 'test' }, () => {}), { code: 'api_ticket_retired' });
     assert.throws(() => exposed.onEvent(owner.ctx, ticket, () => {}), { code: 'api_ticket_retired' });
@@ -384,6 +384,35 @@ test('each reviewed profile waits for live exports, reuses its initialized conne
         scope.electronBridge.getSentryInitOptions = () => ({ appVersion: build.appVersion, buildNumber: 'changed' });
         assert.throws(() => connection.check(), { code: 'desktop_build_drift' });
     }
+});
+
+test('current reviewed build reads AppScope and postbox from one shared module', async () => {
+    const scope = vm.createContext({ module: { exports: {} }, setTimeout, clearTimeout, location: { origin: 'app://-', pathname: '/index.html' } });
+    vm.runInContext(source, scope);
+    const native = vm.runInContext(`(() => {
+        const build = BUILDS.at(-1), token = { id: 'AppScope' };
+        const client = { requestPromises: new Map(), getAppServerVersion: () => build.appServerVersion, onError() {} };
+        const manager = { requestClient: client, getHostId: () => 'local' };
+        for (const name of ['sendRequest', 'getConversation', 'getStreamRole', 'addNotificationCallback', 'addConversationStateCallback', 'replyWithCommandExecutionApprovalDecision', 'replyWithFileChangeApprovalDecision', 'replyWithPermissionsRequestApprovalResponse', 'replyWithUserInputResponse']) manager[name] = () => {};
+        const managerFamily = { read: () => manager }, clientFamily = { read: () => client };
+        const node = { token, store: {}, familyBindings: new Map([[managerFamily, new Map([['local', {}]])], [clientFamily, new Map([['local', {}]])]]) };
+        const root = { __reactContainer$test: { memoizedProps: { value: new Map([[token.id, node]]) } } };
+        globalThis.document = { scripts: [{ src: build.entry }], getElementById: () => root };
+        globalThis.electronBridge = { getSentryInitOptions: () => build, sendMessageFromView() {} };
+        return { build, appModule: { [build.exports.manager]: managerFamily, [build.exports.client]: clientFamily, [build.exports.services]: {} },
+            shared: { [build.exports.scope]: token, [build.exports.postbox]: { postMessage() {} } } };
+    })()`, scope);
+    const imports = [];
+    const connection = await vm.runInContext('probeDesktop', scope)(async resource => {
+        imports.push(resource);
+        return resource === native.build.module ? native.appModule : resource === native.build.scopeModule ? native.shared : null;
+    }, 500);
+    assert.deepEqual(imports, [native.build.module, native.build.scopeModule]);
+    assert.equal(native.build.scopeModule, native.build.postboxModule);
+    assert.equal(connection.build, native.build);
+    connection.check();
+    native.shared[native.build.exports.postbox] = { postMessage() {} };
+    assert.throws(() => connection.check(), { code: 'desktop_connection_replaced' });
 });
 
 function latestProbeFixture() {

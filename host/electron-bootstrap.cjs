@@ -5,16 +5,16 @@ const { randomBytes } = require('node:crypto');
 const fail = code => Object.assign(new Error(code), { code });
 function diagnosticSnapshot(value) {
   if (!value || typeof value !== 'object') return null;
-  const count = value => Number.isSafeInteger(value) && value >= 0 ? Math.min(value, 1000000) : 0;
   const code = value => typeof value === 'string' && /^[a-z_]{1,80}$/u.test(value) ? value : null;
-  const result = { installed: value.installed === true, available: value.available === true, configuredSessions: count(value.configuredSessions), reason: code(value.reason) };
-  if (value.backend) result.backend = Object.fromEntries(['backendRootsPrepared', 'backendRootsDeclined', 'codeModeSidecars', 'mcpWrappers'].map(key => [key, count(value.backend[key])]));
-  if (value.apiNames && typeof value.apiNames === 'object') {
-    const names = values => Array.isArray(values) ? values.filter(name => typeof name === 'string' && name.length <= 128).slice(0, 150) : [];
-    result.apiNames = { exports: names(value.apiNames.exports) };
-    for (const key of ['app', 'session', 'net', 'applicationNetwork']) result.apiNames[key] = { own: names(value.apiNames[key]?.own), prototype: names(value.apiNames[key]?.prototype) };
-  }
-  return result;
+  return { installed: value.installed === true,
+    source: value.source && { connected: value.source.connected === true, reason: code(value.source.reason) },
+    desktop: value.desktop && { available: value.desktop.available === true, taskConfigurationAvailable: value.desktop.taskConfigurationAvailable === true,
+      taskConfigurationReason: code(value.desktop.taskConfigurationReason),
+      modules: Object.fromEntries(['bootstrap', 'main', 'src', 'stdio', 'connection'].map(name => [name, value.desktop.modules?.[name] === true])),
+      mismatch: /^[A-Za-z0-9_.-]{1,100}$/u.test(value.desktop.mismatch?.name) && /^[a-f0-9]{64}$/u.test(value.desktop.mismatch?.observedSha256)
+        ? { name: value.desktop.mismatch.name, observedSha256: value.desktop.mismatch.observedSha256 } : null,
+      reason: code(value.desktop.reason) },
+    backend: value.backend && { available: value.backend.available === true, reason: code(value.backend.reason) } };
 }
 
 // Native starts ONE owned client with --inspect-brk=127.0.0.1:0 and supplies
@@ -27,7 +27,8 @@ async function attachElectronTrafficBeforeEntry({ inspectorUrl, expectedPid, exe
   if (signal?.aborted) throw fail('main_bootstrap_cancelled');
   const deadlineUnixMs = Date.now() + 10000;
   const canonical = fs.realpathSync(executable), token = randomBytes(24).toString('hex');
-  const source = mainSource ?? fs.readFileSync(path.join(__dirname, 'electron-traffic.cjs'), 'utf8');
+  if (typeof mainSource !== 'string' || !mainSource) throw fail('launch_bundle_required');
+  const source = mainSource;
   const socket = new WebSocketClass(url.href), pending = new Map(); let sequence = 0, paused, pauseResolve, pauseReject, stage = 'connect';
   const pauseReasons = [], timings = [];
   const pause = new Promise((resolve, reject) => { pauseResolve = resolve; pauseReject = reject; });
@@ -63,8 +64,8 @@ async function attachElectronTrafficBeforeEntry({ inspectorUrl, expectedPid, exe
     await new Promise((resolve, reject) => { socket.addEventListener('open', resolve, { once: true }); socket.addEventListener('error', () => reject(fail('main_bootstrap_connect_failed')), { once: true }); socket.addEventListener('close', () => reject(fail('main_bootstrap_connect_failed')), { once: true }); });
     stage = 'pause'; await request('Debugger.enable'); await request('Runtime.runIfWaitingForDebugger');
     const frame = (await pause)?.callFrames?.[0]; if (!frame) throw fail('main_bootstrap_not_paused');
-    // Bind before injecting any configuration, so a stale/wrong peer never
-    // receives the authenticated proxy or the private launch descriptor.
+    // Bind before injecting the private source descriptor. A stale or wrong
+    // debugger peer never receives its bearer token.
     stage = 'identity';
     const identity = await request('Debugger.evaluateOnCallFrame', { callFrameId: frame.callFrameId, expression: `({pid:process.pid,executable:require('node:fs').realpathSync(process.execPath),type:process.type,ready:require('electron').app.isReady(),electronVersion:process.versions.electron,chromeVersion:process.versions.chrome,nodeVersion:process.versions.node})`, returnByValue: true });
     const value = identity.result?.value;
@@ -75,7 +76,7 @@ async function attachElectronTrafficBeforeEntry({ inspectorUrl, expectedPid, exe
     if (installed.exceptionDetails || installed.result?.value?.installed !== true || installed.result.value.pid !== expectedPid) throw fail('main_bootstrap_install_failed');
     stage = 'resume'; await request('Debugger.resume');
     stage = 'ready';
-    let ready;
+    let ready, lastOwned = null, polls = 0;
     try {
       const resultKey = JSON.stringify(`codlet.private.main-traffic-result.${token}`);
       await request('Runtime.evaluate', { expression: `(() => { const key=Symbol.for(${resultKey}); globalThis[key]={pending:true}; globalThis[Symbol.for(${JSON.stringify(`codlet.private.main-traffic.${token}`)})].ready().then(value=>{globalThis[key]={value}},error=>{globalThis[key]={error:/^[a-z_]{1,80}$/.test(error?.code)?error.code:'main_bootstrap_session_failed'}}); return true; })()`, returnByValue: true });
@@ -84,25 +85,26 @@ async function attachElectronTrafficBeforeEntry({ inspectorUrl, expectedPid, exe
         const result = receipt.result?.value;
         if (receipt.exceptionDetails || result?.error) throw fail(result?.error ?? 'main_bootstrap_session_failed');
         if (result?.value) { ready = { result: { value: result.value } }; break; }
+        if (++polls % 16 === 0) {
+          const status = await request('Runtime.evaluate', { expression: `globalThis[Symbol.for(${JSON.stringify(`codlet.private.main-traffic.${token}`)})].inspect()`, returnByValue: true }).catch(() => null);
+          lastOwned = diagnosticSnapshot(status?.result?.value) ?? lastOwned;
+        }
         await new Promise(resolve => setTimeout(resolve, 25));
       }
       await request('Runtime.evaluate', { expression: `delete globalThis[Symbol.for(${resultKey})]`, returnByValue: true });
     }
     catch (error) {
       const status = await request('Runtime.evaluate', { expression: `globalThis[Symbol.for(${JSON.stringify(`codlet.private.main-traffic.${token}`)})].inspect()`, returnByValue: true }).catch(() => null);
-      error.details = { stage, ...(error.details ?? {}), runtime: { electron: value.electronVersion, chrome: value.chromeVersion, node: value.nodeVersion }, owned: diagnosticSnapshot(status?.result?.value), pauseReasons, timings: timings.slice(-12) }; throw error;
+      error.details = { stage, ...(error.details ?? {}), runtime: { electron: value.electronVersion, chrome: value.chromeVersion, node: value.nodeVersion }, owned: lastOwned ?? diagnosticSnapshot(status?.result?.value), pauseReasons, timings: timings.slice(-12) }; throw error;
     }
-    if (ready.exceptionDetails || !(ready.result?.value?.configuredSessions > 0)) throw fail('main_bootstrap_session_failed');
+    if (ready.exceptionDetails || typeof ready.result?.value?.installed !== 'boolean' || !Array.isArray(ready.result.value.activatedSources)
+      || !Array.isArray(ready.result.value.unsupportedSources)) throw fail('main_bootstrap_source_unavailable');
     // Detach and close the Node inspector immediately after the handshake.
     stage = 'detach';
     const detached = await request('Runtime.evaluate', { expression: `globalThis[Symbol.for(${JSON.stringify(`codlet.private.main-traffic.${token}`)})].closeInspector()`, returnByValue: true });
     if (detached.exceptionDetails || detached.result?.value !== true) throw fail('main_bootstrap_detach_failed');
-    return Object.freeze({ installed: true, exactChildVerified: true, configuredSessions: ready.result.value.configuredSessions,
-      runtime: { electron: value.electronVersion, chrome: value.chromeVersion, node: value.nodeVersion },
-      backendRootsPrepared: ready.result.value.backend?.backendRootsPrepared ?? 0,
-      backendRootsDeclined: ready.result.value.backend?.backendRootsDeclined ?? 0,
-      ...(ready.result.value.acceptance ? { acceptance: ready.result.value.acceptance } : {}),
-      desktopTrafficVerified: false, reason: 'real_request_acceptance_required' });
+    return Object.freeze({ installed: ready.result.value.installed, exactChildVerified: true,
+      activatedSources: ready.result.value.activatedSources, unsupportedSources: ready.result.value.unsupportedSources });
   } finally { clearTimeout(timer); signal?.removeEventListener('abort', stop); stop(); }
 }
 module.exports = { attachElectronTrafficBeforeEntry };

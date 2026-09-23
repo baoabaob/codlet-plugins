@@ -1,152 +1,756 @@
-// Explicit opt-in, no-account developer acceptance. Never copies a user profile.
+// Fixed acceptance of the packaged Desktop Adapter on one isolated official
+// Desktop child. Every service and network destination is loopback-only.
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
-import diagnostics from 'node:diagnostics_channel';
+import { gunzipSync, gzipSync, zstdCompressSync, zstdDecompressSync } from 'node:zlib';
+import { createHash } from 'node:crypto';
 import { spawn, execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+
 const require = createRequire(import.meta.url);
 const root = fileURLToPath(new URL('../', import.meta.url));
+const defaultBackendHash = '97d4d67419d0ac2f71342f9a5e850f9468aa622618de8ea823223edb9a91926a';
+const originalRequest = 'codlet-original-request';
+const modifiedRequest = 'codlet-modified-request';
+const originalResponse = 'codlet-original-response';
+const modifiedResponse = 'codlet-modified-response';
+const routedModel = 'codlet-routed-model';
 const options = {};
-for (let i = 2; i < process.argv.length; i += 2) options[process.argv[i]] = process.argv[i + 1];
-if (options['--run-owned'] !== 'yes' || process.platform !== 'win32') throw new Error('explicit_windows_owned_test_required');
-const executable = options['--executable'], backend = options['--backend'], core = options['--core'];
-if (![executable, backend, core].every(value => path.isAbsolute(value ?? ''))) throw new Error('absolute_test_paths_required');
-const { createTrafficRuntime } = require(path.join(core, 'runtime/host-traffic-bundle.cjs'));
-const adapter = require('../bundled/codex-desktop-adapter/host.cjs');
-const { WebSocketServer } = require('../frontend/node_modules/ws');
-const powershell = path.join(process.env.SYSTEMROOT, 'System32/WindowsPowerShell/v1.0/powershell.exe');
-function ps(script, env = {}) {
-  return execFileSync(powershell, ['-NoProfile', '-NonInteractive', '-Command', script], { env: { ...process.env, ...env }, windowsHide: true, encoding: 'utf8', timeout: 10000 }).trim();
+for (let index = 2; index < process.argv.length; index += 2) {
+  const key = process.argv[index], value = process.argv[index + 1];
+  if (!['--run-owned', '--executable', '--backend', '--backend-sha256', '--core', '--protocol', '--bootstrap-bundle', '--main-bundle', '--app-server-module', '--fetch-wrapper-symbol', '--application-network-factory'].includes(key) || value == null || options[key] !== undefined) {
+    process.stdout.write(JSON.stringify({ failure: 'invalid_arguments' }) + '\n');
+    process.exitCode = 1;
+    process.exit();
+  }
+  options[key] = value;
 }
-function snapshot() {
-  const text = ps("Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,ExecutablePath,@{n='Created';e={$_.CreationDate.ToUniversalTime().ToString('o')}} | ConvertTo-Json -Compress");
-  return text ? JSON.parse(text) : [];
+
+const codeOf = error => typeof error?.code === 'string' && /^[a-z_]{1,80}$/u.test(error.code) ? error.code : 'owned_acceptance_failed';
+const failure = code => Object.assign(new Error(code), { code });
+const sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
+const canonicalPath = value => path.win32.normalize(value).replace(/^\\\\\?\\/u, '').toLowerCase();
+const safeInteger = value => Number.isSafeInteger(value) && value >= 0 ? value : 0;
+const safeBundleName = value => typeof value === 'string' && /^[A-Za-z0-9_.-]{1,180}\.js$/u.test(value);
+const expectedBackendHash = options['--backend-sha256'] ?? defaultBackendHash;
+const normalizeOrigin = value => {
+  const url = new URL(value);
+  if (url.protocol === 'ws:') url.protocol = 'http:';
+  if (url.protocol === 'wss:') url.protocol = 'https:';
+  return url.origin;
+};
+
+function parseModel(value) {
+  try { return JSON.parse(value); } catch { return null; }
 }
-const before = snapshot(), lifetime = new AbortController(), owned = new Map();
-const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'codlet-official-main-'));
-let child, runtime, ingress, ws, server, inspectorUrl, rootIdentity;
-const report = { schema: 1, kind: 'official-main-owned-no-auth', installed: false, originalProcessesUnchanged: false, fixture: { http: 0, websocket: 0 }, externalRequestsForwarded: 0, cleanup: false };
-function capture() {
-  const processes = snapshot();
-  const current = new Map(processes.map(value => [value.ProcessId, value]));
-  if (!child) return processes;
-  let changed = true;
-  while (changed) {
-    changed = false;
-    for (const process of processes) {
-      if (owned.has(process.ProcessId)) continue;
-      if (process.ProcessId === child.pid) {
-        if (rootIdentity && rootIdentity.Created !== process.Created) continue;
-      } else {
-        const parent = owned.get(process.ParentProcessId);
-        if (!parent || current.get(parent.ProcessId)?.Created !== parent.Created) continue;
-      }
-      if (before.some(old => old.ProcessId === process.ProcessId && old.Created === process.Created)) continue;
-      owned.set(process.ProcessId, process); changed = true;
+function rewriteModel(value) {
+  let changed = false;
+  function visit(item, depth) {
+    if (!item || typeof item !== 'object' || depth > 32) return;
+    for (const key of Object.keys(item).slice(0, 2000)) {
+      if (key === 'model' && typeof item[key] === 'string' && item[key] !== routedModel) { item[key] = routedModel; changed = true; }
+      else visit(item[key], depth + 1);
     }
   }
-  return processes;
+  visit(value, 0);
+  return changed;
 }
-try {
-  const [cert, key, ca] = await Promise.all(['cert.pem', 'key.pem', 'ca.pem'].map(name => fs.readFile(path.join(core, 'tests/fixtures/process-traffic', name), 'utf8')));
-  server = http.createServer(); ws = new WebSocketServer({ server });
-  ws.on('connection', socket => socket.on('message', (data, binary) => socket.send(data, { binary })));
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  runtime = createTrafficRuntime({ rootSignal: lifetime.signal, makeError: (code, message) => Object.assign(new Error(message), { code }),
-    coreRequest: async (method, params) => {
-      if (method === 'host.network.authorizeChannel') return {};
-      if (method === 'host.network.authorizeForward' && params.url === `ws://127.0.0.1:${server.address().port}/fixture`) return { url: params.url };
-      throw Object.assign(new Error('fixture_only'), { code: 'permission_denied' });
-    },
-  });
-  ingress = await runtime.openProcessIngress({}, {
-    http(request) { report.fixture.http++; const name = ['net-http', 'net-https', 'session-https'].find(value => new URL(request.url).pathname === '/' + value) ?? 'other'; (report.fixture.routes ??= {})[name] = ((report.fixture.routes ?? {})[name] ?? 0) + 1; return { status: 200, headers: [['content-type', 'text/plain'], ['access-control-allow-origin', '*']], body: 'owned-fixture-response' }; },
-    webSocket(request, exchange) { report.fixture.websocket++; return exchange.forward({ url: `ws://127.0.0.1:${server.address().port}/fixture`, clientToServer: frame => frame, serverToClient: frame => frame }); },
-  }, { origins: ['http://codlet-probe.invalid', 'https://codlet-probe.invalid', 'http://localhost:32101', 'https://localhost:32102', 'http://api.openai.com', 'https://api.openai.com', 'https://chatgpt.com'], certificateFor: () => ({ cert, key }) });
-  diagnostics.channel('http.server.request.start').subscribe(({ request }) => { if (request.socket.localPort === Number(new URL(ingress.proxyUrl).port)) { report.fixture.rawHttp = (report.fixture.rawHttp ?? 0) + 1; report.fixture.authPresent = (report.fixture.authPresent ?? 0) + (request.headers['proxy-authorization'] ? 1 : 0); } });
-  const trustDirectory = path.join(directory, 'process-trust-fixture'); await fs.mkdir(trustDirectory);
-  const bundlePath = path.join(trustDirectory, 'ca.pem'); await fs.writeFile(bundlePath, ca);
-  const patch = { set: Object.fromEntries(['HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'http_proxy', 'https_proxy', 'all_proxy'].map(name => [name, ingress.proxyUrl])), removeCaseInsensitive: ['http_proxy', 'https_proxy', 'all_proxy', 'codex_ca_certificate'] };
-  patch.set.CODEX_CA_CERTIFICATE = bundlePath;
-  const traffic = { proxyUrl: ingress.proxyUrl, bundlePath, environmentPatch: patch, trust: { launchCaPem: ca, outputs: ['CODEX_CA_CERTIFICATE'] } };
-  const originalEnvironment = Object.fromEntries(Object.entries(process.env).filter(([name]) => /^(PATH|SYSTEMROOT|WINDIR|COMSPEC|PATHEXT|PROCESSOR_ARCHITECTURE|NUMBER_OF_PROCESSORS|PROGRAMFILES|PROGRAMFILES\(X86\)|PROGRAMW6432|USERDOMAIN|USERNAME)$/iu.test(name)));
-  for (const [name, relative] of Object.entries({ CODEX_ELECTRON_USER_DATA_PATH: 'user-data', CODEX_HOME: 'codex-home', CODEX_SQLITE_HOME: 'sqlite', HOME: 'home', USERPROFILE: 'home', APPDATA: 'home/AppData/Roaming', LOCALAPPDATA: 'home/AppData/Local', TEMP: 'temp', TMP: 'temp' })) {
-    originalEnvironment[name] = path.join(directory, relative); await fs.mkdir(originalEnvironment[name], { recursive: true });
-  }
-  Object.assign(originalEnvironment, { CODEX_CLI_PATH: backend, BUILD_FLAVOR: 'dev', CODEX_SPARKLE_ENABLED: 'false', CODEX_ELECTRON_PRIMARY_RUNTIME_UPDATE_MODE: 'manual',
-    CODEX_ELECTRON_DESKTOP_FEATURE_OVERRIDES: JSON.stringify({ externalBrowserUseAllowed: false, externalBrowserUse: false, inAppBrowserUseAllowed: false, inAppBrowserUse: false, browserExtensions: false, browserPane: false, computerUse: false, computerUseAutoInstall: false, computerUseNodeRepl: false, browserUseTinysky: false, appshotsEnabled: false, quickChat: false, sites: false, autoAuthForSites: false, control: false, skysight: false, recordAndReplay: false }) });
-  await fs.writeFile(path.join(originalEnvironment.CODEX_HOME, 'config.toml'), 'cli_auth_credentials_store="file"\nsandbox_mode="read-only"\n[analytics]\nenabled=false\n[mcp_servers.codex_app]\ncommand=""\nenabled=false\n');
-  const prepared = await adapter.prepareClientLaunch({ traffic, originalEnvironment, signal: lifetime.signal });
-  child = spawn(executable, [...prepared.arguments, `--user-data-dir=${originalEnvironment.CODEX_ELECTRON_USER_DATA_PATH}`, '--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1, EXCLUDE localhost', '--disable-background-networking', '--no-first-run', '--disable-default-apps'], {
-    env: { ...originalEnvironment, ...patch.set }, cwd: directory, windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'] });
-  const debuggerReady = new Promise((resolve, reject) => {
-    let bytes = ''; const timer = setTimeout(() => reject(Object.assign(new Error('inspector_not_listening'), { code: 'inspector_not_listening' })), 8000);
-    child.once('error', () => { clearTimeout(timer); reject(Object.assign(new Error('spawn_failed'), { code: 'spawn_failed' })); });
-    child.stderr.on('data', chunk => {
-      const text = chunk.toString();
-      for (const code of ['backend_config_unavailable','backend_config_timeout','code_mode_start_timeout','code_mode_build_unverified','backend_launch_not_observed','backend_tool_environment_unsupported','SyntaxError','ReferenceError','TypeError','Error:']) if (text.includes(code)) (report.startupErrorKinds ??= {})[code] = true;
-      if (inspectorUrl) return;
-      bytes = (bytes + chunk.toString()).slice(-16384);
-      const match = /Debugger listening on (ws:\/\/127\.0\.0\.1:\d+\/[a-f0-9-]{36})/u.exec(bytes);
-      if (match) { inspectorUrl = match[1]; clearTimeout(timer); resolve(); }
-    });
-    child.once('exit', () => { clearTimeout(timer); if (!inspectorUrl) reject(Object.assign(new Error('owned_client_exited'), { code: 'owned_client_exited' })); });
-  });
-  capture(); rootIdentity = owned.get(child.pid);
-  if (!rootIdentity || rootIdentity.ExecutablePath?.toLowerCase() !== executable.replaceAll('/', '\\').toLowerCase()) throw Object.assign(new Error('spawn_identity_mismatch'), { code: 'spawn_identity_mismatch' });
-  await debuggerReady;
-  report.inspectorListening = true;
-  let result;
-  if (options['--protocols'] === 'yes' || options['--diagnose'] === 'yes') {
-    const { build } = await import('../frontend/node_modules/esbuild/lib/main.js');
-    const main = await build({ entryPoints: [path.join(root, 'host/electron-main.cjs')], bundle: true, write: false, platform: 'node', format: 'cjs', target: 'node24' });
-    const { checkOfficialNetwork } = require('../tests/fixtures/traffic/official-network-check.cjs');
-    const acceptancePath = path.join(directory, 'network-result.json');
-    const introspection = `function describe(value){return {own:Object.getOwnPropertyNames(value??{}).slice(0,250),prototype:Object.getOwnPropertyNames(Object.getPrototypeOf(value??{})??{}).slice(0,250)}};function inspect(electron,owned){let network;try{network=require(process.resourcesPath+'/app.asar/.vite/build/bootstrap-DK4EfNwt.js').b().applicationNetwork}catch{};return {...owned.inspect(),apiNames:{exports:Object.keys(electron),app:describe(electron.app),session:describe(electron.session.defaultSession),net:describe(electron.net),applicationNetwork:describe(network)}}}`;
-    const source = main.outputFiles[0].text + (options['--diagnose'] === 'yes'
-      ? `\n${introspection};const install=module.exports.installElectronTraffic;module.exports.installElectronTraffic=(electron,config)=>{const owned=install(electron,config);return {...owned,inspect:()=>inspect(electron,owned)}};`
-      : `\nconst install=module.exports.installElectronTraffic;module.exports.installElectronTraffic=(electron,config)=>{const owned=install(electron,config);return {...owned,async ready(){const state=await owned.ready();setTimeout(()=>{(${checkOfficialNetwork.toString()})(electron,${JSON.stringify(options['--target'] ?? 'codlet-probe.invalid')},config.proxyUrl).then(acceptance=>{require('node:fs').writeFileSync(${JSON.stringify(acceptancePath)},JSON.stringify({...acceptance,proxyLogins:owned.inspect().proxyLogins,certificateEvents:owned.inspect().certificateEvents,loginEvents:owned.inspect().loginEvents,requestWrappers:owned.inspect().requestWrappers,requestHookInstalled:owned.inspect().requestHookInstalled,lastLoginShape:owned.inspect().lastLoginShape}))},error=>{require('node:fs').writeFileSync(${JSON.stringify(acceptancePath)},JSON.stringify({verificationError:/^[a-z_]{1,80}$/.test(error.code)?error.code:'verification_failed'}))})},0);return state}}};`);
-    const { attachElectronTrafficBeforeEntry } = require('../host/electron-bootstrap.cjs');
-    result = await attachElectronTrafficBeforeEntry({ inspectorUrl, expectedPid: child.pid, executable, signal: lifetime.signal, mainSource: source,
-      configuration: { proxyUrl: traffic.proxyUrl, caPem: traffic.trust.launchCaPem, environmentPatch: patch, originalEnvironment, runtimeExecutable: process.execPath, privateDirectory: directory, originalProxy: { mode: 'system' } } });
-    const deadline = Date.now() + 20000;
-    while (true) {
-      try { report.acceptance = JSON.parse(await fs.readFile(acceptancePath, 'utf8')); break; }
-      catch (error) { if (error.code !== 'ENOENT' || Date.now() >= deadline) throw Object.assign(new Error('verification_timeout'), { code: 'verification_timeout' }); await new Promise(resolve => setTimeout(resolve, 50)); }
-    }
-    if (!['netHttp', 'netHttps', 'sessionHttps', 'ws', 'wss'].every(name => report.acceptance[name] === true)) process.exitCode = 1;
-  } else result = await adapter.attachClientLaunch({ inspectorUrl, expectedPid: child.pid, executable, traffic, originalEnvironment, signal: lifetime.signal });
-  Object.assign(report, result);
-  capture();
-} catch (error) {
-  report.reason = /^[a-z_]{1,80}$/u.test(error.code ?? '') ? error.code : 'owned_acceptance_failed';
-  if (error.details) report.details = error.details;
-  if (child?.pid) report.window = ps("$p=Get-Process -Id ([int]$env:OWNED_PID) -ErrorAction SilentlyContinue; if($p) { [pscustomobject]@{responding=$p.Responding;hasWindow=($p.MainWindowHandle -ne 0);javascriptError=($p.MainWindowTitle -like '*JavaScript*');titleEmpty=($p.MainWindowTitle.Length -eq 0)} | ConvertTo-Json -Compress }", { OWNED_PID: String(child.pid) });
-  process.exitCode = 1;
-} finally {
-  lifetime.abort();
-  if (child && rootIdentity) {
-    capture();
-    const identities = [...owned.values()];
-    for (const process of identities.reverse()) {
-      ps("$p=Get-CimInstance Win32_Process -Filter ('ProcessId='+$env:OWNED_PID); if($p -and $p.CreationDate.ToUniversalTime().ToString('o') -eq $env:OWNED_CREATED) { Stop-Process -Id ([int]$env:OWNED_PID) -ErrorAction Stop }", { OWNED_PID: String(process.ProcessId), OWNED_CREATED: process.Created });
-    }
-  }
-  await ingress?.close(); runtime?.closeAll(); if (ws) { for (const socket of ws.clients) socket.terminate(); ws.close(); } await new Promise(resolve => server ? server.close(resolve) : resolve());
-  const after = snapshot();
-  report.originalProcessesUnchanged = before.filter(value => /\\(?:ChatGPT|Codex)\.exe$/iu.test(value.ExecutablePath ?? '')).every(value => after.some(current => current.ProcessId === value.ProcessId && current.Created === value.Created));
-  report.ownedRemaining = [...owned.values()].filter(value => after.some(current => current.ProcessId === value.ProcessId && current.Created === value.Created)).length;
-  if (report.ownedRemaining === 0) {
+function hasModel(value, expected) {
+  if (!value || typeof value !== 'object') return false;
+  if (value.model === expected) return true;
+  return Object.values(value).slice(0, 2000).some(item => hasModel(item, expected));
+}
+async function bodyBuffer(body, maximum = 8 * 1024 * 1024) {
+  if (body == null) return Buffer.alloc(0);
+  if (typeof body === 'string') return Buffer.from(body);
+  if (Buffer.isBuffer(body) || body instanceof Uint8Array) return Buffer.from(body);
+  const reader = body?.getReader?.();
+  const chunks = []; let size = 0;
+  if (reader) {
     try {
-      ps("$p=[IO.Path]::GetFullPath($env:OWNED_TEST_DIR); if([IO.Path]::GetDirectoryName($p) -ne [IO.Path]::GetTempPath().TrimEnd('\\') -or [IO.Path]::GetFileName($p) -notlike 'codlet-official-main-*') { throw 'invalid_test_directory' }; $long='\\\\?\\'+$p; $all=@(Get-Item -LiteralPath $long -Force -ErrorAction Stop)+@(Get-ChildItem -LiteralPath $long -Recurse -Force -ErrorAction Stop); if(@($all | Where-Object {($_.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0}).Count) { throw 'test_directory_reparse' }; Remove-Item -LiteralPath $long -Recurse -ErrorAction Stop", { OWNED_TEST_DIR: directory });
-      report.cleanup = true;
-    } catch { report.cleanupError = 'private_directory_cleanup_failed'; report.retainedTestDirectory = directory; }
+      while (true) {
+        const item = await reader.read();
+        if (item.done) break;
+        const value = Buffer.from(item.value); size += value.length;
+        if (size > maximum) throw failure('fixture_body_limit');
+        chunks.push(value);
+      }
+    } finally { reader.releaseLock?.(); }
+    return Buffer.concat(chunks);
   }
-  await fs.mkdir(path.join(root, '.artifacts'), { recursive: true });
-  await fs.writeFile(path.join(root, '.artifacts', 'official-main-owned-result.json'), JSON.stringify(report, null, 2) + '\n');
-  if (report.details?.owned?.apiNames) await fs.writeFile(path.join(root, '.artifacts', 'official-main-apis.json'), JSON.stringify({ runtime: report.details.runtime, apiNames: report.details.owned.apiNames }, null, 2) + '\n');
-  process.stdout.write(JSON.stringify(report) + '\n');
+  if (typeof body[Symbol.asyncIterator] !== 'function' && typeof body[Symbol.iterator] !== 'function') throw failure('fixture_body_invalid');
+  for await (const chunk of body) {
+    const value = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    size += value.length;
+    if (size > maximum) throw failure('fixture_body_limit');
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks);
 }
+async function bodyText(body, maximum = 8 * 1024 * 1024) { return (await bodyBuffer(body, maximum)).toString('utf8'); }
+async function collectRequest(request, maximum = 8 * 1024 * 1024) {
+  const chunks = []; let size = 0;
+  for await (const chunk of request) {
+    size += chunk.length;
+    if (size > maximum) throw failure('fixture_body_limit');
+    chunks.push(Buffer.from(chunk));
+  }
+  return Buffer.concat(chunks);
+}
+function decodeContent(bytes, encoding) {
+  if (encoding === 'gzip') return gunzipSync(bytes, { maxOutputLength: 8 * 1024 * 1024 });
+  if (encoding === 'zstd') return zstdDecompressSync(bytes, { maxOutputLength: 8 * 1024 * 1024 });
+  return bytes;
+}
+function encodeContent(bytes, encoding) {
+  if (encoding === 'gzip') return gzipSync(bytes);
+  if (encoding === 'zstd') return zstdCompressSync(bytes);
+  return bytes;
+}
+function headerValue(headers, name) { return headers?.find?.(([key]) => key.toLowerCase() === name)?.[1] ?? 'identity'; }
+function responseEvents(id) {
+  const item = { id: `item-${id}`, type: 'message', status: 'completed', role: 'assistant', content: [{ type: 'output_text', text: originalResponse, annotations: [] }] };
+  return [
+    { type: 'response.created', response: { id, status: 'in_progress', output: [] } },
+    { type: 'response.output_item.added', output_index: 0, item: { ...item, status: 'in_progress', content: [] } },
+    { type: 'response.content_part.added', item_id: item.id, output_index: 0, content_index: 0, part: { type: 'output_text', text: '', annotations: [] } },
+    { type: 'response.output_text.delta', item_id: item.id, output_index: 0, content_index: 0, delta: originalResponse },
+    { type: 'response.output_text.done', item_id: item.id, output_index: 0, content_index: 0, text: originalResponse },
+    { type: 'response.output_item.done', output_index: 0, item },
+    { type: 'response.completed', response: { id, status: 'completed', output: [item], usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2, input_tokens_details: { cached_tokens: 0 }, output_tokens_details: { reasoning_tokens: 0 } } } },
+  ];
+}
+
+function compactAcceptance(value) {
+  if (!value || typeof value !== 'object') return undefined;
+  const desktop = value.desktop ?? {}, backend = value.backend ?? {};
+  const item = value => value && typeof value === 'object' ? { status: safeInteger(value.status), changed: value.changed === true } : undefined;
+  const turnCompletions = Array.isArray(backend.turnCompletions) ? backend.turnCompletions.slice(0, 4).map(value => ({
+    status: ['completed', 'failed', 'interrupted', 'cancelled', 'in_progress', 'other'].includes(value?.status) ? value.status : 'other',
+    ...(typeof value?.errorCode === 'string' && /^[a-z0-9_]{1,80}$/u.test(value.errorCode) ? { errorCode: value.errorCode } : {}),
+  })) : [];
+  return {
+    finished: value.finished === true,
+    ...(typeof value.failure === 'string' && /^[a-z_]{1,100}$/u.test(value.failure) ? { failure: value.failure } : {}),
+    ...(typeof value.failureStage === 'string' && ['app_ready', 'app_server', 'production_attached', 'application_network', 'desktop_requests', 'same_origin_redirect', 'backend_turns'].includes(value.failureStage) ? { failureStage: value.failureStage } : {}),
+    ...(value.dialogAction === 'cancel_error' || value.dialogAction === 'acknowledge_information' ? { dialogAction: value.dialogAction } : {}),
+    desktop: { fetch: item(desktop.fetch), progress: item(desktop.progress), redirect: item(desktop.redirect), emptyRedirect: item(desktop.emptyRedirect), crossOriginRedirect: desktop.crossOriginRedirect ? {
+      status: safeInteger(desktop.crossOriginRedirect.status), unchanged: desktop.crossOriginRedirect.unchanged === true,
+    } : undefined },
+    cookieDiagnostics: value.cookieDiagnostics && typeof value.cookieDiagnostics === 'object' ? Object.fromEntries([
+      'cookieInstalled', 'rawSameOriginSent', 'bridgeSameOriginSent', 'rawCrossOriginInitialSent', 'rawCrossOriginFinalSent',
+      'bridgeCrossOriginInitialSent', 'bridgeCrossOriginFinalSent',
+    ].map(key => [key, value.cookieDiagnostics[key] === true])) : undefined,
+    backend: {
+      turns: safeInteger(backend.turns), modified: backend.modified === true,
+      config: backend.config && typeof backend.config === 'object' ? {
+        openAiBaseUrlPrivateRoute: backend.config.openAiBaseUrlPrivateRoute === true,
+        modelProviderOpenAi: backend.config.modelProviderOpenAi === true,
+      } : undefined,
+      accountType: ['chatgpt', 'apiKey', 'none', 'other'].includes(backend.accountType) ? backend.accountType : undefined,
+      childRouteOverride: backend.childRouteOverride && typeof backend.childRouteOverride === 'object' ? {
+        processObserved: backend.childRouteOverride.processObserved === true,
+        lastOpenAiOverridePresent: backend.childRouteOverride.lastOpenAiOverridePresent === true,
+        lastOpenAiOverridePrivateRoute: backend.childRouteOverride.lastOpenAiOverridePrivateRoute === true,
+      } : undefined,
+      turnCompletions,
+      ...(typeof backend.requestErrorCode === 'string' && /^[a-z0-9_]{1,80}$/u.test(backend.requestErrorCode) ? { requestErrorCode: backend.requestErrorCode } : {}),
+    },
+    dialogs: safeInteger(value.dialogs),
+    dialog: value.dialog && typeof value.dialog === 'object' ? {
+      type: ['none', 'info', 'error', 'question', 'warning'].includes(value.dialog.type) ? value.dialog.type : 'unknown',
+      classification: ['authentication', 'update', 'network', 'configuration', 'app_server', 'workspace', 'error', 'information'].includes(value.dialog.classification) ? value.dialog.classification : 'unknown',
+      buttonCount: safeInteger(value.dialog.buttonCount),
+      buttonKinds: Array.isArray(value.dialog.buttonKinds) ? value.dialog.buttonKinds.filter(item => ['cancel', 'authentication', 'retry', 'acknowledge', 'other'].includes(item)).slice(0, 8) : [],
+      cancelIdPresent: value.dialog.cancelIdPresent === true,
+      defaultIdPresent: value.dialog.defaultIdPresent === true,
+    } : undefined,
+    observer: value.observer && typeof value.observer === 'object' ? Object.fromEntries(['mainBundleSeen', 'appServerModuleSeen', 'appServerManagerCandidates', 'appServerManagerInstances'].map(key => [key, safeInteger(value.observer[key])])) : {},
+    adapterState: value.adapterState && typeof value.adapterState === 'object' ? {
+      installed: value.adapterState.installed === true,
+      source: { connected: value.adapterState.source?.connected === true, ...(typeof value.adapterState.source?.reason === 'string' && /^[a-z_]{1,80}$/u.test(value.adapterState.source.reason) ? { reason: value.adapterState.source.reason } : {}) },
+      desktop: { available: value.adapterState.desktop?.available === true, taskConfigurationAvailable: value.adapterState.desktop?.taskConfigurationAvailable === true,
+        modules: Object.fromEntries(['bootstrap', 'main', 'src', 'stdio', 'connection'].map(key => [key, value.adapterState.desktop?.modules?.[key] === true])),
+        ...(typeof value.adapterState.desktop?.reason === 'string' && /^[a-z_]{1,80}$/u.test(value.adapterState.desktop.reason) ? { reason: value.adapterState.desktop.reason } : {}) },
+      backend: { available: value.adapterState.backend?.available === true, prepared: safeInteger(value.adapterState.backend?.prepared), declined: safeInteger(value.adapterState.backend?.declined),
+        ...(typeof value.adapterState.backend?.reason === 'string' && /^[a-z_]{1,80}$/u.test(value.adapterState.backend.reason) ? { reason: value.adapterState.backend.reason } : {}) },
+    } : undefined,
+  };
+}
+function activationHas(handshake, id, coverage) {
+  const source = handshake?.activatedSources?.find(value => value.id === id);
+  return !!source && coverage.every(item => source.coverage?.includes(item));
+}
+
+async function main() {
+  const protocol = options['--protocol'] ?? 'ws';
+  const report = {
+    schema: 1,
+    kind: 'official-main-owned-plaintext-acceptance',
+    protocol,
+    backendSha256: /^[0-9a-f]{64}$/iu.test(expectedBackendHash) ? expectedBackendHash.toLowerCase() : undefined,
+    build: { bootstrapBundle: options['--bootstrap-bundle'], mainBundle: options['--main-bundle'], appServerModule: options['--app-server-module'],
+      fetchWrapperSymbol: options['--fetch-wrapper-symbol'], applicationNetworkFactory: options['--application-network-factory'] },
+    nativeAuthorizationFixtureOnly: true,
+    proxyConfigured: false,
+    certificateConfigured: false,
+    exactChildVerified: false,
+    installed: false,
+    activatedSources: [],
+    fixture: { desktopRequests: 0, desktopBodiesModified: 0, redirectStarts: 0, redirectFinals: 0,
+      emptyRedirectStarts: 0, emptyRedirectFinals: 0,
+      crossOriginRedirects: 0, crossOriginFinals: 0, crossOriginBodyObservedByOrigin1: 0,
+      cookieRawSameOriginSent: false, cookieBridgeSameOriginSent: false,
+      cookieRawCrossOriginInitialSent: false, cookieRawCrossOriginFinalSent: false,
+      cookieBridgeCrossOriginInitialSent: false, cookieBridgeCrossOriginFinalSent: false,
+      httpModelRequests: 0, httpModelRouted: 0, sseResponses: 0, webSocketAttempts: 0,
+      webSocketRejected426: 0, webSocketFrames: 0, webSocketModelRouted: 0, webSocketModifiedResponses: 0,
+      fakeAuthorizationSeen: false, unauthorizedForwardAttempts: 0 },
+  };
+  let lifetime, registry, owner, source, runtime, child, directory, server, crossServer, webSockets, observer, inspectorUrl, crossOriginEndpoint;
+  let receiptPath, fixtureGo, executable, backend, originalProcesses, owned = new Map(), rootIdentity;
+  const serverSockets = new Set(), crossServerSockets = new Set();
+  const powershell = path.join(process.env.SYSTEMROOT ?? 'C:/Windows', 'System32/WindowsPowerShell/v1.0/powershell.exe');
+  const powershellCall = (script, env = {}) => execFileSync(powershell, ['-NoProfile', '-NonInteractive', '-Command', script], {
+    env: { ...process.env, ...env }, windowsHide: true, encoding: 'utf8', timeout: 10000,
+  }).trim();
+  function snapshot() {
+    const output = powershellCall("Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,ExecutablePath,@{n='Created';e={$_.CreationDate.ToUniversalTime().ToString('o')}} | ConvertTo-Json -Compress");
+    if (!output) return [];
+    const values = JSON.parse(output);
+    return (Array.isArray(values) ? values : [values]).filter(value => Number.isSafeInteger(value.ProcessId) && typeof value.Created === 'string');
+  }
+  function capture() {
+    if (!child?.pid) return;
+    const values = snapshot(), live = new Map(values.map(value => [value.ProcessId, value]));
+    for (let changed = true; changed;) {
+      changed = false;
+      for (const value of values) {
+        if (owned.has(value.ProcessId) || originalProcesses.some(item => item.ProcessId === value.ProcessId && item.Created === value.Created)) continue;
+        if (value.ProcessId === child.pid) {
+          if (value.ExecutablePath && canonicalPath(value.ExecutablePath) !== canonicalPath(executable)) continue;
+          owned.set(value.ProcessId, value); changed = true; continue;
+        }
+        const parent = owned.get(value.ParentProcessId);
+        if (parent && live.get(parent.ProcessId)?.Created === parent.Created) { owned.set(value.ProcessId, value); changed = true; }
+      }
+    }
+    return values;
+  }
+  async function waitFor(predicate, code, timeoutMs, captureProcesses = false) {
+    const deadline = Date.now() + timeoutMs;
+    let nextCapture = 0;
+    while (true) {
+      if (predicate()) return;
+      if (captureProcesses && Date.now() >= nextCapture) { capture(); nextCapture = Date.now() + 750; }
+      if (Date.now() >= deadline) throw failure(code);
+      await sleep(100);
+    }
+  }
+  async function openObserver(url) {
+    const socket = new WebSocket(url);
+    const calls = new Map(), resumedWaiters = []; let sequence = 0, pausedResolve, resumedCount = 0;
+    const paused = new Promise(resolve => { pausedResolve = resolve; });
+    socket.addEventListener('message', event => {
+      let message; try { message = JSON.parse(event.data); } catch { return; }
+      if (message.method === 'Debugger.paused') pausedResolve(message.params);
+      if (message.method === 'Debugger.resumed') {
+        resumedCount++;
+        for (const waiter of [...resumedWaiters]) if (resumedCount > waiter.after) {
+          clearTimeout(waiter.timer); resumedWaiters.splice(resumedWaiters.indexOf(waiter), 1); waiter.resolve();
+        }
+      }
+      const call = calls.get(message.id);
+      if (!call) return;
+      calls.delete(message.id); clearTimeout(call.timer);
+      if (message.error) call.reject(failure('inspector_protocol_failed'));
+      else call.resolve(message.result);
+    });
+    await new Promise((resolve, reject) => {
+      socket.addEventListener('open', resolve, { once: true });
+      socket.addEventListener('error', () => reject(failure('inspector_connect_failed')), { once: true });
+    });
+    const send = (method, params = {}) => new Promise((resolve, reject) => {
+      const id = ++sequence;
+      const timer = setTimeout(() => { calls.delete(id); reject(failure('inspector_timeout')); }, 8000);
+      calls.set(id, { resolve, reject, timer });
+      socket.send(JSON.stringify({ id, method, params }));
+    });
+    const waitForResumedAfter = (after, timeoutMs) => new Promise((resolve, reject) => {
+      if (resumedCount > after) { resolve(); return; }
+      const waiter = { after, resolve, timer: setTimeout(() => {
+        resumedWaiters.splice(resumedWaiters.indexOf(waiter), 1); reject(failure('inspector_resume_timeout'));
+      }, timeoutMs) };
+      resumedWaiters.push(waiter);
+    });
+    return { socket, paused, send, waitForResumedAfter, get resumedCount() { return resumedCount; } };
+  }
+  async function closeObserver() {
+    if (!observer?.socket) return;
+    const socket = observer.socket;
+    if (socket.readyState === WebSocket.CLOSED) return;
+    const closed = new Promise(resolve => {
+      const timer = setTimeout(resolve, 1200);
+      socket.addEventListener('close', () => { clearTimeout(timer); resolve(); }, { once: true });
+    });
+    try { socket.close(); } catch {}
+    await closed;
+  }
+  async function writeJson(file, value) {
+    await fs.writeFile(file + '.tmp', JSON.stringify(value));
+    await fs.rename(file + '.tmp', file);
+  }
+  async function readReceiptUntilFinished() {
+    const deadline = Date.now() + 40000;
+    while (Date.now() < deadline) {
+      try {
+        const value = JSON.parse(await fs.readFile(receiptPath, 'utf8'));
+        if (value?.finished === true) return value;
+      } catch (error) {
+        if (error.code !== 'ENOENT' && !(error instanceof SyntaxError)) throw failure('fixture_receipt_invalid');
+      }
+      await sleep(100);
+    }
+    throw failure('fixture_timeout');
+  }
+  async function stopOwnedTree() {
+    if (!child?.pid) return;
+    capture();
+    for (const processInfo of [...owned.values()]) {
+      powershellCall("$p=Get-CimInstance Win32_Process -Filter ('ProcessId='+$env:CODLET_OWNED_PID); if($p -and $p.CreationDate.ToUniversalTime().ToString('o') -eq $env:CODLET_OWNED_CREATED) { try { Stop-Process -Id ([int]$env:CODLET_OWNED_PID) -ErrorAction Stop } catch { if($_.FullyQualifiedErrorId -notlike 'NoProcessFoundForGivenId*') { throw } } }", {
+        CODLET_OWNED_PID: String(processInfo.ProcessId), CODLET_OWNED_CREATED: processInfo.Created,
+      });
+    }
+    for (let attempt = 0; attempt < 20; attempt++) {
+      const live = snapshot(), ids = new Set(live.map(value => `${value.ProcessId}:${value.Created}`));
+      if (![...owned.values()].some(value => ids.has(`${value.ProcessId}:${value.Created}`))) return;
+      await sleep(100);
+    }
+  }
+
+  try {
+    if (process.platform !== 'win32' || process.version !== 'v24.21.0' || options['--run-owned'] !== 'yes'
+      || !path.isAbsolute(options['--executable'] ?? '') || !path.isAbsolute(options['--backend'] ?? '')
+      || !['ws', 'http'].includes(protocol) || !safeBundleName(options['--bootstrap-bundle'])
+      || !safeBundleName(options['--main-bundle']) || !safeBundleName(options['--app-server-module'])
+      || !/^[0-9a-f]{64}$/iu.test(expectedBackendHash) || !/^[A-Za-z_$][A-Za-z0-9_$]{0,63}$/u.test(options['--application-network-factory'] ?? '')
+      || !/^[A-Za-z_$][A-Za-z0-9_$]{0,63}$/u.test(options['--fetch-wrapper-symbol'] ?? '')) throw failure('explicit_windows_owned_paths_required');
+    const corePath = options['--core'] ?? process.env.CODLET_CORE_ROOT;
+    if (!corePath) throw failure('core_root_required');
+    if (!path.isAbsolute(corePath)) throw failure('core_root_invalid');
+    const coreRoot = await fs.realpath(corePath);
+    executable = await fs.realpath(options['--executable']);
+    backend = await fs.realpath(options['--backend']);
+    if (createHash('sha256').update(await fs.readFile(backend)).digest('hex') !== expectedBackendHash) throw failure('backend_build_unverified');
+    const [{ createTrafficRuntime }, { createTrafficInterceptors }, { createPlaintextSource }, { verifyOwnedMainHandshake }] = [
+      require(path.join(coreRoot, 'runtime/host-traffic-bundle.cjs')),
+      require(path.join(coreRoot, 'runtime/traffic-interceptors.cjs')),
+      require(path.join(coreRoot, 'runtime/plaintext-source.cjs')),
+      await import('./verify-owned-main-handshake.mjs'),
+    ];
+    const { WebSocketServer } = require('../frontend/node_modules/ws');
+    originalProcesses = snapshot();
+    directory = await fs.mkdtemp(path.join(os.tmpdir(), 'codlet-official-main-'));
+    lifetime = new AbortController();
+    receiptPath = path.join(directory, 'receipt.json');
+    fixtureGo = path.join(directory, 'attached.go');
+    const fixture = report.fixture;
+    const crossOriginResponse = 'codlet-cross-origin-response';
+    const cookieName = 'codlet-owned-fixture-cookie';
+    const cookieValue = 'codlet-synthetic-cookie-only';
+    const cookiePair = `${cookieName}=${cookieValue}`;
+    let cookieSameOriginCalls = 0, cookieCrossInitialCalls = 0, cookieCrossFinalCalls = 0;
+    const cookieCrossInitialByCall = [];
+    const hasSyntheticCookie = request => typeof request.headers?.cookie === 'string'
+      && request.headers.cookie.split(';').some(value => value.trim() === cookiePair);
+    const rawDiagnosticRedirectBody = 'codlet-electron-raw-redirect';
+    const rawDiagnosticSameFinal = 'codlet-electron-same-final';
+    const secondServer = http.createServer(async (request, response) => {
+      try { await collectRequest(request); } catch { response.writeHead(413); response.end(); return; }
+      const url = new URL(request.url, 'http://127.0.0.1');
+      if (request.method === 'GET' && url.pathname === '/desktop/cookie-cross-final') {
+        const sent = hasSyntheticCookie(request), index = cookieCrossFinalCalls++;
+        if (index === 0) fixture.cookieRawCrossOriginFinalSent = sent;
+        else if (index === 1) fixture.cookieBridgeCrossOriginFinalSent = sent;
+        const initial = cookieCrossInitialByCall[index] === true;
+        response.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' }); response.end(`${initial ? '1' : '0'}${sent ? '1' : '0'}`); return;
+      }
+      if (request.method === 'GET' && url.pathname === '/desktop/cross-origin-final') {
+        fixture.crossOriginFinals++;
+        response.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' }); response.end(crossOriginResponse); return;
+      }
+      if (request.method === 'GET' && new URL(request.url, 'http://127.0.0.1').pathname === '/desktop/diagnostic-cross-final') {
+        response.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' }); response.end(crossOriginResponse); return;
+      }
+      response.writeHead(404); response.end();
+    });
+    secondServer.on('connection', socket => { crossServerSockets.add(socket); socket.on('close', () => crossServerSockets.delete(socket)); });
+    await new Promise(resolve => secondServer.listen(0, '127.0.0.1', resolve));
+    crossServer = secondServer;
+    crossOriginEndpoint = `http://127.0.0.1:${crossServer.address().port}`;
+    const upstream = http.createServer(async (request, response) => {
+      let requestBody;
+      try { requestBody = await collectRequest(request); } catch { response.writeHead(413); response.end(); return; }
+      const url = new URL(request.url, 'http://127.0.0.1');
+      if (request.method === 'GET' && url.pathname === '/desktop/cookie-direct') {
+        const sent = hasSyntheticCookie(request), index = cookieSameOriginCalls++;
+        if (index === 0) fixture.cookieRawSameOriginSent = sent;
+        else if (index === 1) fixture.cookieBridgeSameOriginSent = sent;
+        response.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' }); response.end(sent ? '1' : '0'); return;
+      }
+      if (request.method === 'GET' && url.pathname === '/desktop/cookie-cross-redirect') {
+        const sent = hasSyntheticCookie(request), index = cookieCrossInitialCalls++;
+        cookieCrossInitialByCall[index] = sent;
+        if (index === 0) fixture.cookieRawCrossOriginInitialSent = sent;
+        else if (index === 1) fixture.cookieBridgeCrossOriginInitialSent = sent;
+        response.writeHead(302, { location: `${crossOriginEndpoint}/desktop/cookie-cross-final`, 'content-length': '0' }); response.end(); return;
+      }
+      if (request.method === 'GET' && url.pathname === '/desktop/diagnostic-302') {
+        response.writeHead(302, { location: '/desktop/diagnostic-final', 'content-type': 'text/plain; charset=utf-8' }); response.end(rawDiagnosticRedirectBody); return;
+      }
+      if (request.method === 'GET' && url.pathname === '/desktop/diagnostic-cross-302') {
+        response.writeHead(302, { location: crossOriginEndpoint + '/desktop/diagnostic-cross-final', 'content-type': 'text/plain; charset=utf-8' }); response.end(rawDiagnosticRedirectBody); return;
+      }
+      if (request.method === 'GET' && url.pathname === '/desktop/diagnostic-final') {
+        response.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' }); response.end(rawDiagnosticSameFinal); return;
+      }
+      if (url.pathname.startsWith('/desktop/')) {
+        fixture.desktopRequests++;
+        if (request.method === 'GET' && url.pathname === '/desktop/redirect') {
+          fixture.redirectStarts++;
+          response.writeHead(302, { location: '/desktop/fetch', 'content-type': 'text/plain; charset=utf-8' }); response.end(originalResponse); return;
+        }
+        if (request.method === 'GET' && url.pathname === '/desktop/redirect-empty') {
+          fixture.emptyRedirectStarts++;
+          response.writeHead(302, { location: '/desktop/empty-final', 'content-length': '0' }); response.end(); return;
+        }
+        if (request.method === 'GET' && url.pathname === '/desktop/cross-origin-redirect') {
+          fixture.crossOriginRedirects++;
+          response.writeHead(302, { location: crossOriginEndpoint + '/desktop/cross-origin-final', 'content-type': 'text/plain; charset=utf-8' }); response.end(originalResponse); return;
+        }
+        if (request.method === 'GET' && url.pathname === '/desktop/fetch') fixture.redirectFinals++;
+        if (request.method === 'GET' && url.pathname === '/desktop/empty-final') fixture.emptyRedirectFinals++;
+        if (requestBody.toString('utf8') === modifiedRequest) fixture.desktopBodiesModified++;
+        response.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' }); response.end(originalResponse); return;
+      }
+      if (url.pathname === '/v1/models' || url.pathname.endsWith('/models')) {
+        response.writeHead(200, { 'content-type': 'application/json' }); response.end(JSON.stringify({ models: [], data: [] })); return;
+      }
+      if (url.pathname === '/v1/responses' || url.pathname.endsWith('/responses')) {
+        fixture.httpModelRequests++;
+        let body = null;
+        try { body = parseModel(decodeContent(requestBody, String(request.headers['content-encoding'] ?? 'identity').toLowerCase()).toString('utf8')); } catch {}
+        if (body && hasModel(body, routedModel)) fixture.httpModelRouted++;
+        if (request.headers.authorization === 'Bearer codlet-local-fixture') fixture.fakeAuthorizationSeen = true;
+        response.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' });
+        for (const event of responseEvents(`http-${fixture.sseResponses + 1}`)) response.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
+        fixture.sseResponses++;
+        response.end(); return;
+      }
+      response.writeHead(200, { 'content-type': 'application/json' }); response.end('{}');
+    });
+    upstream.on('connection', socket => { serverSockets.add(socket); socket.on('close', () => serverSockets.delete(socket)); });
+    upstream.on('clientError', (_error, socket) => { if (socket.writable) socket.end('HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n'); });
+    webSockets = new WebSocketServer({ noServer: true, perMessageDeflate: false, maxPayload: 1024 * 1024 });
+    upstream.on('upgrade', (request, socket, head) => {
+      const url = new URL(request.url, 'http://127.0.0.1');
+      fixture.webSocketAttempts++;
+      if (request.headers.authorization === 'Bearer codlet-local-fixture') fixture.fakeAuthorizationSeen = true;
+      if (url.pathname !== '/v1/responses' || protocol === 'http') {
+        if (protocol === 'http' && url.pathname === '/v1/responses') fixture.webSocketRejected426++;
+        socket.end('HTTP/1.1 426 Upgrade Required\r\nContent-Length: 0\r\nConnection: close\r\n\r\n');
+        return;
+      }
+      webSockets.handleUpgrade(request, socket, head, connection => webSockets.emit('connection', connection, request));
+    });
+      webSockets.on('connection', connection => connection.on('message', data => {
+      fixture.webSocketFrames++;
+      const message = parseModel(data.toString());
+      if (message && hasModel(message, routedModel)) fixture.webSocketModelRouted++;
+      if (!message || message.type !== 'response.create' || !hasModel(message, routedModel)) return;
+      for (const event of responseEvents(`ws-${fixture.webSocketFrames}`)) connection.send(JSON.stringify(event));
+    }));
+    await new Promise(resolve => upstream.listen(0, '127.0.0.1', resolve));
+    server = upstream;
+    const endpoint = `http://127.0.0.1:${server.address().port}`;
+    const origin = new URL(endpoint).origin;
+    const authorize = async (_owner, action, url) => action !== 'sensitiveHeaders' && normalizeOrigin(url) === origin;
+    const nativeRequest = async (method, params) => {
+      if (method === 'host.network.authorizeChannel') return {};
+      if (method === 'host.network.authorizeForward') {
+        try { if (normalizeOrigin(params.url) === origin) return { url: params.url }; } catch {}
+        fixture.unauthorizedForwardAttempts++;
+        throw Object.assign(new Error('fixture_only'), { code: 'permission_denied' });
+      }
+      if (method === 'services.network.resolve') {
+        try {
+          if (params?.profile === 'native-inherited' && normalizeOrigin(params.url) === origin) return { proxyUrl: null, caPem: '' };
+        } catch {}
+        throw Object.assign(new Error('fixture_only'), { code: 'permission_denied' });
+      }
+      if (method === 'services.traffic.status') {
+        const status = registry?.status?.() ?? {};
+        return { registered: safeInteger(status.registered), active: safeInteger(status.active), pending: 0 };
+      }
+      throw Object.assign(new Error('fixture_only'), { code: 'permission_denied' });
+    };
+    runtime = createTrafficRuntime({ coreRequest: nativeRequest, rootSignal: lifetime.signal,
+      makeError: (code, message) => Object.assign(new Error(message ?? code), { code }) });
+    registry = createTrafficInterceptors({ rootSignal: lifetime.signal, authorize });
+    owner = new AbortController();
+    registry.register({ pluginId: 'codlet-owned-acceptance', generation: 1, signal: owner.signal }, {
+      id: 'synthetic-local-production-acceptance', origins: [origin], priority: 0, timeoutMs: 1800,
+    }, {
+      async request(request) {
+        const pathname = new URL(request.url).pathname;
+        if (pathname.startsWith('/desktop/')) {
+          if (request.body == null) return null;
+          const text = await bodyText(request.body);
+          if (text === originalRequest) return { request: { body: modifiedRequest } };
+          return null;
+        }
+        if (pathname === '/v1/responses' || pathname.endsWith('/responses')) {
+          const encoding = headerValue(request.headers, 'content-encoding').toLowerCase();
+          const encoded = await bodyBuffer(request.body);
+          let body;
+          try { body = parseModel(decodeContent(encoded, encoding).toString('utf8')); } catch { return null; }
+          if (!body || !rewriteModel(body)) return null;
+          return { request: { body: encodeContent(Buffer.from(JSON.stringify(body)), encoding) } };
+        }
+        return null;
+      },
+      async response(response, context) {
+        if (response.body == null) return;
+        if (normalizeOrigin(context.request.url) !== origin) { fixture.crossOriginBodyObservedByOrigin1++; return; }
+        if (new URL(context.request.url).pathname.startsWith('/desktop/cookie-')) return;
+        const text = await bodyText(response.body);
+        if (text.includes(crossOriginResponse)) fixture.crossOriginBodyObservedByOrigin1++;
+        if (!text.includes(originalResponse)) return;
+        return { body: text.replaceAll(originalResponse, modifiedResponse) };
+      },
+      webSocket() {
+        return {
+          clientToServer(frame) {
+            if (frame.binary || typeof frame.data !== 'string') return frame;
+            const body = parseModel(frame.data);
+            if (!body || !rewriteModel(body)) return frame;
+            return { data: JSON.stringify(body), binary: false };
+          },
+          serverToClient(frame) {
+            if (frame.binary || typeof frame.data !== 'string' || !frame.data.includes(originalResponse)) return frame;
+            fixture.webSocketModifiedResponses++;
+            return { data: frame.data.replaceAll(originalResponse, modifiedResponse), binary: false };
+          },
+        };
+      },
+    });
+    source = await createPlaintextSource({ runtime, gateway: { handlers: registry.handlers }, signal: lifetime.signal });
+    const traffic = { source: source.descriptor, environmentPatch: { set: {}, removeCaseInsensitive: [] } };
+    const adapterPath = path.join(root, 'bundled/codex-desktop-adapter/host.cjs');
+    const { prepareClientLaunch } = require(adapterPath);
+    const prepared = await prepareClientLaunch({ traffic, signal: lifetime.signal });
+    if (!Array.isArray(prepared?.arguments) || !prepared.arguments.every(value => typeof value === 'string')) throw failure('adapter_prepare_failed');
+    const appData = path.join(directory, 'home', 'AppData', 'Roaming');
+    const localAppData = path.join(directory, 'home', 'AppData', 'Local');
+    const paths = {
+      home: path.join(directory, 'home'), appData, userData: path.join(directory, 'user-data'),
+      temp: path.join(directory, 'temp'), codexHome: path.join(directory, 'codex-home'),
+      sqlite: path.join(directory, 'sqlite'),
+    };
+    for (const value of Object.values(paths)) await fs.mkdir(value, { recursive: true });
+    const config = [
+      'cli_auth_credentials_store="file"',
+      'sandbox_mode="read-only"',
+      'approval_policy="never"',
+      'model="gpt-5.4"',
+      `openai_base_url=${JSON.stringify(endpoint + '/v1')}`,
+      `chatgpt_base_url=${JSON.stringify(endpoint + '/backend-api')}`,
+      'responses_websockets=true',
+      'responses_websockets_v2=true',
+      '[analytics]', 'enabled=false',
+      '[features]', 'remote_models=false', 'remote_plugin=false', 'code_mode_host=false',
+      '[mcp_servers.codex_app]', 'command=""', 'enabled=false',
+    ].join('\n') + '\n';
+    await fs.writeFile(path.join(paths.codexHome, 'config.toml'), config);
+    await fs.writeFile(path.join(paths.codexHome, 'auth.json'), JSON.stringify({ OPENAI_API_KEY: 'codlet-local-fixture' }));
+    const environment = Object.fromEntries(Object.entries(process.env).filter(([name]) => /^(PATH|SYSTEMROOT|WINDIR|COMSPEC|PATHEXT|PROCESSOR_ARCHITECTURE|NUMBER_OF_PROCESSORS|PROGRAMFILES|PROGRAMFILES\(X86\)|PROGRAMW6432|USERNAME|USERDOMAIN)$/iu.test(name)));
+    Object.assign(environment, {
+      CODEX_HOME: paths.codexHome, CODEX_SQLITE_HOME: paths.sqlite,
+      CODEX_ELECTRON_USER_DATA_PATH: paths.userData, CODEX_CLI_PATH: backend,
+      HOME: paths.home, USERPROFILE: paths.home, APPDATA: appData, LOCALAPPDATA: localAppData,
+      TEMP: paths.temp, TMP: paths.temp, BUILD_FLAVOR: 'dev', CODEX_SPARKLE_ENABLED: 'false',
+      CODEX_ELECTRON_PRIMARY_RUNTIME_UPDATE_MODE: 'manual',
+      CODEX_APP_SERVER_OPENAI_BASE_URL: endpoint + '/v1',
+      CODEX_APP_SERVER_CHATGPT_BASE_URL: endpoint + '/backend-api',
+      CODEX_ELECTRON_DESKTOP_FEATURE_OVERRIDES: JSON.stringify({ externalBrowserUseAllowed: false, externalBrowserUse: false,
+        inAppBrowserUseAllowed: false, inAppBrowserUse: false, browserExtensions: false, browserPane: false,
+        computerUse: false, computerUseAutoInstall: false, browserUseTinysky: false,
+        appshotsEnabled: false, quickChat: false, sites: false, autoAuthForSites: false, control: false,
+        skysight: false, recordAndReplay: false }),
+      GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'protocol.allow', GIT_CONFIG_VALUE_0: 'never',
+    });
+    for (const [name, value] of Object.entries(traffic.environmentPatch.set)) environment[name] = value;
+    for (const name of traffic.environmentPatch.removeCaseInsensitive) for (const key of Object.keys(environment)) if (key.toLowerCase() === name.toLowerCase()) delete environment[key];
+    child = spawn(executable, [...prepared.arguments, `--user-data-dir=${paths.userData}`,
+      '--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1, EXCLUDE localhost',
+      '--disable-background-networking', '--no-first-run', '--disable-default-apps'], {
+      env: environment, cwd: directory, windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'],
+    });
+    let stderrTail = '';
+    child.stderr.on('data', chunk => {
+      const text = chunk.toString(); stderrTail = (stderrTail + text).slice(-8192);
+      const kinds = ['ERR_[A-Z_]+', 'SyntaxError', 'ReferenceError', 'TypeError', 'backend_launch_not_observed', 'backend_tool_environment_unsupported'];
+      for (const pattern of kinds) for (const match of text.matchAll(new RegExp(pattern, 'gu'))) {
+        const kind = match[0];
+        if (kind.length <= 80) (report.startupErrorKinds ??= new Set()).add(kind);
+      }
+      if (!inspectorUrl) {
+        const match = /Debugger listening on (ws:\/\/127\.0\.0\.1:\d+\/[a-f0-9-]{36})/u.exec(stderrTail);
+        if (match) inspectorUrl = match[1];
+      }
+    });
+    child.once('error', () => { (report.spawnError = 'owned_client_spawn_failed'); });
+    capture();
+    await waitFor(() => owned.has(child.pid), 'owned_identity_missing', 8000, true);
+    rootIdentity = owned.get(child.pid);
+    if (!rootIdentity || canonicalPath(rootIdentity.ExecutablePath ?? '') !== canonicalPath(executable)) throw failure('spawn_identity_mismatch');
+    await waitFor(() => !!inspectorUrl || child.exitCode != null, child.exitCode != null ? 'owned_client_exited' : 'inspector_timeout', 10000);
+    if (!inspectorUrl) throw failure(child.exitCode != null ? 'owned_client_exited' : 'inspector_timeout');
+    report.inspectorListening = true;
+    observer = await openObserver(inspectorUrl);
+    await observer.send('Debugger.enable');
+    await observer.send('Runtime.runIfWaitingForDebugger');
+    const paused = await Promise.race([observer.paused, sleep(8000).then(() => { throw failure('main_pause_timeout'); })]);
+    const frame = paused?.callFrames?.[0];
+    if (!frame?.callFrameId) throw failure('main_first_frame_missing');
+    const identity = await observer.send('Debugger.evaluateOnCallFrame', { callFrameId: frame.callFrameId,
+      expression: "({pid:process.pid,path:require('node:fs').realpathSync(process.execPath),ready:require('electron').app.isReady(),type:process.type})", returnByValue: true });
+    const childIdentity = identity?.result?.value;
+    if (childIdentity?.pid !== child.pid || canonicalPath(childIdentity.path ?? '') !== canonicalPath(executable)
+      || childIdentity.ready !== false || childIdentity.type !== 'browser') throw failure('main_identity_mismatch');
+    report.exactChildVerified = true;
+    const observerSource = await fs.readFile(path.join(root, 'tests/fixtures/traffic/production-owned-main.cjs'), 'utf8');
+    const diagnosticDirectory = path.join(root, '.artifacts', 'request-chain', 'current', 'owned-acceptance');
+    const dialogDiagnosticPath = path.join(diagnosticDirectory, `${protocol}-dialog.json`);
+    const runErrorDiagnosticPath = path.join(diagnosticDirectory, `${protocol}-observer-error.json`);
+    const rawDiagnosticPath = path.join(diagnosticDirectory, `${protocol}-electron-network-diagnostics.json`);
+    const fixtureConfiguration = { upstream: endpoint, crossOrigin: crossOriginEndpoint, crossOriginResponse, protocol,
+      trafficRouteBaseUrl: source.descriptor.routeBaseUrl, receipt: receiptPath, go: fixtureGo, paths,
+      bootstrapBundle: options['--bootstrap-bundle'], mainBundle: options['--main-bundle'], appServerModule: options['--app-server-module'],
+      fetchWrapperSymbol: options['--fetch-wrapper-symbol'], applicationNetworkFactory: options['--application-network-factory'],
+      dialogDiagnosticPath, runErrorDiagnosticPath, rawDiagnosticPath };
+    const expression = `(()=>{const module={exports:{}};((module,exports,require)=>{${observerSource}\n})(module,module.exports,require);return module.exports.installOwnedAcceptance(require('electron'),${JSON.stringify(fixtureConfiguration)})})()`;
+    const injected = await observer.send('Debugger.evaluateOnCallFrame', { callFrameId: frame.callFrameId, expression, returnByValue: true });
+    if (injected.exceptionDetails || injected?.result?.value !== true) throw failure('observer_fixture_injection_failed');
+    const resumeCount = observer.resumedCount;
+    const handshakePromise = verifyOwnedMainHandshake({ inspectorUrl, expectedPid: child.pid, executable, traffic, signal: lifetime.signal });
+    handshakePromise.catch(() => {});
+    const handshakeEvent = observer.waitForResumedAfter(resumeCount, 10500).then(() => 'resumed', () => 'resume_wait_finished');
+    await Promise.race([handshakeEvent, handshakePromise.then(() => 'attached', () => 'attach_failed')]);
+    await closeObserver();
+    const handshake = await handshakePromise;
+    report.installed = handshake.installed;
+    report.exactChildVerified = report.exactChildVerified && handshake.exactChildVerified;
+    report.activatedSources = handshake.activatedSources;
+    report.unsupportedSources = handshake.unsupportedSources;
+    await writeJson(fixtureGo, { go: true });
+    const acceptance = await readReceiptUntilFinished();
+    report.acceptance = compactAcceptance(acceptance);
+    report.networkDiagnosticArtifact = `.artifacts/request-chain/current/owned-acceptance/${protocol}-electron-network-diagnostics.json`;
+    try {
+      const trafficStatus = await runtime.api.inspect();
+      report.trafficInspect = { registered: safeInteger(trafficStatus?.registered), active: safeInteger(trafficStatus?.active), pending: safeInteger(trafficStatus?.pending),
+        activatedSourceIds: report.activatedSources.map(value => value.id).filter(value => typeof value === 'string' && /^[A-Za-z0-9_.-]{1,64}$/u.test(value)).slice(0, 8) };
+    } catch {}
+    if (acceptance.failure) report.fixtureFailure = acceptance.failure;
+  } catch (error) {
+    report.failure = codeOf(error);
+    const stages = new Set(['connect', 'pause', 'identity', 'install', 'resume', 'ready', 'detach']);
+    const methods = new Set(['Debugger.enable', 'Runtime.runIfWaitingForDebugger', 'Debugger.evaluateOnCallFrame', 'Debugger.resume', 'Runtime.evaluate']);
+    const errorDetails = error?.details ?? {};
+    const details = {
+      ...(stages.has(errorDetails.stage) ? { stage: errorDetails.stage } : {}),
+      ...(methods.has(errorDetails.method) ? { method: errorDetails.method } : {}),
+    };
+    if (errorDetails.runtime && typeof errorDetails.runtime === 'object') details.runtime = errorDetails.runtime;
+    if (errorDetails.owned && typeof errorDetails.owned === 'object') details.owned = errorDetails.owned;
+    if (Number.isSafeInteger(errorDetails.pauseReasonCount)) details.pauseReasonCount = errorDetails.pauseReasonCount;
+    if (Array.isArray(errorDetails.timings)) details.timings = errorDetails.timings.slice(-12);
+    if (Object.keys(details).length) report.failureDetails = details;
+  } finally {
+    try { await stopOwnedTree(); } catch { report.ownedTreeCleanupFailed = true; }
+    child?.stdout?.destroy(); child?.stderr?.destroy();
+    lifetime?.abort(failure('acceptance_finished'));
+    try { source?.close(); } catch {}
+    try { owner?.abort(); } catch {}
+    try { registry?.close(); } catch {}
+    try { runtime?.closeAll(); } catch {}
+    try { await closeObserver(); } catch {}
+    if (webSockets) for (const connection of webSockets.clients) connection.terminate();
+    if (server) {
+      for (const socket of serverSockets) socket.destroy();
+      try { await new Promise(resolve => server.close(resolve)); } catch {}
+    }
+    if (crossServer) {
+      for (const socket of crossServerSockets) socket.destroy();
+      try { await new Promise(resolve => crossServer.close(resolve)); } catch {}
+    }
+    if (webSockets) try { await new Promise(resolve => webSockets.close(resolve)); } catch {}
+    if (originalProcesses) {
+      const after = snapshot();
+      report.originalClientIdentitiesUnchanged = originalProcesses.filter(value => /\\(?:ChatGPT|Codex)\.exe$/iu.test(value.ExecutablePath ?? '')).every(value => after.some(item => item.ProcessId === value.ProcessId && item.Created === value.Created));
+      report.ownedRemaining = [...owned.values()].filter(value => after.some(item => item.ProcessId === value.ProcessId && item.Created === value.Created)).length;
+      if (directory && report.ownedRemaining === 0) {
+        try {
+          powershellCall("$p=[IO.Path]::GetFullPath($env:CODLET_FIXTURE_DIRECTORY); $parent=[IO.Path]::GetDirectoryName($p).TrimEnd('\\'); $temp=[IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\\'); if(-not [string]::Equals($parent,$temp,[StringComparison]::OrdinalIgnoreCase) -or [IO.Path]::GetFileName($p) -notlike 'codlet-official-main-*') { throw 'bad_fixture_path' }; $long='\\\\?\\'+$p; $items=@(Get-Item -LiteralPath $long -Force -ErrorAction Stop)+@(Get-ChildItem -LiteralPath $long -Recurse -Force -ErrorAction Stop); if(@($items | Where-Object {($_.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0}).Count) { throw 'fixture_reparse' }; foreach($item in $items) { $item.Attributes=$item.Attributes -band (-bnot ([IO.FileAttributes]::ReadOnly -bor [IO.FileAttributes]::Hidden)) }; $removed=$false; for($attempt=0;$attempt -lt 40;$attempt++) { try { Remove-Item -LiteralPath $long -Recurse -ErrorAction Stop; $removed=$true; break } catch { if($attempt -eq 39) { throw }; Start-Sleep -Milliseconds 100 } }; if(-not $removed -and (Test-Path -LiteralPath $long)) { throw 'fixture_cleanup_failed' }", { CODLET_FIXTURE_DIRECTORY: directory });
+          report.cleanup = true;
+        } catch { report.cleanup = false; report.retainedDirectory = true; }
+      } else if (directory) { report.cleanup = false; report.retainedDirectory = true; }
+    }
+    if (report.startupErrorKinds instanceof Set) report.startupErrorKinds = [...report.startupErrorKinds].slice(0, 20);
+    const artifactDirectory = path.join(root, '.artifacts', 'request-chain', 'current', 'owned-acceptance');
+    const artifactName = report.failure && !report.exactChildVerified ? `${protocol}-preflight-failure.json` : `${protocol}.json`;
+    const artifactPath = path.join(artifactDirectory, artifactName);
+    report.artifact = `.artifacts/request-chain/current/owned-acceptance/${artifactName}`;
+    const desktopCoverage = activationHas({ activatedSources: report.activatedSources }, 'desktop-main-http', ['desktop-main-fetch', 'desktop-main-upload-progress']);
+    const backendCoverage = activationHas({ activatedSources: report.activatedSources }, 'owned-backend-provider', ['owned-local-app-server-model-provider']);
+    const acceptedTransport = protocol === 'http'
+      ? report.fixture.webSocketRejected426 > 0 && report.fixture.httpModelRequests >= 2 && report.fixture.httpModelRouted >= 2
+        && report.fixture.sseResponses >= 2 && report.fixture.webSocketFrames === 0
+      : report.fixture.webSocketFrames > 0 && report.fixture.webSocketModelRouted > 0 && report.fixture.webSocketModifiedResponses > 0;
+    report.accepted = !report.failure && report.installed && report.exactChildVerified && desktopCoverage && backendCoverage
+      && report.acceptance?.finished && !report.acceptance?.failure && report.acceptance.desktop?.fetch?.changed
+      && report.acceptance.desktop?.progress?.changed && report.acceptance.desktop?.redirect?.status === 200
+      && report.acceptance.desktop?.redirect?.changed && report.acceptance.desktop?.emptyRedirect?.status === 200
+      && report.acceptance.desktop?.emptyRedirect?.changed && report.acceptance.desktop?.crossOriginRedirect?.status === 200
+      && report.acceptance.desktop?.crossOriginRedirect?.unchanged && report.acceptance.backend?.turns === 2
+      && report.acceptance.backend?.modified && report.fixture.desktopBodiesModified >= 2
+      && report.fixture.redirectStarts === 1 && report.fixture.redirectFinals >= 1
+      && report.fixture.emptyRedirectStarts === 1 && report.fixture.emptyRedirectFinals === 1
+      && report.fixture.crossOriginRedirects === 1 && report.fixture.crossOriginFinals === 1
+      && report.fixture.crossOriginBodyObservedByOrigin1 === 0
+      && report.acceptance.cookieDiagnostics?.cookieInstalled === true
+      && report.acceptance.cookieDiagnostics?.bridgeSameOriginSent === report.acceptance.cookieDiagnostics?.rawSameOriginSent
+      && report.acceptance.cookieDiagnostics?.rawCrossOriginInitialSent === report.acceptance.cookieDiagnostics?.bridgeCrossOriginInitialSent
+      && report.acceptance.cookieDiagnostics?.bridgeCrossOriginFinalSent === report.acceptance.cookieDiagnostics?.rawCrossOriginFinalSent
+      && report.fixture.cookieRawSameOriginSent === report.acceptance.cookieDiagnostics?.rawSameOriginSent
+      && report.fixture.cookieBridgeSameOriginSent === report.acceptance.cookieDiagnostics?.bridgeSameOriginSent
+      && report.fixture.cookieRawCrossOriginInitialSent === report.acceptance.cookieDiagnostics?.rawCrossOriginInitialSent
+      && report.fixture.cookieRawCrossOriginFinalSent === report.acceptance.cookieDiagnostics?.rawCrossOriginFinalSent
+      && report.fixture.cookieBridgeCrossOriginInitialSent === report.acceptance.cookieDiagnostics?.bridgeCrossOriginInitialSent
+      && report.fixture.cookieBridgeCrossOriginFinalSent === report.acceptance.cookieDiagnostics?.bridgeCrossOriginFinalSent
+      && report.fixture.unauthorizedForwardAttempts === 0 && report.fixture.fakeAuthorizationSeen && acceptedTransport
+      && report.cleanup && report.ownedRemaining === 0 && report.originalClientIdentitiesUnchanged;
+    try {
+      await fs.mkdir(artifactDirectory, { recursive: true });
+      await fs.writeFile(artifactPath, JSON.stringify(report, null, 2) + '\n');
+    } catch { report.artifactWriteFailed = true; report.accepted = false; }
+    process.stdout.write(JSON.stringify(report) + '\n');
+    if (!report.accepted) process.exitCode = 1;
+  }
+}
+
+await main();

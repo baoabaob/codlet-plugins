@@ -4,7 +4,13 @@ import {fileURLToPath} from 'node:url';
 import {createHash} from 'node:crypto';
 import {deflateRawSync} from 'node:zlib';
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
-const out=resolve(root,'dist');await mkdir(out,{recursive:true});
+const args=process.argv.slice(2);
+let out=resolve(root,'dist');
+if(args.length){
+  if(args.length!==2||args[0]!=='--output'||!args[1]||args[1].startsWith('--'))throw Error('Usage: node scripts/package.mjs [--output DIR]');
+  out=resolve(root,args[1]);
+}
+await mkdir(out,{recursive:true});
 const hash=data=>createHash('sha256').update(data).digest('hex');
 function crc32(data){let value=0xffffffff;for(const byte of data){value^=byte;for(let i=0;i<8;i++)value=(value>>>1)^((value&1)?0xedb88320:0);}return(value^0xffffffff)>>>0;}
 function zip(files){

@@ -4,7 +4,7 @@ The adapters translate reviewed Codex Desktop internals into plugin capabilities
 
 ## Compatibility and ownership
 
-`compatibility/client-profiles.json` is the reviewed mapping of app version/build number, AppServer schema, module URLs and native exports. Matching a marketing version or finding a similarly named function is insufficient. `bundled/codex-ui-adapter/client-versions.json` is an additional shipped UI compatibility inventory; keep it consistent during reviewed profile changes. Do not delete working older profiles merely because newer builds exist.
+`compatibility/client-profiles.json` is the reviewed mapping of app version/build number, AppServer schema, module URLs and native exports. Matching a marketing version or finding a similarly named function is insufficient. `bundled/codex-ui-adapter/client-versions.json` separately records versions accepted in real UI tests; source review or simulated tests alone do not add an acceptance record. Do not delete working older profiles merely because newer builds exist.
 
 Adapters use the existing local Desktop connection, React scope and native navigation. They must not create another `connect-app-host` connection that replaces the Desktop view. Missing modules, changed object identity or a replaced patch make affected capabilities unavailable and produce diagnostics. Teardown restores only hooks still owned by that instance; conflicting patches can produce `reloadRequired`.
 
@@ -30,10 +30,9 @@ The navigation observer ignores ordinary streaming-content mutations. Native nav
 | --- | --- |
 | `codex.desktop.compatibility` | `probe`, `waitReady`; report readiness, reviewed build and capability availability |
 | `codex.backend.read` | `selection.get`, `threads.list/get`, `turns.list`, `items.list`, `models.list`, `skills.list`, `providers.list`, `approvals.list` |
-| `codex.backend.write` | `threads.open`, `turns.start/steer/interrupt`, `approvals.respond` |
+| `codex.backend.write` | `threads.open`, `turns.start/steer/interrupt`, `approvals.respond`, `getApi`, `configurations.list`; task-local model/provider configuration callback |
 | `codex.backend.events` | Cursor-based `read`, `getApi` for an owned callback |
 | `codex.ui.preSubmit` | `getApi`, `interceptors.list`; input rewrite/context injection before native `turn/start` |
-| `codex.backend.transport` | `probe`, `getApi`, `interceptors.list`; explicit channel selection at native task start/resume |
 
 Read results are bounded DTOs. Provider results omit credentials, URLs, environment mappings and raw config. Writes to a task require its resumed state and owner stream in this Desktop window. Opening a task validates its identity and lets the native route own resume. Cancellation after a dispatched write may yield `outcome_unknown`; callers inspect state/events rather than blindly repeat the write.
 
@@ -43,8 +42,10 @@ Callback APIs require a declared capability acquired through Core RPC `getApi`, 
 
 Pre-submit hooks have deterministic priority/owner/order, bounded concurrency and deadlines. Their failures stop that submission rather than silently bypassing requested transformations. They do not rewrite presentation or mutate stored history.
 
-## Explicit channel transport
+## Task configuration and explicit channels
 
-`frontend/src/desktop/transport.js` currently attaches an explicitly selected private loopback HTTP/WebSocket channel to native `thread/start` or `thread/resume` configuration. Its probe reports the actual coverage. It does not claim transparent takeover of an active turn, an already-loaded task or official OAuth traffic.
+`frontend/src/desktop/thread-configuration.js` applies one plugin-selected model or provider change to a local native `thread/start` or `thread/resume` request. A callback sees the task ID, working directory, model and provider. It can select an existing provider ID, or define one task-local Responses provider whose `baseUrl` is a private loopback HTTP endpoint, such as `context.traffic.openChannel` with an API path. A new provider has no ambient official OAuth. The Adapter does not edit global configuration, rebind an active turn or change the provider of an already-loaded task.
 
-The hook selects channel/path/model only; the channel's Host owner and Core retain forwarding policy, credentials, permissions and traffic lifetime. Multiple selected channels conflict. Retirement cancels pending selection, and late results cannot dispatch a retired request. Changes to this boundary must update this spec and the HTTP/WebSocket regression tests together.
+`registerThreadConfiguration({ appliesAt: ['turn.start'] }, handler)` lets a plugin choose the model for each task turn using the exact `draft.threadId`. It defaults to the thread start/resume phases when `appliesAt` is omitted. At `turn.start`, only `{ model }` is accepted; a provider change is rejected. The Adapter updates both the native `model` parameter and an existing `collaborationMode.settings.model`, preserving the rest of the mode. This matters because the Desktop composer can send `model: null` with an older model in collaboration settings. Task configuration runs before the existing text/context pre-submit hooks; with no matching configuration hook, the native request is unchanged.
+
+The Host channel or verified plaintext source owns forwarding policy, credentials, permissions and traffic lifetime. Multiple configuration changes conflict. Retirement cancels pending selection, and late results cannot dispatch a retired request. The callback does not grant arbitrary backend settings or direct remote URLs; remote forwarding uses the consuming Host's exact-origin Core grants. Changes to this boundary must update this spec and the HTTP/WebSocket regression tests together.

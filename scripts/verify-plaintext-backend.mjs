@@ -1,4 +1,4 @@
-// Opt-in research against an unmodified official backend. No account or proxy.
+// Opt-in research against an unmodified official backend. Synthetic local endpoints only.
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
@@ -11,15 +11,36 @@ import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const { WebSocketServer } = require('../frontend/node_modules/ws');
+if (process.argv.includes('--help')) {
+  console.log('Usage: node scripts/verify-plaintext-backend.mjs --run-owned yes --backend ABSOLUTE_CODEX_EXE [--expected-sha256 LOWERCASE_SHA256] [--routing-ws-only yes]');
+  console.log('The default hash is the reviewed backend. --expected-sha256 tests an explicit candidate and marks its report unreviewed; it does not change a production allowlist.');
+  console.log('The default run exercises eight synthetic local cases. --routing-ws-only runs the two-thread WebSocket and cold-resume case. Reports are written under .artifacts/request-chain/.');
+  process.exit(0);
+}
 const options = Object.fromEntries(process.argv.slice(2).reduce((pairs, value, i, all) => i % 2 ? pairs : [...pairs, [value, all[i + 1]]], []));
 if (process.platform !== 'win32' || options['--run-owned'] !== 'yes' || !path.isAbsolute(options['--backend'] ?? '')) throw Error('explicit_windows_backend_required');
+if (options['--routing-ws-only'] !== undefined && options['--routing-ws-only'] !== 'yes') throw Error('invalid_case_selector');
 const executable = await fs.realpath(options['--backend']);
-const expectedHash = 'bc45017e8239dc150258f69309ced9df6bbcdf5b8e4f346decf780ac0999e226';
-assert.equal(createHash('sha256').update(await fs.readFile(executable)).digest('hex'), expectedHash, 'review a new backend before running this fixture');
-const report = { schema: 1, backendSha256: expectedHash, transport: 'provider-endpoint', proxyConfigured: false, certificateConfigured: false, cases: [] };
+const reviewedHash = 'bc45017e8239dc150258f69309ced9df6bbcdf5b8e4f346decf780ac0999e226';
+const expectedHash = options['--expected-sha256'] ?? reviewedHash;
+if (!/^[a-f0-9]{64}$/u.test(expectedHash)) throw Error('invalid_expected_backend_sha256');
+const actualHash = createHash('sha256').update(await fs.readFile(executable)).digest('hex');
+assert.equal(actualHash, expectedHash, 'backend hash does not match the explicit fixture candidate');
+const report = { schema: 1, backendSha256: actualHash, ...(actualHash !== reviewedHash ? { candidateUnreviewed: true } : {}), ...(options['--routing-ws-only'] === 'yes' ? { caseSelector: 'routing-ws-only' } : {}), transport: 'provider-endpoint', proxyConfigured: false, certificateConfigured: false, cases: [] };
 const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'codlet-plaintext-'));
 const originLog = [];
 const sockets = new Set();
+const threadIdsByCase = new WeakMap();
+const sessionHeaderNames = ['session_id', 'x-session-id', 'x-codex-session-id', 'x-codex-thread-id', 'x-client-request-id', 'x-codex-parent-thread-id', 'conversation_id'];
+function sessionHeaderMatches(headers) {
+  const known = threadIdsByCase.get(activeCase);
+  return Object.fromEntries(sessionHeaderNames.map(name => [name,
+    known instanceof Map ? known.get(headers[name]) ?? null : typeof known === 'string' ? headers[name] === known : null]));
+}
+function sessionRoute(headers) {
+  const tag = sessionHeaderMatches(headers)['x-client-request-id'];
+  return tag === 'a' || tag === 'b' ? tag : null;
+}
 let sequence = 0, activeCase, expectedAuthorization;
 function responseEvents(text, id) {
   const item = { id: `item-${id}`, type: 'message', status: 'completed', role: 'assistant', content: [{ type: 'output_text', text, annotations: [] }] };
@@ -38,16 +59,26 @@ const upstream = http.createServer(async (request, response) => {
   let text = ''; for await (const chunk of request) text += chunk;
   const body = JSON.parse(text);
   activeCase.upstreamRequests = (activeCase.upstreamRequests ?? 0) + 1;
-  activeCase.requestRewrite = body.model === 'codlet-upstream-fixture' && Array.isArray(body.input);
+  activeCase.requestRewrite = (activeCase.sessionRouting
+    ? body.model === `codlet-upstream-${request.url.slice('/provider-'.length)}`
+    : body.model === 'codlet-upstream-fixture') && Array.isArray(body.input);
   (activeCase.destinations ??= []).push(request.url);
-  if (activeCase.completedTurns === 1) { response.writeHead(503, { 'content-type': 'application/json' }); response.end(JSON.stringify({ error: 'synthetic-upstream-error' })); return; }
+  if (activeCase.sessionRouting) {
+    activeCase.inFlight = (activeCase.inFlight ?? 0) + 1;
+    activeCase.peakInFlight = Math.max(activeCase.peakInFlight ?? 0, activeCase.inFlight);
+    await new Promise(resolve => setTimeout(resolve, 80));
+    activeCase.inFlight--;
+  }
+  if (!activeCase.sessionRouting && activeCase.completedTurns === 1) { response.writeHead(503, { 'content-type': 'application/json' }); response.end(JSON.stringify({ error: 'synthetic-upstream-error' })); return; }
   response.writeHead(200, { 'content-type': 'application/json' });
-  response.end(JSON.stringify(responseEvents('upstream-plaintext', `response-${++sequence}`)));
+  response.end(JSON.stringify(responseEvents(activeCase.sessionRouting ? `upstream-plaintext-${request.url.slice('/provider-'.length)}` : 'upstream-plaintext', `response-${++sequence}`)));
 });
 await new Promise(resolve => upstream.listen(0, '127.0.0.1', resolve));
-async function dispatch(body) {
-  const response = await fetch(`http://127.0.0.1:${upstream.address().port}/provider-${activeCase.completedTurns % 2 ? 'b' : 'a'}`, {
-    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...body, model: 'codlet-upstream-fixture' }), signal: AbortSignal.timeout(3000),
+async function dispatch(body, routeTag = null) {
+  const suffix = activeCase.sessionRouting ? routeTag : activeCase.completedTurns % 2 ? 'b' : 'a';
+  if (!['a', 'b'].includes(suffix)) throw Error('session_route_missing');
+  const response = await fetch(`http://127.0.0.1:${upstream.address().port}/provider-${suffix}`, {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...body, model: activeCase.sessionRouting ? `codlet-upstream-${suffix}` : 'codlet-upstream-fixture' }), signal: AbortSignal.timeout(3000),
   });
   if (response.status === 503) { activeCase.errorResponseRepaired = true; await response.body.cancel(); return responseEvents('upstream-plaintext', `repaired-${++sequence}`); }
   return response.json();
@@ -66,9 +97,11 @@ const server = http.createServer(async (request, response) => {
   if (encoding === 'gzip') bytes = gunzipSync(bytes, { maxOutputLength: 4 * 1024 * 1024 });
   const body = JSON.parse(bytes.toString('utf8'));
   (activeCase.requestEncodings ??= []).push(encoding);
-  originLog.push({ protocol: 'http', path: url.pathname, model: body.model, inputPresent: Array.isArray(body.input), inputItems: body.input?.length, previousResponseIdPresent: typeof body.previous_response_id === 'string', expectedAuthentication: request.headers.authorization === expectedAuthorization });
+  const routeTag = activeCase.sessionRouting ? sessionRoute(request.headers) : null;
+  originLog.push({ protocol: 'http', path: url.pathname, model: body.model, inputPresent: Array.isArray(body.input), inputItems: body.input?.length, previousResponseIdPresent: typeof body.previous_response_id === 'string', expectedAuthentication: request.headers.authorization === expectedAuthorization, sessionHeaderMatches: sessionHeaderMatches(request.headers), ...(activeCase.sessionRouting ? { routeTag } : {}) });
   const current = activeCase;
   current.httpRequests++;
+  if (current.sessionRouting && !routeTag) { current.unmatched = (current.unmatched ?? 0) + 1; response.writeHead(409); response.end(); return; }
   // An endpoint adapter sees the final wire request before dispatching a
   // modified copy to the separate local upstream above.
   response.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' });
@@ -76,7 +109,7 @@ const server = http.createServer(async (request, response) => {
     response.write('event: response.created\ndata: ' + JSON.stringify({ type: 'response.created', response: { id: 'held', status: 'in_progress', output: [] } }) + '\n\n');
     response.on('close', () => { current.cancelClosed = true; }); return;
   }
-  const events = await dispatch(body);
+  const events = await dispatch(body, routeTag);
   for (const event of events) {
     const encoded = JSON.stringify(event).replaceAll('upstream-plaintext', 'codlet-response-modified');
     const frame = `event: ${event.type}\ndata: ${encoded}\n\n`;
@@ -92,17 +125,25 @@ server.on('connection', socket => { sockets.add(socket); socket.on('close', () =
 const websocket = new WebSocketServer({ noServer: true });
 server.on('upgrade', (request, socket, head) => {
   activeCase.wsHandshakes++;
+  const routeTag = activeCase.sessionRouting ? sessionRoute(request.headers) : null;
+  originLog.push({ protocol: 'websocket-handshake', path: new URL(request.url, 'http://localhost').pathname, expectedAuthentication: request.headers.authorization === expectedAuthorization, sessionHeaderMatches: sessionHeaderMatches(request.headers), ...(activeCase.sessionRouting ? { routeTag, phase: activeCase.phase } : {}) });
+  if (activeCase.sessionRouting && !routeTag) {
+    const counter = ['initializing', 'before_thread_start'].includes(activeCase.phase) ? 'blockedPreThreadProbes' : 'unmatched';
+    activeCase[counter] = (activeCase[counter] ?? 0) + 1;
+    socket.end('HTTP/1.1 409 Conflict\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'); return;
+  }
   if (!activeCase.websockets) { socket.end('HTTP/1.1 426 Upgrade Required\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'); return; }
   websocket.handleUpgrade(request, socket, head, connection => websocket.emit('connection', connection, request));
 });
 websocket.on('connection', (socket, request) => {
+  const routeTag = activeCase.sessionRouting ? sessionRoute(request.headers) : null;
   socket.on('message', async data => {
     const body = JSON.parse(data.toString());
     const current = activeCase;
     current.wsFrames++;
-    originLog.push({ protocol: 'websocket', path: new URL(request.url, 'http://localhost').pathname, model: body.model, inputPresent: Array.isArray(body.input), inputItems: body.input?.length, previousResponseIdPresent: typeof body.previous_response_id === 'string', type: body.type, prewarm: body.generate === false, expectedAuthentication: request.headers.authorization === expectedAuthorization });
+    originLog.push({ protocol: 'websocket', path: new URL(request.url, 'http://localhost').pathname, model: body.model, inputPresent: Array.isArray(body.input), inputItems: body.input?.length, previousResponseIdPresent: typeof body.previous_response_id === 'string', type: body.type, prewarm: body.generate === false, expectedAuthentication: request.headers.authorization === expectedAuthorization, sessionHeaderMatches: sessionHeaderMatches(request.headers), ...(current.sessionRouting ? { routeTag } : {}) });
     if (current.hold) { socket.send(JSON.stringify({ type: 'response.created', response: { id: 'held', status: 'in_progress', output: [] } })); socket.on('close', () => { current.cancelClosed = true; }); return; }
-    for (const event of await dispatch(body)) socket.send(JSON.stringify(event).replaceAll('upstream-plaintext', 'codlet-response-modified'));
+    for (const event of await dispatch(body, routeTag)) socket.send(JSON.stringify(event).replaceAll('upstream-plaintext', 'codlet-response-modified'));
   });
 });
 await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -127,7 +168,7 @@ async function closeChild() {
   for (const call of pending.values()) { clearTimeout(call.timer); call.reject(Error('fixture_closed')); }
   pending.clear(); lines?.close();
   capture();
-  for (const value of [...owned.values()]) ps("$p=Get-CimInstance Win32_Process -Filter ('ProcessId='+$env:CODLET_OWNED_PID); if($p -and $p.CreationDate.ToUniversalTime().ToString('o') -eq $env:CODLET_OWNED_CREATED) { try { Stop-Process -Id ([int]$env:CODLET_OWNED_PID) -ErrorAction Stop } catch { if($_.FullyQualifiedErrorId -notlike 'NoProcessFoundForGivenId*') { throw } } }", { CODLET_OWNED_PID: String(value.ProcessId), CODLET_OWNED_CREATED: value.Created });
+  for (const value of [...owned.values()]) ps("$p=Get-CimInstance Win32_Process -Filter ('ProcessId='+$env:CODLET_OWNED_PID); if($p -and $p.CreationDate.ToUniversalTime().ToString('o') -eq $env:CODLET_OWNED_CREATED) { try { Stop-Process -Id ([int]$env:CODLET_OWNED_PID) -ErrorAction Stop } catch { $still=Get-CimInstance Win32_Process -Filter ('ProcessId='+$env:CODLET_OWNED_PID); if($still -and $still.CreationDate.ToUniversalTime().ToString('o') -eq $env:CODLET_OWNED_CREATED) { throw } } }", { CODLET_OWNED_PID: String(value.ProcessId), CODLET_OWNED_CREATED: value.Created });
   child?.stdin?.destroy(); child?.stdout?.destroy(); child?.stderr?.destroy();
   child = undefined;
 }
@@ -135,10 +176,10 @@ async function waitFor(predicate, label, timeout = 12000) {
   const until = Date.now() + timeout;
   while (!predicate()) { if (Date.now() >= until) throw Error(`fixture_timeout:${label}`); await new Promise(resolve => setTimeout(resolve, 20)); }
 }
-async function run(kind, websockets) {
-  const state = { kind, websockets, httpRequests: 0, wsHandshakes: 0, wsFrames: 0, requestRewrite: false, responseRewrite: false, completedTurns: 0, cancelled: false };
+async function run(kind, websockets, sessionRouting = false) {
+  const state = { kind, websockets, ...(sessionRouting ? { sessionRouting: true, phase: 'initializing' } : {}), httpRequests: 0, wsHandshakes: 0, wsFrames: 0, requestRewrite: false, responseRewrite: false, completedTurns: 0, cancelled: false };
   activeCase = state; report.cases.push(state); notifications.length = 0;
-  const home = path.join(directory, `${kind}-${websockets}`); await fs.mkdir(home);
+  const home = path.join(directory, `${kind}-${websockets}${sessionRouting ? '-sessions' : ''}`); await fs.mkdir(home);
   const config = [
     'cli_auth_credentials_store="file"', 'sandbox_mode="read-only"', 'approval_policy="never"', 'model="gpt-5.4"',
     `chatgpt_base_url=${JSON.stringify(endpoint + '/backend-api/')}`, `openai_base_url=${JSON.stringify(endpoint + '/v1')}`,
@@ -153,26 +194,74 @@ async function run(kind, websockets) {
   await fs.writeFile(path.join(home, 'auth.json'), JSON.stringify(kind === 'chatgpt' ? { auth_mode: 'chatgpt', tokens: { id_token: jwt, access_token: jwt, refresh_token: 'never-use-this-synthetic-token', account_id: 'codlet-fixture' }, last_refresh: new Date().toISOString() } : { OPENAI_API_KEY: 'codlet-local-fixture' }));
   expectedAuthorization = kind === 'custom' ? undefined : 'Bearer ' + (kind === 'chatgpt' ? jwt : 'codlet-local-fixture');
   const env = { ...environment, CODEX_HOME: home, HOME: home, USERPROFILE: home, APPDATA: home, LOCALAPPDATA: home, TEMP: home, TMP: home, GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'protocol.allow', GIT_CONFIG_VALUE_0: 'never' };
-  child = spawn(executable, ['app-server', '--stdio', '-c', `sqlite_home=${JSON.stringify(home)}`], { env, cwd: home, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
-  capture();
-  child.stderr.on('data', chunk => { const text = chunk.toString(); for (const tag of ['401 Unauthorized', 'error sending request', 'invalid configuration']) if (text.includes(tag)) (state.errorKinds ??= []).push(tag); });
-  lines = createInterface({ input: child.stdout });
-  lines.on('line', text => {
-    let message; try { message = JSON.parse(text); } catch { return; }
-    const call = pending.get(message.id);
-    if (call) { clearTimeout(call.timer); pending.delete(message.id); message.error ? call.reject(Error(`rpc_failed:${call.method}:${message.error.code}:${message.error.message}`)) : call.resolve(message.result); }
-    else if (message.method && notifications.length < 1000) notifications.push(message);
-  });
   let requestId = 0;
   const rpc = (method, params) => new Promise((resolve, reject) => {
     const id = ++requestId;
     pending.set(id, { method, resolve, reject, timer: setTimeout(() => { pending.delete(id); reject(Error(`rpc_timeout:${method}`)); }, 12000) });
     child.stdin.write(JSON.stringify({ id, method, params }) + '\n');
   });
-  try {
+  async function startNative() {
+    child = spawn(executable, ['app-server', '--stdio', '-c', `sqlite_home=${JSON.stringify(home)}`], { env, cwd: home, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
+    capture();
+    child.stderr.on('data', chunk => { const text = chunk.toString(); for (const tag of ['401 Unauthorized', 'error sending request', 'invalid configuration']) if (text.includes(tag)) (state.errorKinds ??= []).push(tag); });
+    lines = createInterface({ input: child.stdout });
+    lines.on('line', text => {
+      let message; try { message = JSON.parse(text); } catch { return; }
+      const call = pending.get(message.id);
+      if (call) { clearTimeout(call.timer); pending.delete(message.id); message.error ? call.reject(Error(`rpc_failed:${call.method}:${message.error.code}:${message.error.message}`)) : call.resolve(message.result); }
+      else if (message.method && notifications.length < 1000) notifications.push(message);
+    });
     await rpc('initialize', { clientInfo: { name: 'codlet-plaintext-fixture', version: '1' }, capabilities: { experimentalApi: true } });
     child.stdin.write(JSON.stringify({ method: 'initialized', params: {} }) + '\n');
+  }
+  try {
+    await startNative();
+    if (sessionRouting) {
+      state.phase = 'before_thread_start';
+      const observedStart = originLog.length;
+      const tags = ['a', 'b'];
+      state.phase = 'starting_threads';
+      const started = await Promise.all(tags.map(() => rpc('thread/start', { cwd: home, approvalPolicy: 'never', sandbox: 'read-only', baseInstructions: 'This is a local synthetic session routing fixture.', ephemeral: false })));
+      assert.notEqual(started[0].thread.id, started[1].thread.id);
+      const ids = new Map(tags.map((tag, index) => [tag, started[index].thread.id]));
+      threadIdsByCase.set(state, new Map([...ids].map(([tag, id]) => [id, tag])));
+      state.phase = 'active_threads';
+      state.threadProvider = started.map(value => value.modelProvider);
+      const runBoth = async label => {
+        const turns = await Promise.all(tags.map(tag => rpc('turn/start', { threadId: ids.get(tag), input: [{ type: 'text', text: `local ${label} ${tag}`, text_elements: [] }] })));
+        await waitFor(() => turns.every((turn, index) => notifications.some(value => value.method === 'turn/completed' && value.params.threadId === ids.get(tags[index]) && value.params.turn.id === turn.turn.id)), `${label}_turns`, 20000);
+        for (const [index, tag] of tags.entries()) {
+          const completion = notifications.find(value => value.method === 'turn/completed' && value.params.threadId === ids.get(tag) && value.params.turn.id === turns[index].turn.id);
+          assert.equal(completion.params.turn.status, 'completed', `${label} ${tag} failed`);
+          assert(notifications.some(value => value.method === 'item/agentMessage/delta' && value.params.threadId === ids.get(tag) && value.params.delta.includes(`codlet-response-modified-${tag}`)), `${label} ${tag} response crossed sessions`);
+        }
+        state.completedTurns += 2;
+      };
+      await runBoth('initial');
+      state.phase = 'closing_for_resume';
+      await closeChild();
+      notifications.length = 0;
+      state.phase = 'reinitializing';
+      await startNative();
+      state.phase = 'resuming_threads';
+      const resumed = await Promise.all(tags.map(tag => rpc('thread/resume', { threadId: ids.get(tag), cwd: home, approvalPolicy: 'never', sandbox: 'read-only' })));
+      assert(resumed.every((value, index) => value.thread.id === ids.get(tags[index])));
+      state.phase = 'active_threads';
+      state.coldResumed = true;
+      await runBoth('resumed');
+      const observed = originLog.slice(observedStart);
+      state.httpMatched = Object.fromEntries(tags.map(tag => [tag, observed.filter(value => value.protocol === 'http' && value.routeTag === tag).length]));
+      state.wsHandshakeMatched = Object.fromEntries(tags.map(tag => [tag, observed.filter(value => value.protocol === 'websocket-handshake' && value.routeTag === tag).length]));
+      state.wsPrewarmMatched = Object.fromEntries(tags.map(tag => [tag, observed.filter(value => value.protocol === 'websocket' && value.prewarm && value.routeTag === tag).length]));
+      state.wsFramesMatched = Object.fromEntries(tags.map(tag => [tag, observed.filter(value => value.protocol === 'websocket' && !value.prewarm && value.routeTag === tag).length]));
+      assert.equal(state.unmatched ?? 0, 0);
+      assert(state.requestRewrite && state.coldResumed && state.destinations.includes('/provider-a') && state.destinations.includes('/provider-b'));
+      assert(tags.every(tag => websockets ? state.wsHandshakeMatched[tag] >= 2 && state.wsFramesMatched[tag] >= 2 : state.httpMatched[tag] >= 2));
+      state.passed = true;
+      return;
+    }
     const started = await rpc('thread/start', { cwd: home, approvalPolicy: 'never', sandbox: 'read-only', baseInstructions: 'This is a local synthetic transport fixture.', ephemeral: true });
+    threadIdsByCase.set(state, started.thread.id);
     state.threadProvider = started.modelProvider;
     for (let index = 0; index < 2; index++) {
       const turn = await rpc('turn/start', { threadId: started.thread.id, input: [{ type: 'text', text: 'local synthetic request', text_elements: [] }] });
@@ -206,7 +295,11 @@ async function run(kind, websockets) {
   finally { await closeChild(); for (const socket of websocket.clients) socket.terminate(); console.log(JSON.stringify(state)); }
 }
 try {
-  for (const kind of ['custom', 'builtin', 'chatgpt']) for (const websockets of [false, true]) await run(kind, websockets);
+  if (options['--routing-ws-only'] === 'yes') await run('custom', true, true);
+  else {
+    for (const kind of ['custom', 'builtin', 'chatgpt']) for (const websockets of [false, true]) await run(kind, websockets);
+    for (const websockets of [false, true]) await run('custom', websockets, true);
+  }
 } finally {
   await closeChild(); websocket.close(); for (const socket of sockets) socket.destroy();
   await new Promise(resolve => server.close(resolve));
@@ -221,7 +314,8 @@ try {
   report.observed = originLog;
   report.authenticationPreserved = originLog.every(value => value.expectedAuthentication);
   await fs.mkdir(new URL('../.artifacts/request-chain/', import.meta.url), { recursive: true });
-  await fs.writeFile(new URL('../.artifacts/request-chain/backend-plaintext.json', import.meta.url), JSON.stringify(report, null, 2) + '\n');
+  const reportName = options['--routing-ws-only'] === 'yes' ? 'backend-plaintext-routing-ws.json' : 'backend-plaintext.json';
+  await fs.writeFile(new URL(`../.artifacts/request-chain/${reportName}`, import.meta.url), JSON.stringify(report, null, 2) + '\n');
   console.log(JSON.stringify(report));
   if (report.cases.some(value => !value.passed) || !report.cleanup || report.ownedRemaining || !report.originalClientIdentitiesUnchanged || !report.authenticationPreserved) process.exitCode = 1;
 }

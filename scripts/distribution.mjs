@@ -28,13 +28,13 @@ export function validateConfig(config){
   return config;
 }
 
-export async function prepareDistribution(root,{allowDirty=false}={}){
+export async function prepareDistribution(root,{allowDirty=false,outputDirectory}={}){
   root=await realpath(root);
   const config=validateConfig(JSON.parse(await readFile(resolve(root,'plugins.json'),'utf8')));
   const git=(...args)=>execFileSync('git',args,{cwd:root,encoding:'utf8',windowsHide:true}).trim();
   const sourceCommit=git('rev-parse','HEAD'),dirty=!!git('status','--porcelain','--untracked-files=normal');
   if(dirty&&!allowDirty)throw Error('Commit the tested development files before preparing a synchronized distribution (use --allow-dirty for local inspection only)');
-  const out=resolve(root,'dist'),catalog=JSON.parse(await readFile(resolve(out,'catalog.json'),'utf8'));
+  const out=resolve(root,outputDirectory??'dist'),catalog=JSON.parse(await readFile(resolve(out,'catalog.json'),'utf8'));
   const plan={schema:1,kind:'codlet-distribution-plan',sourceRepository:config.sourceRepository,sourceCommit,dirty,plugins:[]};
   for(const plugin of config.plugins){
     const pkg=catalog.packages.find(p=>p.id===plugin.id);

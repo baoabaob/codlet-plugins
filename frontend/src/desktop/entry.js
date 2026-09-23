@@ -1,5 +1,5 @@
 import { CLIENT_PROFILES } from '../../../compatibility/client-profiles.js';
-import { createThreadTransport } from './transport.js';
+import { createThreadConfiguration } from './thread-configuration.js';
 'use strict';
 
 // All Desktop build details stay in this optional directory package. The Core
@@ -8,7 +8,7 @@ const BUILDS = CLIENT_PROFILES;
 const publicBuild = build => ({ appVersion: build.appVersion, buildNumber: build.buildNumber, appServerVersion: build.appServerVersion });
 const API_SYMBOL = 'codlet.codex.desktop.v1';
 const cap = name => Object.freeze({ name, api: 1, scope: 'target' });
-const CAPS = Object.freeze({ compatibility: cap('codex.desktop.compatibility'), submit: cap('codex.ui.preSubmit'), read: cap('codex.backend.read'), write: cap('codex.backend.write'), events: cap('codex.backend.events'), transport: cap('codex.backend.transport') });
+const CAPS = Object.freeze({ compatibility: cap('codex.desktop.compatibility'), submit: cap('codex.ui.preSubmit'), read: cap('codex.backend.read'), write: cap('codex.backend.write'), events: cap('codex.backend.events') });
 const fail = (code, message) => Object.assign(new Error(message), { code });
 const str = (value, name, max = 512) => {
     if (typeof value !== 'string' || !value.length || value.length > max) throw fail('invalid_argument', `${name} must be a nonempty string of at most ${max} characters`);
@@ -88,14 +88,20 @@ async function probeDesktop(loadModule = source => import(source), readyTimeoutM
     // Import reuses the already loaded module and its existing app-host services.
     // Opening another connect-app-host port would replace the Desktop view.
     const module = await loadModule(build.module);
-    const transportModule = build.postboxModule ? await loadModule(build.postboxModule) : module;
+    const imports = new Map([[build.module, module]]);
+    const additional = async url => {
+        if (!imports.has(url)) imports.set(url, await loadModule(url));
+        return imports.get(url);
+    };
+    const scopeModule = build.scopeModule ? await additional(build.scopeModule) : module;
+    const transportModule = build.postboxModule ? await additional(build.postboxModule) : module;
     let token, managerFamily, clientFamily, services, postbox, scope, manager, client;
     for (;;) {
         if (signal?.aborted) throw fail('adapter_deactivated', 'Desktop adapter was deactivated during initialization');
         try {
             // These are live exports initialized by Desktop's lazy bootstrap.
             // Snapshot them only once Desktop has mounted its own connection.
-            token = module[build.exports.scope]; managerFamily = module[build.exports.manager]; clientFamily = module[build.exports.client];
+            token = scopeModule[build.exports.scope]; managerFamily = module[build.exports.manager]; clientFamily = module[build.exports.client];
             services = module[build.exports.services]; postbox = transportModule[build.exports.postbox];
             scope = locateScope(token);
             if (!scope.node.familyBindings.get(managerFamily)?.has('local') || !scope.node.familyBindings.get(clientFamily)?.has('local')) throw fail('desktop_connection_not_ready', 'Desktop has not initialized its own local connection');
@@ -119,7 +125,7 @@ async function probeDesktop(loadModule = source => import(source), readyTimeoutM
         check() {
             if (validateDesktopBuild() !== build) throw fail('desktop_build_drift', 'Desktop build changed after adapter initialization');
             const current = locateScope(token);
-            if (current.node !== scope.node || module[build.exports.scope] !== token || module[build.exports.manager] !== managerFamily || module[build.exports.client] !== clientFamily || module[build.exports.services] !== services || transportModule[build.exports.postbox] !== postbox || !current.node.familyBindings.get(managerFamily)?.has('local') || !current.node.familyBindings.get(clientFamily)?.has('local') || managerFamily.read(current.node, current.chain, 'local') !== manager || clientFamily.read(current.node, current.chain, 'local') !== client || manager.requestClient !== client || client.getAppServerVersion() !== build.appServerVersion) throw fail('desktop_connection_replaced', 'Desktop connection changed; reload the adapter');
+            if (current.node !== scope.node || scopeModule[build.exports.scope] !== token || module[build.exports.manager] !== managerFamily || module[build.exports.client] !== clientFamily || module[build.exports.services] !== services || transportModule[build.exports.postbox] !== postbox || !current.node.familyBindings.get(managerFamily)?.has('local') || !current.node.familyBindings.get(clientFamily)?.has('local') || managerFamily.read(current.node, current.chain, 'local') !== manager || clientFamily.read(current.node, current.chain, 'local') !== client || manager.requestClient !== client || client.getAppServerVersion() !== build.appServerVersion) throw fail('desktop_connection_replaced', 'Desktop connection changed; reload the adapter');
         }
     };
 }
@@ -270,7 +276,7 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
         try { connection.check(); if (postbox.postMessage !== intercept) throw fail('desktop_patch_drift', 'Desktop request patch ownership changed; renderer reload required'); }
         catch (error) { markUnavailable(error); throw error; }
     };
-    const status = () => ({ api: 1, initializing: false, available: unavailable === null, unavailable: unavailable ? { ...unavailable } : null, build: publicBuild(build), connection: 'existing-desktop-local', transport: 'existing-app-host-services-and-native-request-client', inputRewrite: true, contextInjection: true, presentationTransform: false, historyMutation: false, hooks: hooks.size, pendingSubmits: pendingSubmits.size, navigation: { available: navigation !== null && navigationFailure === null, unavailable: navigationFailure }, threadTransport: { ...threadTransport.probe(), available: unavailable === null && threadTransport.probe().available } });
+    const status = () => ({ api: 1, initializing: false, available: unavailable === null, unavailable: unavailable ? { ...unavailable } : null, build: publicBuild(build), connection: 'existing-desktop-local', transport: 'existing-app-host-services-and-native-request-client', inputRewrite: true, contextInjection: true, presentationTransform: false, historyMutation: false, hooks: hooks.size, pendingSubmits: pendingSubmits.size, navigation: { available: navigation !== null && navigationFailure === null, unavailable: navigationFailure }, threadConfiguration: { ...threadConfiguration.probe(), available: unavailable === null && threadConfiguration.probe().available } });
     const emit = event => {
         if (!alive) return;
         const value = freeze({ ...copy(event), cursor: `${instance}:${++sequence}` });
@@ -284,10 +290,10 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
     function markUnavailable(error) {
         if (unavailable) return;
         unavailable = { code: error.code ?? 'desktop_schema_drift', message: optionalText(error.message) ?? 'Desktop schema changed; reload or update the adapter' };
-        for (const capability of [CAPS.submit, CAPS.read, CAPS.write, CAPS.transport]) context.rpc.unavailable(capability, `${unavailable.code}: ${unavailable.message}`.slice(0, 1024));
+        for (const capability of [CAPS.submit, CAPS.read, CAPS.write]) context.rpc.unavailable(capability, `${unavailable.code}: ${unavailable.message}`.slice(0, 1024));
         try { context.reportDiagnostic({ code: unavailable.code, message: unavailable.message }); } catch {}
         for (const pending of pendingSubmits) pending.controller.abort(fail('capability_unavailable', unavailable.message));
-        threadTransport.cancel(fail('capability_unavailable', unavailable.message));
+        threadConfiguration.cancel(fail('capability_unavailable', unavailable.message));
         emit({ type: 'adapter.drift', ...unavailable });
     }
     function mapped(convert) {
@@ -320,7 +326,7 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
         // plugins are high-trust code; this object does not claim an OS sandbox.
         return { pluginId: ctx.pluginId, generation: ctx.generation, capability };
     };
-    const threadTransport = createThreadTransport({ check, owner, capability: CAPS.transport, client, build });
+    const threadConfiguration = createThreadConfiguration({ check, owner, capability: CAPS.write, client, build });
 
     function navigationUnavailable(error) {
         if (navigationFailure) return;
@@ -391,7 +397,12 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
     }
 
     function intercept(message, ...rest) {
-        if (alive && message?.type === 'mcp-request' && message.hostId === 'local' && ['thread/start', 'thread/resume'].includes(message.request?.method)) return threadTransport.intercept(message, next => originalPost.call(this, next, ...rest));
+        if (alive && message?.type === 'mcp-request' && message.hostId === 'local' && ['thread/start', 'thread/resume'].includes(message.request?.method)) return threadConfiguration.intercept(message, next => originalPost.call(this, next, ...rest));
+        if (alive && message?.type === 'mcp-request' && message.hostId === 'local' && message.request?.method === 'turn/start') return threadConfiguration.intercept(message, next => interceptSubmit.call(this, next, ...rest));
+        return originalPost.call(this, message, ...rest);
+    }
+
+    function interceptSubmit(message, ...rest) {
         if (!alive || message?.type !== 'mcp-request' || message.hostId !== 'local' || message.request?.method !== 'turn/start') return originalPost.call(this, message, ...rest);
         const submission = submissions.get(message.request.params?.clientUserMessageId);
         if (submission?.signal?.aborted || pendingSubmits.size >= 16) {
@@ -706,14 +717,14 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
     }
     const publicApi = Object.freeze({ api: 1,
         registerPreSubmit(ctx, ticket, options, handler) { claimTicket(ctx, ticket, CAPS.submit); return registerPreSubmit(ctx, options, handler); },
-        registerThreadTransport(ctx, ticket, options, handler) { claimTicket(ctx, ticket, CAPS.transport); return threadTransport.register(ctx, options, handler); },
+        registerThreadConfiguration(ctx, ticket, options, handler) { claimTicket(ctx, ticket, CAPS.write); return threadConfiguration.register(ctx, options, handler); },
         onEvent(ctx, ticket, handler) { claimTicket(ctx, ticket, CAPS.events); return onEvent(ctx, handler); }
     });
-    const api = Object.freeze({ api: 1, status: () => { check(); return status(); }, read, write, readEvents, onEvent, registerPreSubmit, listInterceptors, registerThreadTransport: threadTransport.register });
+    const api = Object.freeze({ api: 1, status: () => { check(); return status(); }, read, write, readEvents, onEvent, registerPreSubmit, listInterceptors, registerThreadConfiguration: threadConfiguration.register });
     function dispose() {
         if (!alive) return reloadReason ? { reloadRequired: true, reason: reloadReason } : undefined;
         alive = false;
-        threadTransport.dispose();
+        threadConfiguration.dispose();
         for (const pending of pendingSubmits) pending.controller.abort(fail('adapter_deactivated', 'Desktop adapter was deactivated'));
         for (const hook of hooks.values()) hook.active = false;
         hooks.clear(); listeners.clear(); approvals.clear(); retiredApprovals.clear(); tickets.clear(); events.length = 0; eventBytes = 0;
@@ -740,9 +751,8 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
         if (!compatibilityProvided) context.rpc.provide(CAPS.compatibility, 'probe', inspect);
         context.rpc.provide(CAPS.submit, 'getApi', (_args, invocation) => issueTicket(CAPS.submit, invocation));
         context.rpc.provide(CAPS.submit, 'interceptors.list', args => listInterceptors(args));
-        context.rpc.provide(CAPS.transport, 'probe', args => { check(); fields(args ?? {}, []); return threadTransport.probe(); });
-        context.rpc.provide(CAPS.transport, 'getApi', (_args, invocation) => issueTicket(CAPS.transport, invocation));
-        context.rpc.provide(CAPS.transport, 'interceptors.list', args => threadTransport.list(args ?? {}));
+        context.rpc.provide(CAPS.write, 'getApi', (_args, invocation) => issueTicket(CAPS.write, invocation));
+        context.rpc.provide(CAPS.write, 'configurations.list', args => threadConfiguration.list(args ?? {}));
         for (const method of ['selection.get', 'threads.list', 'threads.get', 'turns.list', 'items.list', 'models.list', 'skills.list', 'providers.list', 'approvals.list']) context.rpc.provide(CAPS.read, method, (args, invocation) => read(method, args ?? {}, invocation.signal));
         for (const method of ['threads.open', 'turns.start', 'turns.steer', 'turns.interrupt', 'approvals.respond']) context.rpc.provide(CAPS.write, method, (args, invocation) => write(method, args ?? {}, invocation.signal));
         context.rpc.provide(CAPS.events, 'read', (args, invocation) => readEvents(args ?? {}, invocation.signal));
@@ -756,7 +766,7 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
 function startAdapter(context, probe = signal => probeDesktop(undefined, 30000, signal)) {
     let alive = true, inner, failure = null, settled = false;
     const controller = new AbortController(), waits = new Set();
-    for (const capability of [CAPS.submit, CAPS.read, CAPS.write, CAPS.events, CAPS.transport]) context.rpc.unavailable(capability, 'Desktop adapter is waiting for the existing app-host services');
+    for (const capability of [CAPS.submit, CAPS.read, CAPS.write, CAPS.events]) context.rpc.unavailable(capability, 'Desktop adapter is waiting for the existing app-host services');
     const status = () => {
         if (!alive) throw fail('adapter_deactivated', 'Desktop adapter was deactivated');
         if (inner) return inner.probe();
@@ -791,7 +801,7 @@ function startAdapter(context, probe = signal => probeDesktop(undefined, 30000, 
     }).catch(error => {
         if (!alive) return;
         failure = { code: error.code ?? 'desktop_initialization_failed', message: optionalText(error.message) ?? 'Desktop adapter initialization failed' };
-        for (const capability of [CAPS.submit, CAPS.read, CAPS.write, CAPS.events, CAPS.transport]) context.rpc.unavailable(capability, `${failure.code}: ${failure.message}`.slice(0, 1024));
+        for (const capability of [CAPS.submit, CAPS.read, CAPS.write, CAPS.events]) context.rpc.unavailable(capability, `${failure.code}: ${failure.message}`.slice(0, 1024));
         try { context.reportDiagnostic({ code: failure.code, message: failure.message }); } catch {}
     }).finally(() => { settled = true; for (const wake of [...waits]) wake(); });
     return { dispose, probe: status };

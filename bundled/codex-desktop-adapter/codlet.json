@@ -17,7 +17,6 @@
     { "name": "codex.ui.preSubmit", "api": 1, "scope": "target" },
     { "name": "codex.backend.read", "api": 1, "scope": "target" },
     { "name": "codex.backend.write", "api": 1, "scope": "target" },
-    { "name": "codex.backend.events", "api": 1, "scope": "target" },
-    { "name": "codex.backend.transport", "api": 1, "scope": "target" }
+    { "name": "codex.backend.events", "api": 1, "scope": "target" }
   ]
 }

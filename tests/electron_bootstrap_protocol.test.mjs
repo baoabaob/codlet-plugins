@@ -1,6 +1,5 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
@@ -18,9 +17,8 @@ test('real Node inspector pauses before entry, binds identity, installs main hoo
       if (found) { clearTimeout(timer); resolve(found[1]); }
     });
   });
-  const caPem = await fs.readFile(new URL('./fixtures/traffic/ca.pem', import.meta.url), 'utf8');
+  const mainSource = `module.exports.installElectronTraffic=()=>({ready:async()=>({installed:true,activatedSources:[{id:'desktop-main-http',operations:['http.intercept'],protocols:['http'],coverage:['desktop-main-wEe-fetch']}],unsupportedSources:[]}),inspect:()=>({installed:true}),close:()=>{}});`;
   const result = await attachElectronTrafficBeforeEntry({ inspectorUrl, expectedPid: child.pid, executable: process.execPath,
-    configuration: { proxyUrl: 'http://codlet:fixture@127.0.0.1:12345', caPem }, signal: controller.signal });
-  assert.equal(result.installed, true); assert.equal(result.exactChildVerified, true); assert.equal(result.configuredSessions, 1);
-  assert.equal(result.desktopTrafficVerified, false, 'fixture protocol is not real official Desktop acceptance');
+    configuration: { source: { endpoint: { token: 'fixture' } } }, mainSource, signal: controller.signal });
+  assert.equal(result.installed, true); assert.equal(result.exactChildVerified, true); assert.equal(result.activatedSources[0].id,'desktop-main-http');
 });

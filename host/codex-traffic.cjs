@@ -2,49 +2,38 @@
 // Official Adapter-owned protocol/launch knowledge. Core has no Codex names.
 // Native owns launch attachment. The public SDK registers with the consuming
 // Host context, so the Adapter cannot lend its own permissions to other plugins.
-const fs = require('node:fs');
-const path = require('node:path');
-const { createHash } = require('node:crypto');
 const zlib = require('node:zlib');
 const failure = code => Object.assign(new Error(code), { code });
 const VERIFIED_BACKENDS = Object.freeze({
-  win32: Object.freeze({ sha256: 'bc45017e8239dc150258f69309ced9df6bbcdf5b8e4f346decf780ac0999e226', version: '0.155.0-alpha.9.2', evidence: 'controlled-custom-provider-no-oauth' }),
+  win32: Object.freeze([
+    Object.freeze({ sha256: 'bc45017e8239dc150258f69309ced9df6bbcdf5b8e4f346decf780ac0999e226', version: '0.155.0-alpha.9.2', evidence: 'controlled-custom-provider-two-thread-http-ws' }),
+    Object.freeze({ sha256: '97d4d67419d0ac2f71342f9a5e850f9468aa622618de8ea823223edb9a91926a', version: '0.155.0-alpha.16', evidence: 'controlled-custom-provider-two-thread-http-ws' }),
+  ]),
 });
 function probeCodexTraffic({ platform = process.platform, binarySha256 } = {}) {
-  const backend = VERIFIED_BACKENDS[platform];
-  const fixtureVerified = !!backend && binarySha256?.toLowerCase() === backend.sha256;
+  const backend = VERIFIED_BACKENDS[platform]?.find(profile => binarySha256?.toLowerCase() === profile.sha256);
+  const fixtureVerified = !!backend;
   return Object.freeze({ available: false, fixtureVerified, restartRequired: true, officialOAuth: false, existingLoadedThreads: false, desktop: false, attachments: false,
     fixtureProtocols: fixtureVerified ? ['http', 'https', 'sse', 'ws', 'wss'] : [],
     reason: fixtureVerified ? 'native_process_ingress_not_attached' : 'backend_build_unverified' });
 }
-async function prepareCodexBackendTraffic({ core, executable, platform = process.platform, environment, directory, proxyUrl, additionalCaPem, systemProxyFeature = null }) {
-  if (!path.isAbsolute(executable) || !core?.prepareProcessTrafficEnvironment) throw failure('invalid_backend_launch');
-  if (systemProxyFeature === true) throw failure('backend_proxy_policy_unverified');
-  const hash = createHash('sha256');
-  for await (const chunk of fs.createReadStream(executable)) hash.update(chunk);
-  const sha256 = hash.digest('hex');
-  if (!VERIFIED_BACKENDS[platform] || VERIFIED_BACKENDS[platform].sha256 !== sha256) throw failure('backend_build_unverified');
-  const get = name => {
-    const key = Object.keys(environment).find(key => platform === 'win32' ? key.toUpperCase() === name : key === name);
-    return key ? environment[key] : undefined;
-  };
-  // Preserve official trust precedence. An empty explicit override is invalid;
-  // silently replacing it could make a previously rejected route trusted.
-  const prior = get('CODEX_CA_CERTIFICATE') ?? get('SSL_CERT_FILE');
-  if (prior !== undefined && !prior) throw failure('invalid_existing_trust');
-  const prepared = await core.prepareProcessTrafficEnvironment({ platform, environment, directory, proxyUrl, additionalCaPem, trustInputs: prior === undefined ? [] : [prior], trustOutputs: ['CODEX_CA_CERTIFICATE'] });
-  return Object.freeze({ ...prepared, probe: () => probeCodexTraffic({ platform, binarySha256: sha256 }) });
+function threadIdFromHeaders(headers) {
+  if (!Array.isArray(headers)) return null;
+  const values = headers.filter(item => Array.isArray(item) && typeof item[0] === 'string' && item[0].toLowerCase() === 'x-client-request-id').map(item => item[1]);
+  return values.length === 1 && typeof values[0] === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu.test(values[0]) ? values[0] : null;
 }
-function classifyCodexTraffic({ url, method }) {
+function classifyCodexTraffic({ url, method, headers, verified = false, allowedOrigins = ['https://chatgpt.com', 'https://api.openai.com'] }) {
   let target; try { target = new URL(url); } catch { return Object.freeze({ kind: 'unknown', threadId: null, model: null }); }
   const protocol = target.protocol === 'wss:' ? 'https:' : target.protocol === 'ws:' ? 'http:' : target.protocol;
-  const trusted = protocol === 'https:' && !target.username && !target.password && !target.port;
+  const normalizedOrigin = `${protocol}//${target.host}`;
+  const trusted = allowedOrigins.includes(normalizedOrigin) && !target.username && !target.password;
   let kind = 'unknown';
-  if (trusted && (target.hostname === 'chatgpt.com' && target.pathname === '/backend-api/codex/responses' || target.hostname === 'api.openai.com' && target.pathname === '/v1/responses') && ['POST', 'GET'].includes(method)) kind = 'model.responses';
+  if (trusted && /\/responses$/u.test(target.pathname) && ['POST', 'GET'].includes(method)) kind = 'model.responses';
   if (trusted && target.hostname === 'chatgpt.com' && target.pathname === '/backend-api/codex/models' && method === 'GET') kind = 'model.list';
-  // Correlation requires separate verified protocol evidence. Never infer thread
-  // IDs from a URL query, timing, whichever task is visible, or a model name.
-  return Object.freeze({ kind, threadId: null, model: null });
+  // The reviewed backend puts its thread id in this single header on Responses
+  // HTTP requests and WS handshakes. Core redacts it without a matching
+  // traffic.sensitiveHeaders grant, so absence or ambiguity yields null.
+  return Object.freeze({ kind, threadId: verified && kind === 'model.responses' ? threadIdFromHeaders(headers) : null, model: null });
 }
 async function readCodexJsonBody(request, maximum = 8 * 1024 * 1024) {
   if (!Number.isSafeInteger(maximum) || maximum < 1 || maximum > 8 * 1024 * 1024) throw failure('invalid_body_limit');
@@ -73,7 +62,8 @@ function createCodexTraffic(context, compatibility = {}) {
       if (!['traffic_unavailable', 'permission_denied', 'capability_unavailable', 'host_stopping', 'authorization_revoked'].includes(error.code)) throw failure('core_traffic_unavailable');
       return Object.freeze({ ...verified, listening: false, attached: false, reason: verified.fixtureVerified ? error.code : verified.reason });
     }
-    const attached = native.attached === true && native.available === true;
+    const attached = native.attached === true && native.available === true
+      && native.activatedSources?.some(source => source.id === 'owned-backend-provider' && source.coverage?.includes('owned-local-app-server-model-provider')) === true;
     return Object.freeze({ ...verified, available: verified.fixtureVerified && attached, listening: native.listening === true, attached,
       restartRequired: !attached, reason: !verified.fixtureVerified ? verified.reason : attached ? null : 'native_process_ingress_not_attached',
       coverage: 'registered-backend-origins', registered: native.registered, active: native.active });
@@ -81,24 +71,38 @@ function createCodexTraffic(context, compatibility = {}) {
   async function registerInterceptor(options, handlers) {
     if (context.signal.aborted) throw failure('host_stopping');
     if (!verified.fixtureVerified) throw failure('backend_build_unverified');
-    if (!options || typeof options !== 'object' || Object.keys(options).some(key => !['id', 'priority', 'timeoutMs', 'kinds'].includes(key))) throw failure('invalid_argument');
+    if (!options || typeof options !== 'object' || Object.keys(options).some(key => !['id', 'priority', 'timeoutMs', 'kinds', 'origins'].includes(key))) throw failure('invalid_argument');
     const kinds = options.kinds ?? ['model.responses', 'model.list'];
     if (!Array.isArray(kinds) || !kinds.length || kinds.length > 2 || new Set(kinds).size !== kinds.length || kinds.some(kind => !['model.responses', 'model.list'].includes(kind))) throw failure('invalid_argument');
     if (!handlers || typeof handlers !== 'object' || !Object.keys(handlers).length || Object.entries(handlers).some(([key, value]) => !['request', 'response', 'webSocket'].includes(key) || typeof value !== 'function')) throw failure('invalid_handler');
+    const origins = options.origins ?? ['https://chatgpt.com', 'https://api.openai.com'];
+    if (!Array.isArray(origins) || !origins.length || origins.length > 16 || origins.some(origin => {
+      try { const url = new URL(origin); return url.origin !== origin || !['https:', 'http:'].includes(url.protocol) || url.username || url.password || url.protocol === 'http:' && !['127.0.0.1', 'localhost'].includes(url.hostname); }
+      catch { return true; }
+    })) throw failure('invalid_argument');
     const wrapped = {};
-    const metadata = value => { const info = classifyCodexTraffic(value); return kinds.includes(info.kind) ? info : null; };
-    if (handlers.request) wrapped.request = (value, call) => {
-      const codex = metadata(value); return codex ? handlers.request(value, Object.freeze({ ...call, codex })) : undefined;
+    const metadata = value => { const info = classifyCodexTraffic({ ...value, verified: true, allowedOrigins: origins }); return kinds.includes(info.kind) ? info : null; };
+    const requestThreads = new Map();
+    wrapped.request = (value, call) => {
+      const codex = metadata(value);
+      if (handlers.response && codex?.threadId && typeof value.id === 'string') {
+        requestThreads.set(value.id, { threadId: codex.threadId, at: Date.now() });
+        if (requestThreads.size > 1024) requestThreads.delete(requestThreads.keys().next().value);
+      }
+      return codex && handlers.request ? handlers.request(value, Object.freeze({ ...call, codex })) : undefined;
     };
     if (handlers.response) wrapped.response = (value, call) => {
-      const codex = metadata(call.request); return codex ? handlers.response(value, Object.freeze({ ...call, codex })) : undefined;
+      const codex = metadata(call.request), known = requestThreads.get(call.request?.id);
+      if (typeof call.request?.id === 'string') requestThreads.delete(call.request.id);
+      const threadId = known && Date.now() - known.at <= 10 * 60 * 1000 ? known.threadId : null;
+      return codex ? handlers.response(value, Object.freeze({ ...call, codex: Object.freeze({ ...codex, threadId }) })) : undefined;
     };
     if (handlers.webSocket) wrapped.webSocket = (value, call) => {
       const codex = metadata({ ...value, method: 'GET' }); return codex ? handlers.webSocket(value, Object.freeze({ ...call, codex })) : undefined;
     };
     const { kinds: ignored, ...registration } = options;
-    return context.traffic.registerInterceptor({ ...registration, origins: ['https://chatgpt.com', 'https://api.openai.com'] }, wrapped);
+    return context.traffic.registerInterceptor({ ...registration, origins }, wrapped);
   }
   return Object.freeze({ probe, registerInterceptor, classify: classifyCodexTraffic, readJsonBody: readCodexJsonBody, rewriteJsonBody: rewrittenCodexJsonBody });
 }
-module.exports = { createCodexTraffic, probeCodexTraffic, prepareCodexBackendTraffic, classifyCodexTraffic, readCodexJsonBody, rewrittenCodexJsonBody };
+module.exports = { createCodexTraffic, probeCodexTraffic, classifyCodexTraffic, threadIdFromHeaders, readCodexJsonBody, rewrittenCodexJsonBody };

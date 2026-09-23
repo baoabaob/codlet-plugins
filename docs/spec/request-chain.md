@@ -127,18 +127,32 @@ Changing destination in this fixture proves routing control, not portability of
 providers. Response repair must honor protocol state; a replacement cannot undo a
 tool already executed or justify automatic replay of a non-idempotent request.
 
+An additional owned-backend check used two tasks in the same local AppServer and
+started their turns concurrently. On the reviewed binary, `x-client-request-id`
+in each Responses HTTP request and WebSocket handshake exactly matched the
+corresponding `thread/start` ID. The fixture routed the tasks to separate local
+upstream paths, rewrote their wire models differently, and verified that each
+response reached its own task. Upstream requests overlapped. After restarting
+the backend and cold-resuming both tasks, HTTP requests still matched; both
+WebSocket handshakes, prewarm frames and normal frames matched their respective
+tasks. The report stores only match results and `a`/`b` labels, never header
+values, task IDs or credentials. This establishes a task correlation key for
+the reviewed local backend's Responses paths; other builds and remote/cloud
+backends require separate evidence. Rewriting a wire model does not change the
+backend's task model configuration, context limits or tool capability decisions.
+
 ## Implementation boundary and recommendation
 
-Use the verified desktop JS hooks and backend provider routing as the next
-implementation direction. Do not adopt native address patches without a separate
-experiment, and do not claim either integration covers all client traffic.
+The implementation uses the verified desktop JS hooks and backend provider
+routing. Native address patches require a separate experiment; neither
+integration establishes coverage of all client traffic.
 
 - **Core** owns generic traffic source admission, owner/generation leases,
   permissions, exact origins, bounded body/frame transport, cancellation and
-  lifecycle. HTTP/SSE and WS should enter the existing interception pipeline.
+  lifecycle. HTTP/SSE and WS enter the existing interception pipeline.
   A source reports its protocols and operations explicitly; unknown coverage
-  stays unavailable. A generic pre-entry launch facility must not require a
-  proxy/CA descriptor merely to attach a JS source.
+  stays unavailable. The generic pre-entry launch facility attaches the source
+  without a proxy or generated CA descriptor.
 - **Adapter** owns official build detection, private symbol/call-site mapping,
   child selection, provider configuration and Codex endpoint/event semantics.
   Read effective configuration and inject only into the owned runtime. Do not
@@ -148,11 +162,43 @@ experiment, and do not claim either integration covers all client traffic.
   confers no additional access. Interceptors run with the consuming plugin's
   permissions, never authority borrowed from the adapter.
 
-Before shipping, extend the existing generic launch/source contract (currently
-hard-wired to proxy arguments and configured Session count), implement the adapter
-against it, and verify missing paths individually. Version/source mismatch must
-disable only the unsupported integration with a useful compatibility result.
-Neither Core nor its initialization may depend on the official adapter package.
+### Task configuration and per-task routing
+
+The former `codex.backend.transport@1` API selected a private channel at
+`thread/start` or `thread/resume`. Its task configuration behavior is retained
+under `codex.backend.write@1`: `registerThreadConfiguration` selects a model,
+an already configured provider, or one task-local Responses provider at the
+same boundary. A new provider's base URL must be a private loopback endpoint;
+it does not inherit official OAuth. Core's public `context.traffic.openChannel`
+and `openHttpChannel` remain available for a Host-owned local relay.
+For real Desktop submissions, an explicit `turn.start` registration under the
+same `backend.write` capability selects the model by task ID. It changes both
+the native model parameter and any collaboration-mode model before the text
+pre-submit hooks run; provider changes remain limited to thread start/resume.
+
+| Capability | Former explicit attachment | Consolidated source and task configuration |
+| --- | --- | --- |
+| Selection | A plugin saw `thread.start` or `thread.resume` with `threadId`, `cwd`, `model` and `provider`, then selected a channel and optional model. | The generic task configuration callback changes model/provider before thread start/resume and, when registered for `turn.start`, selects each GUI turn's model using its task ID. The new source can use the reviewed backend's exact task ID header to route Responses requests. |
+| Reach | The selected channel handled that task's Responses HTTP/SSE and/or WebSocket traffic from the local AppServer. | The owned backend's model HTTP/SSE and WebSocket paths and reviewed Desktop main-process HTTP branches enter the plaintext source after attachment. Already loaded tasks, established sockets and remote/cloud backend processes do not migrate. |
+| Provider choice | A plugin could supply an independent local service through a private channel. | A task can select an existing provider or create one temporary no-OAuth Responses provider pointing at a private local relay. Host interceptors choose per-task upstreams with their own exact-origin grants. Wire model rewriting alone does not change backend model configuration. |
+| Owner and lifetime | The private channel expired with its Host generation. | Core still owns source admission, generation leases, grants, bounds and cancellation. The Adapter's launch access grants no traffic authority to consumers. |
+
+Core treats `x-client-request-id` as a sensitive header. The official Host SDK
+reports a task ID from it only when the consuming plugin holds
+`traffic.sensitiveHeaders` for that exact origin; otherwise its task ID stays
+null. The Adapter does not expose the header or a task ID through a separate
+ungranted path.
+
+The failed CONNECT/proxy-auth/launch-CA path and dedicated thread transport
+capability have been removed. Their task configuration behavior is covered by
+the general callback and the plaintext source's HTTP/SSE and WebSocket paths.
+The public channel API and generic Core traffic peer, registration and lease
+machinery remain useful independently.
+
+The generic launch/source contract reports activated and unsupported paths
+separately. Version/source mismatch disables the unsupported integration with
+a compatibility result; missing paths still require their own verification.
+Neither Core nor its initialization depends on the official adapter package.
 
 ## Repeat
 
@@ -166,3 +212,24 @@ node scripts/verify-plaintext-desktop.mjs --run-owned yes --executable ABSOLUTE_
 Ignored reports: `.artifacts/request-chain/backend-plaintext.json` and
 `.artifacts/request-chain/desktop-plaintext.json`. These opt-in research drivers
 do not run in normal CI, change installed plugins, or enable production traffic.
+
+The packaged Adapter acceptance driver uses Node 24.21.0, a matching Core
+checkout, and the current reviewed Desktop profile. For package `26.917.6896.0`:
+
+```powershell
+node scripts/verify-official-main-owned.mjs --run-owned yes `
+  --core ABSOLUTE_CORE_CHECKOUT --executable ABSOLUTE_CHATGPT_EXE `
+  --backend ABSOLUTE_CODEX_EXE --protocol ws `
+  --bootstrap-bundle bootstrap-DwqRMhlU.js --main-bundle main-Bx5zswAj.js `
+  --app-server-module src-mOb8On4V.js --fetch-wrapper-symbol ZTe `
+  --application-network-factory x
+```
+
+Repeat with `--protocol http` for the HTTP/SSE fallback. The driver runs the
+production Host and Core JavaScript data plane with a local Native authorization
+fixture, a fresh synthetic account/profile and loopback upstreams. It checks
+request/response rewriting, native redirect behavior, raw-versus-hooked cookie
+behavior, completed turns and exact-owned process cleanup. It does not establish
+live account refresh, real Native authorization, or full launcher/installer acceptance.
+Only bounded counters, booleans and finite error codes enter the ignored reports
+under `.artifacts/request-chain/current/owned-acceptance/`.

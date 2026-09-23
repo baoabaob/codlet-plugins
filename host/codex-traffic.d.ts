@@ -17,11 +17,11 @@ export interface HostContext {
   readonly signal: AbortSignal;
   readonly traffic: {
     registerInterceptor(options: TrafficInterceptorOptions, handlers: TrafficInterceptorHandlers): Promise<TrafficInterceptor>;
-    inspect(): Promise<{ available: boolean; listening: boolean; attached: boolean; registered: number; active: number; pending: number }>;
+    inspect(): Promise<{ available: boolean; listening: boolean; attached: boolean; activatedSources: readonly { id: string; operations: readonly string[]; protocols: readonly string[]; coverage: readonly string[] }[]; registered: number; active: number; pending: number }>;
   };
 }
 export interface CodexTrafficCompatibility { platform?: 'win32' | 'darwin'; binarySha256?: string }
-export interface CodexTrafficMetadata { readonly kind: 'model.responses' | 'model.list' | 'unknown'; readonly threadId: null; readonly model: null }
+export interface CodexTrafficMetadata { readonly kind: 'model.responses' | 'model.list' | 'unknown'; readonly threadId: string | null; readonly model: null }
 export type CodexTrafficHandlers = {
   [K in keyof TrafficInterceptorHandlers]?: TrafficInterceptorHandlers[K] extends ((value: infer V, context: infer C) => infer R) | undefined
     ? (value: V, context: C & Readonly<{ codex: CodexTrafficMetadata }>) => R : never;
@@ -40,11 +40,11 @@ export interface CodexTrafficStatus {
 }
 export declare function createCodexTraffic(context: Pick<HostContext, 'traffic' | 'signal'>, compatibility?: CodexTrafficCompatibility): Readonly<{
   probe(): Promise<CodexTrafficStatus>;
-  registerInterceptor(options: Omit<TrafficInterceptorOptions, 'origins'> & { kinds?: ('model.responses' | 'model.list')[] }, handlers: CodexTrafficHandlers): Promise<TrafficInterceptor>;
+  registerInterceptor(options: Omit<TrafficInterceptorOptions, 'origins'> & { origins?: readonly string[]; kinds?: ('model.responses' | 'model.list')[] }, handlers: CodexTrafficHandlers): Promise<TrafficInterceptor>;
   classify: typeof classifyCodexTraffic;
   readJsonBody: typeof readCodexJsonBody;
   rewriteJsonBody: typeof rewrittenCodexJsonBody;
 }>;
-export declare function classifyCodexTraffic(request: { url: string; method: string }): CodexTrafficMetadata;
+export declare function classifyCodexTraffic(request: { url: string; method: string; headers?: TrafficHeaders }): CodexTrafficMetadata;
 export declare function readCodexJsonBody(request: { headers: readonly (readonly [string, string])[]; body: AsyncIterable<Uint8Array> | Iterable<Uint8Array> }, maximum?: number): Promise<unknown>;
 export declare function rewrittenCodexJsonBody(request: Pick<HttpChannelResponse, 'headers'> & { headers: NonNullable<HttpChannelResponse['headers']> }, value: unknown): { body: string; headers: NonNullable<HttpChannelResponse['headers']> };

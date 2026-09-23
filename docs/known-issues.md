@@ -18,8 +18,24 @@ The initial independent distribution rehearsal used private repositories and dra
 
 The unauthenticated GitHub importer cannot install private repositories or draft releases. Existing local installer presets remain local sources until a separately verified migration; publishing a repository does not silently convert their source or enable GitHub auto-updates.
 
+## Traffic activation boundaries
+
+The Desktop Adapter's plaintext source is scoped to a newly owned, exact-version Owl main process. Its Desktop branch covers final `performDesktopFetch` HTTP/SSE calls and the upload-progress request path. Its model branch covers a verified local `codex app-server` child routed through provider base URLs for HTTP/SSE and Responses WebSocket. Native reports these as separate `activatedSources`; a working Desktop hook alone does not make model interception available.
+
+Electron's native manual redirect mode cancels a 302 before returning a response. The Desktop source therefore follows redirects in the original Chromium session, checks each destination against the Desktop policy, and authorizes response callbacks at the tracked final origin. Intermediate 3xx bodies and redirected request hops are not plugin interception points. The local app-server provider source has its separate full HTTP/SSE/WS route and is not subject to this Desktop limit.
+
+| Launch state | Result |
+| --- | --- |
+| No enabled, granted traffic consumer | Ordinary client launch; no source hook |
+| Verified Desktop JS and local backend | Separate Desktop and model source activation |
+| Verified Desktop JS, unsupported backend | Desktop source only; model source reported unavailable |
+| All requested sources unavailable | Requested traffic launch fails closed |
+| Remote/cloud backend, browser networking, attachments, Realtime/WebRTC, macOS | Coverage not established |
+
+The old proxy/certificate route was removed. Legitimate user provider CA settings remain scoped to the private provider route. Current synthetic acceptance does not prove live OAuth refresh, enterprise workspace routing or arbitrary provider protocols. [The traffic contract](spec/traffic.md) records what each source intercepts and the permissions required for task correlation.
+
 ## Pending product work
 
 - The marketplace interaction design is accepted; the executable preview still uses synthetic data and memory-only operations. [Its specification](spec/marketplace.md) retains the required behavior and integration gaps.
-- Desktop channel attachment currently covers explicit task start/resume configuration, not transparent active/OAuth traffic interception. See the [adapter contract](spec/adapters.md).
+- Task-local model/provider configuration is available through `codex.backend.write@1` at thread start/resume; a hook that opts into `turn.start` can also select the model for each turn. Provider changes remain limited to thread start/resume. Live OAuth and uncovered network paths need separate owned-device acceptance. See the [adapter contract](spec/adapters.md).
 - Full native UI behavior and installer acceptance must be checked on the final integrated source, not inferred from this repository's offline suite.
