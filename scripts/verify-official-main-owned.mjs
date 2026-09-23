@@ -614,7 +614,7 @@ async function main() {
       CODEX_HOME: paths.codexHome, CODEX_SQLITE_HOME: paths.sqlite,
       CODEX_ELECTRON_USER_DATA_PATH: paths.userData, CODEX_CLI_PATH: backend,
       HOME: paths.home, USERPROFILE: paths.home, APPDATA: appData, LOCALAPPDATA: localAppData,
-      TEMP: paths.temp, TMP: paths.temp, BUILD_FLAVOR: 'dev', CODEX_SPARKLE_ENABLED: 'false',
+      TEMP: paths.temp, TMP: paths.temp, CODEX_SPARKLE_ENABLED: 'false',
       CODEX_ELECTRON_PRIMARY_RUNTIME_UPDATE_MODE: 'manual',
       CODEX_APP_SERVER_OPENAI_BASE_URL: endpoint + '/v1',
       CODEX_APP_SERVER_CHATGPT_BASE_URL: endpoint + '/backend-api',
@@ -629,6 +629,10 @@ async function main() {
       delete environment.USERPROFILE; delete environment.APPDATA; delete environment.LOCALAPPDATA;
       delete environment.TEMP; delete environment.TMP;
       environment.TMPDIR = paths.temp;
+    } else {
+      // The reviewed Windows fixture uses Dev; Mac must honor the signed app's
+      // prod package metadata or its internal build path requires bundled Git.
+      environment.BUILD_FLAVOR = 'dev';
     }
     for (const [name, value] of Object.entries(traffic.environmentPatch.set)) environment[name] = value;
     for (const name of traffic.environmentPatch.removeCaseInsensitive) for (const key of Object.keys(environment)) if (key.toLowerCase() === name.toLowerCase()) delete environment[key];
