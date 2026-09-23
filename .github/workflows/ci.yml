@@ -1,0 +1,58 @@
+name: Official plugins
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: plugins-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  plugins:
+    name: Plugins (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-15]
+    env:
+      CODLET_CORE_ROOT: ${{ github.workspace }}/core
+    defaults:
+      run:
+        working-directory: plugins
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: plugins
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: baoabaob/codlet
+          path: core
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.21.0'
+          cache: npm
+          cache-dependency-path: |
+            core/frontend/package-lock.json
+            plugins/frontend/package-lock.json
+      - name: Build the matching Core SDK and plugins
+        shell: bash
+        run: |
+          npm ci --prefix ../core/frontend
+          node ../core/frontend/build.mjs
+          npm ci --prefix frontend
+          node scripts/prepare-core-sdk.mjs "$CODLET_CORE_ROOT"
+          node frontend/build.mjs
+      - name: Test plugin behavior and current-source packages
+        shell: bash
+        run: |
+          node --test --test-concurrency=2 tests/*.test.mjs
