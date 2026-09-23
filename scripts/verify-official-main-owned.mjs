@@ -21,7 +21,7 @@ const routedModel = 'codlet-routed-model';
 const options = {};
 for (let index = 2; index < process.argv.length; index += 2) {
   const key = process.argv[index], value = process.argv[index + 1];
-  if (!['--run-owned', '--executable', '--backend', '--backend-sha256', '--core', '--protocol', '--bootstrap-bundle', '--main-bundle', '--app-server-module', '--fetch-wrapper-symbol', '--application-network-factory'].includes(key) || value == null || options[key] !== undefined) {
+  if (!['--run-owned', '--executable', '--backend', '--backend-sha256', '--core', '--protocol', '--bootstrap-bundle', '--main-bundle', '--app-server-module', '--fetch-wrapper-symbol', '--application-network-factory', '--mac-candidate'].includes(key) || value == null || options[key] !== undefined) {
     process.stdout.write(JSON.stringify({ failure: 'invalid_arguments' }) + '\n');
     process.exitCode = 1;
     process.exit();
@@ -32,7 +32,9 @@ for (let index = 2; index < process.argv.length; index += 2) {
 const codeOf = error => typeof error?.code === 'string' && /^[a-z_]{1,80}$/u.test(error.code) ? error.code : 'owned_acceptance_failed';
 const failure = code => Object.assign(new Error(code), { code });
 const sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
-const canonicalPath = value => path.win32.normalize(value).replace(/^\\\\\?\\/u, '').toLowerCase();
+const macRunner = process.platform === 'darwin' && process.arch === 'arm64';
+const canonicalPath = value => process.platform === 'win32'
+  ? path.win32.normalize(value).replace(/^\\\\\?\\/u, '').toLowerCase() : path.posix.normalize(value);
 const safeInteger = value => Number.isSafeInteger(value) && value >= 0 ? value : 0;
 const safeBundleName = value => typeof value === 'string' && /^[A-Za-z0-9_.-]{1,180}\.js$/u.test(value);
 const expectedBackendHash = options['--backend-sha256'] ?? defaultBackendHash;
@@ -187,9 +189,13 @@ function activationHas(handshake, id, coverage) {
 
 async function main() {
   const protocol = options['--protocol'] ?? 'ws';
+  const artifactRelativeDirectory = macRunner ? '.artifacts/request-chain/macos-candidate/owned-acceptance'
+    : '.artifacts/request-chain/current/owned-acceptance';
   const report = {
     schema: 1,
     kind: 'official-main-owned-plaintext-acceptance',
+    platform: process.platform, architecture: process.arch,
+    ...(options['--mac-candidate'] === 'yes' ? { candidateUnreviewed: true } : {}),
     protocol,
     backendSha256: /^[0-9a-f]{64}$/iu.test(expectedBackendHash) ? expectedBackendHash.toLowerCase() : undefined,
     build: { bootstrapBundle: options['--bootstrap-bundle'], mainBundle: options['--main-bundle'], appServerModule: options['--app-server-module'],
@@ -213,11 +219,18 @@ async function main() {
   let lifetime, registry, owner, source, runtime, child, directory, server, crossServer, webSockets, observer, inspectorUrl, crossOriginEndpoint;
   let receiptPath, fixtureGo, executable, backend, originalProcesses, owned = new Map(), rootIdentity;
   const serverSockets = new Set(), crossServerSockets = new Set();
-  const powershell = path.join(process.env.SYSTEMROOT ?? 'C:/Windows', 'System32/WindowsPowerShell/v1.0/powershell.exe');
+  const powershell = process.platform === 'win32' ? path.join(process.env.SYSTEMROOT ?? 'C:/Windows', 'System32/WindowsPowerShell/v1.0/powershell.exe') : null;
   const powershellCall = (script, env = {}) => execFileSync(powershell, ['-NoProfile', '-NonInteractive', '-Command', script], {
     env: { ...process.env, ...env }, windowsHide: true, encoding: 'utf8', timeout: 10000,
   }).trim();
   function snapshot() {
+    if (macRunner) {
+      const rows = execFileSync('/bin/ps', ['-axo', 'pid=,ppid=,lstart=,comm='], { encoding: 'utf8', timeout: 10000 });
+      return rows.split('\n').flatMap(row => {
+        const match = /^\s*(\d+)\s+(\d+)\s+(.{24})\s+(.+?)\s*$/u.exec(row);
+        return match ? [{ ProcessId: Number(match[1]), ParentProcessId: Number(match[2]), Created: match[3], ExecutablePath: match[4] }] : [];
+      });
+    }
     const output = powershellCall("Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,ExecutablePath,@{n='Created';e={$_.CreationDate.ToUniversalTime().ToString('o')}} | ConvertTo-Json -Compress");
     if (!output) return [];
     const values = JSON.parse(output);
@@ -231,7 +244,7 @@ async function main() {
       for (const value of values) {
         if (owned.has(value.ProcessId) || originalProcesses.some(item => item.ProcessId === value.ProcessId && item.Created === value.Created)) continue;
         if (value.ProcessId === child.pid) {
-          if (value.ExecutablePath && canonicalPath(value.ExecutablePath) !== canonicalPath(executable)) continue;
+          if (!macRunner && value.ExecutablePath && canonicalPath(value.ExecutablePath) !== canonicalPath(executable)) continue;
           owned.set(value.ProcessId, value); changed = true; continue;
         }
         const parent = owned.get(value.ParentProcessId);
@@ -319,8 +332,12 @@ async function main() {
   async function stopOwnedTree() {
     if (!child?.pid) return;
     capture();
-    for (const processInfo of [...owned.values()]) {
-      powershellCall("$p=Get-CimInstance Win32_Process -Filter ('ProcessId='+$env:CODLET_OWNED_PID); if($p -and $p.CreationDate.ToUniversalTime().ToString('o') -eq $env:CODLET_OWNED_CREATED) { try { Stop-Process -Id ([int]$env:CODLET_OWNED_PID) -ErrorAction Stop } catch { if($_.FullyQualifiedErrorId -notlike 'NoProcessFoundForGivenId*') { throw } } }", {
+    for (const processInfo of [...owned.values()].reverse()) {
+      if (macRunner) {
+        if (snapshot().some(item => item.ProcessId === processInfo.ProcessId && item.Created === processInfo.Created)) {
+          try { process.kill(processInfo.ProcessId, 'SIGTERM'); } catch (error) { if (error.code !== 'ESRCH') throw error; }
+        }
+      } else powershellCall("$p=Get-CimInstance Win32_Process -Filter ('ProcessId='+$env:CODLET_OWNED_PID); if($p -and $p.CreationDate.ToUniversalTime().ToString('o') -eq $env:CODLET_OWNED_CREATED) { try { Stop-Process -Id ([int]$env:CODLET_OWNED_PID) -ErrorAction Stop } catch { if($_.FullyQualifiedErrorId -notlike 'NoProcessFoundForGivenId*') { throw } } }", {
         CODLET_OWNED_PID: String(processInfo.ProcessId), CODLET_OWNED_CREATED: processInfo.Created,
       });
     }
@@ -329,15 +346,22 @@ async function main() {
       if (![...owned.values()].some(value => ids.has(`${value.ProcessId}:${value.Created}`))) return;
       await sleep(100);
     }
+    if (macRunner) for (const processInfo of [...owned.values()].reverse()) {
+      if (snapshot().some(item => item.ProcessId === processInfo.ProcessId && item.Created === processInfo.Created)) {
+        try { process.kill(processInfo.ProcessId, 'SIGKILL'); } catch (error) { if (error.code !== 'ESRCH') throw error; }
+      }
+    }
   }
 
   try {
-    if (process.platform !== 'win32' || process.version !== 'v24.21.0' || options['--run-owned'] !== 'yes'
+    if (!(process.platform === 'win32' && process.version === 'v24.21.0' || macRunner && process.version === 'v22.23.2')
+      || options['--run-owned'] !== 'yes' || options['--mac-candidate'] !== undefined && (!macRunner || options['--mac-candidate'] !== 'yes')
+      || macRunner && options['--backend-sha256'] === undefined
       || !path.isAbsolute(options['--executable'] ?? '') || !path.isAbsolute(options['--backend'] ?? '')
       || !['ws', 'http'].includes(protocol) || !safeBundleName(options['--bootstrap-bundle'])
       || !safeBundleName(options['--main-bundle']) || !safeBundleName(options['--app-server-module'])
       || !/^[0-9a-f]{64}$/iu.test(expectedBackendHash) || !/^[A-Za-z_$][A-Za-z0-9_$]{0,63}$/u.test(options['--application-network-factory'] ?? '')
-      || !/^[A-Za-z_$][A-Za-z0-9_$]{0,63}$/u.test(options['--fetch-wrapper-symbol'] ?? '')) throw failure('explicit_windows_owned_paths_required');
+      || !/^[A-Za-z_$][A-Za-z0-9_$]{0,63}$/u.test(options['--fetch-wrapper-symbol'] ?? '')) throw failure('explicit_owned_paths_required');
     const corePath = options['--core'] ?? process.env.CODLET_CORE_ROOT;
     if (!corePath) throw failure('core_root_required');
     if (!path.isAbsolute(corePath)) throw failure('core_root_invalid');
@@ -345,6 +369,13 @@ async function main() {
     executable = await fs.realpath(options['--executable']);
     backend = await fs.realpath(options['--backend']);
     if (createHash('sha256').update(await fs.readFile(backend)).digest('hex') !== expectedBackendHash) throw failure('backend_build_unverified');
+    if (macRunner) {
+      const candidate = JSON.parse(await fs.readFile(path.join(root, 'tests/fixtures/traffic/mac-plaintext-candidate.json'), 'utf8'));
+      const resources = path.resolve(path.dirname(executable), '..', 'Resources');
+      if (backend !== path.join(resources, 'codex') || expectedBackendHash !== candidate.backend.sha256
+        || createHash('sha256').update(await fs.readFile(path.join(resources, 'app.asar'))).digest('hex') !== candidate.asarSha256)
+        throw failure('mac_candidate_artifact_mismatch');
+    }
     const [{ createTrafficRuntime }, { createTrafficInterceptors }, { createPlaintextSource }, { verifyOwnedMainHandshake }] = [
       require(path.join(coreRoot, 'runtime/host-traffic-bundle.cjs')),
       require(path.join(coreRoot, 'runtime/traffic-interceptors.cjs')),
@@ -549,12 +580,14 @@ async function main() {
     });
     source = await createPlaintextSource({ runtime, gateway: { handlers: registry.handlers }, signal: lifetime.signal });
     const traffic = { source: source.descriptor, environmentPatch: { set: {}, removeCaseInsensitive: [] } };
-    const adapterPath = path.join(root, 'bundled/codex-desktop-adapter/host.cjs');
+    const adapterPath = options['--mac-candidate'] === 'yes'
+      ? (await (await import('./build-macos-plaintext-candidate.mjs')).buildMacCandidateHost(path.join(directory, 'candidate-host.cjs'))).outputPath
+      : path.join(root, 'bundled/codex-desktop-adapter/host.cjs');
     const { prepareClientLaunch } = require(adapterPath);
     const prepared = await prepareClientLaunch({ traffic, signal: lifetime.signal });
     if (!Array.isArray(prepared?.arguments) || !prepared.arguments.every(value => typeof value === 'string')) throw failure('adapter_prepare_failed');
-    const appData = path.join(directory, 'home', 'AppData', 'Roaming');
-    const localAppData = path.join(directory, 'home', 'AppData', 'Local');
+    const appData = macRunner ? path.join(directory, 'home', 'Library', 'Application Support') : path.join(directory, 'home', 'AppData', 'Roaming');
+    const localAppData = macRunner ? path.join(directory, 'home', 'Library', 'Caches') : path.join(directory, 'home', 'AppData', 'Local');
     const paths = {
       home: path.join(directory, 'home'), appData, userData: path.join(directory, 'user-data'),
       temp: path.join(directory, 'temp'), codexHome: path.join(directory, 'codex-home'),
@@ -576,7 +609,7 @@ async function main() {
     ].join('\n') + '\n';
     await fs.writeFile(path.join(paths.codexHome, 'config.toml'), config);
     await fs.writeFile(path.join(paths.codexHome, 'auth.json'), JSON.stringify({ OPENAI_API_KEY: 'codlet-local-fixture' }));
-    const environment = Object.fromEntries(Object.entries(process.env).filter(([name]) => /^(PATH|SYSTEMROOT|WINDIR|COMSPEC|PATHEXT|PROCESSOR_ARCHITECTURE|NUMBER_OF_PROCESSORS|PROGRAMFILES|PROGRAMFILES\(X86\)|PROGRAMW6432|USERNAME|USERDOMAIN)$/iu.test(name)));
+    const environment = Object.fromEntries(Object.entries(process.env).filter(([name]) => /^(PATH|SYSTEMROOT|WINDIR|COMSPEC|PATHEXT|PROCESSOR_ARCHITECTURE|NUMBER_OF_PROCESSORS|PROGRAMFILES|PROGRAMFILES\(X86\)|PROGRAMW6432|USERNAME|USERDOMAIN|SHELL|LANG|LC_ALL)$/iu.test(name)));
     Object.assign(environment, {
       CODEX_HOME: paths.codexHome, CODEX_SQLITE_HOME: paths.sqlite,
       CODEX_ELECTRON_USER_DATA_PATH: paths.userData, CODEX_CLI_PATH: backend,
@@ -592,6 +625,11 @@ async function main() {
         skysight: false, recordAndReplay: false }),
       GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'protocol.allow', GIT_CONFIG_VALUE_0: 'never',
     });
+    if (macRunner) {
+      delete environment.USERPROFILE; delete environment.APPDATA; delete environment.LOCALAPPDATA;
+      delete environment.TEMP; delete environment.TMP;
+      environment.TMPDIR = paths.temp;
+    }
     for (const [name, value] of Object.entries(traffic.environmentPatch.set)) environment[name] = value;
     for (const name of traffic.environmentPatch.removeCaseInsensitive) for (const key of Object.keys(environment)) if (key.toLowerCase() === name.toLowerCase()) delete environment[key];
     child = spawn(executable, [...prepared.arguments, `--user-data-dir=${paths.userData}`,
@@ -616,7 +654,7 @@ async function main() {
     capture();
     await waitFor(() => owned.has(child.pid), 'owned_identity_missing', 8000, true);
     rootIdentity = owned.get(child.pid);
-    if (!rootIdentity || canonicalPath(rootIdentity.ExecutablePath ?? '') !== canonicalPath(executable)) throw failure('spawn_identity_mismatch');
+    if (!rootIdentity || !macRunner && canonicalPath(rootIdentity.ExecutablePath ?? '') !== canonicalPath(executable)) throw failure('spawn_identity_mismatch');
     await waitFor(() => !!inspectorUrl || child.exitCode != null, child.exitCode != null ? 'owned_client_exited' : 'inspector_timeout', 10000);
     if (!inspectorUrl) throw failure(child.exitCode != null ? 'owned_client_exited' : 'inspector_timeout');
     report.inspectorListening = true;
@@ -633,7 +671,8 @@ async function main() {
       || childIdentity.ready !== false || childIdentity.type !== 'browser') throw failure('main_identity_mismatch');
     report.exactChildVerified = true;
     const observerSource = await fs.readFile(path.join(root, 'tests/fixtures/traffic/production-owned-main.cjs'), 'utf8');
-    const diagnosticDirectory = path.join(root, '.artifacts', 'request-chain', 'current', 'owned-acceptance');
+    const diagnosticDirectory = path.join(root, artifactRelativeDirectory);
+    await fs.mkdir(diagnosticDirectory, { recursive: true });
     const dialogDiagnosticPath = path.join(diagnosticDirectory, `${protocol}-dialog.json`);
     const runErrorDiagnosticPath = path.join(diagnosticDirectory, `${protocol}-observer-error.json`);
     const rawDiagnosticPath = path.join(diagnosticDirectory, `${protocol}-electron-network-diagnostics.json`);
@@ -646,7 +685,8 @@ async function main() {
     const injected = await observer.send('Debugger.evaluateOnCallFrame', { callFrameId: frame.callFrameId, expression, returnByValue: true });
     if (injected.exceptionDetails || injected?.result?.value !== true) throw failure('observer_fixture_injection_failed');
     const resumeCount = observer.resumedCount;
-    const handshakePromise = verifyOwnedMainHandshake({ inspectorUrl, expectedPid: child.pid, executable, traffic, signal: lifetime.signal });
+    const handshakePromise = verifyOwnedMainHandshake({ inspectorUrl, expectedPid: child.pid, executable, traffic, signal: lifetime.signal,
+      ...(options['--mac-candidate'] === 'yes' ? { candidateHostEntry: adapterPath } : {}) });
     handshakePromise.catch(() => {});
     const handshakeEvent = observer.waitForResumedAfter(resumeCount, 10500).then(() => 'resumed', () => 'resume_wait_finished');
     await Promise.race([handshakeEvent, handshakePromise.then(() => 'attached', () => 'attach_failed')]);
@@ -659,7 +699,7 @@ async function main() {
     await writeJson(fixtureGo, { go: true });
     const acceptance = await readReceiptUntilFinished();
     report.acceptance = compactAcceptance(acceptance);
-    report.networkDiagnosticArtifact = `.artifacts/request-chain/current/owned-acceptance/${protocol}-electron-network-diagnostics.json`;
+    report.networkDiagnosticArtifact = `${artifactRelativeDirectory}/${protocol}-electron-network-diagnostics.json`;
     try {
       const trafficStatus = await runtime.api.inspect();
       report.trafficInspect = { registered: safeInteger(trafficStatus?.registered), active: safeInteger(trafficStatus?.active), pending: safeInteger(trafficStatus?.pending),
@@ -701,20 +741,26 @@ async function main() {
     if (webSockets) try { await new Promise(resolve => webSockets.close(resolve)); } catch {}
     if (originalProcesses) {
       const after = snapshot();
-      report.originalClientIdentitiesUnchanged = originalProcesses.filter(value => /\\(?:ChatGPT|Codex)\.exe$/iu.test(value.ExecutablePath ?? '')).every(value => after.some(item => item.ProcessId === value.ProcessId && item.Created === value.Created));
+      report.originalClientIdentitiesUnchanged = originalProcesses.filter(value => macRunner
+        ? /\/(?:ChatGPT|Codex)$/u.test(value.ExecutablePath ?? '')
+        : /\\(?:ChatGPT|Codex)\.exe$/iu.test(value.ExecutablePath ?? '')).every(value => after.some(item => item.ProcessId === value.ProcessId && item.Created === value.Created));
       report.ownedRemaining = [...owned.values()].filter(value => after.some(item => item.ProcessId === value.ProcessId && item.Created === value.Created)).length;
       if (directory && report.ownedRemaining === 0) {
         try {
-          powershellCall("$p=[IO.Path]::GetFullPath($env:CODLET_FIXTURE_DIRECTORY); $parent=[IO.Path]::GetDirectoryName($p).TrimEnd('\\'); $temp=[IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\\'); if(-not [string]::Equals($parent,$temp,[StringComparison]::OrdinalIgnoreCase) -or [IO.Path]::GetFileName($p) -notlike 'codlet-official-main-*') { throw 'bad_fixture_path' }; $long='\\\\?\\'+$p; $items=@(Get-Item -LiteralPath $long -Force -ErrorAction Stop)+@(Get-ChildItem -LiteralPath $long -Recurse -Force -ErrorAction Stop); if(@($items | Where-Object {($_.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0}).Count) { throw 'fixture_reparse' }; foreach($item in $items) { $item.Attributes=$item.Attributes -band (-bnot ([IO.FileAttributes]::ReadOnly -bor [IO.FileAttributes]::Hidden)) }; $removed=$false; for($attempt=0;$attempt -lt 40;$attempt++) { try { Remove-Item -LiteralPath $long -Recurse -ErrorAction Stop; $removed=$true; break } catch { if($attempt -eq 39) { throw }; Start-Sleep -Milliseconds 100 } }; if(-not $removed -and (Test-Path -LiteralPath $long)) { throw 'fixture_cleanup_failed' }", { CODLET_FIXTURE_DIRECTORY: directory });
+          if (macRunner) {
+            const resolved = await fs.realpath(directory), temporary = await fs.realpath(os.tmpdir());
+            if (path.dirname(resolved) !== temporary || !path.basename(resolved).startsWith('codlet-official-main-')) throw failure('bad_fixture_path');
+            await fs.rm(resolved, { recursive: true });
+          } else powershellCall("$p=[IO.Path]::GetFullPath($env:CODLET_FIXTURE_DIRECTORY); $parent=[IO.Path]::GetDirectoryName($p).TrimEnd('\\'); $temp=[IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\\'); if(-not [string]::Equals($parent,$temp,[StringComparison]::OrdinalIgnoreCase) -or [IO.Path]::GetFileName($p) -notlike 'codlet-official-main-*') { throw 'bad_fixture_path' }; $long='\\\\?\\'+$p; $items=@(Get-Item -LiteralPath $long -Force -ErrorAction Stop)+@(Get-ChildItem -LiteralPath $long -Recurse -Force -ErrorAction Stop); if(@($items | Where-Object {($_.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0}).Count) { throw 'fixture_reparse' }; foreach($item in $items) { $item.Attributes=$item.Attributes -band (-bnot ([IO.FileAttributes]::ReadOnly -bor [IO.FileAttributes]::Hidden)) }; $removed=$false; for($attempt=0;$attempt -lt 40;$attempt++) { try { Remove-Item -LiteralPath $long -Recurse -ErrorAction Stop; $removed=$true; break } catch { if($attempt -eq 39) { throw }; Start-Sleep -Milliseconds 100 } }; if(-not $removed -and (Test-Path -LiteralPath $long)) { throw 'fixture_cleanup_failed' }", { CODLET_FIXTURE_DIRECTORY: directory });
           report.cleanup = true;
         } catch { report.cleanup = false; report.retainedDirectory = true; }
       } else if (directory) { report.cleanup = false; report.retainedDirectory = true; }
     }
     if (report.startupErrorKinds instanceof Set) report.startupErrorKinds = [...report.startupErrorKinds].slice(0, 20);
-    const artifactDirectory = path.join(root, '.artifacts', 'request-chain', 'current', 'owned-acceptance');
+    const artifactDirectory = path.join(root, artifactRelativeDirectory);
     const artifactName = report.failure && !report.exactChildVerified ? `${protocol}-preflight-failure.json` : `${protocol}.json`;
     const artifactPath = path.join(artifactDirectory, artifactName);
-    report.artifact = `.artifacts/request-chain/current/owned-acceptance/${artifactName}`;
+    report.artifact = `${artifactRelativeDirectory}/${artifactName}`;
     const desktopCoverage = activationHas({ activatedSources: report.activatedSources }, 'desktop-main-http', ['desktop-main-fetch', 'desktop-main-upload-progress']);
     const backendCoverage = activationHas({ activatedSources: report.activatedSources }, 'owned-backend-provider', ['owned-local-app-server-model-provider']);
     const acceptedTransport = protocol === 'http'

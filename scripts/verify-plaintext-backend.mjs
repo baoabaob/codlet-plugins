@@ -12,13 +12,15 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const { WebSocketServer } = require('../frontend/node_modules/ws');
 if (process.argv.includes('--help')) {
-  console.log('Usage: node scripts/verify-plaintext-backend.mjs --run-owned yes --backend ABSOLUTE_CODEX_EXE [--expected-sha256 LOWERCASE_SHA256] [--routing-ws-only yes]');
-  console.log('The default hash is the reviewed backend. --expected-sha256 tests an explicit candidate and marks its report unreviewed; it does not change a production allowlist.');
+  console.log('Usage: node scripts/verify-plaintext-backend.mjs --run-owned yes --backend ABSOLUTE_CODEX_BINARY [--expected-sha256 LOWERCASE_SHA256] [--routing-ws-only yes]');
+  console.log('Windows defaults to its reviewed backend. macOS Apple Silicon requires an explicit candidate hash; this never changes a production allowlist.');
   console.log('The default run exercises eight synthetic local cases. --routing-ws-only runs the two-thread WebSocket and cold-resume case. Reports are written under .artifacts/request-chain/.');
   process.exit(0);
 }
 const options = Object.fromEntries(process.argv.slice(2).reduce((pairs, value, i, all) => i % 2 ? pairs : [...pairs, [value, all[i + 1]]], []));
-if (process.platform !== 'win32' || options['--run-owned'] !== 'yes' || !path.isAbsolute(options['--backend'] ?? '')) throw Error('explicit_windows_backend_required');
+const macCandidate = process.platform === 'darwin' && process.arch === 'arm64';
+if (!(process.platform === 'win32' || macCandidate) || options['--run-owned'] !== 'yes' || !path.isAbsolute(options['--backend'] ?? '')
+  || macCandidate && typeof options['--expected-sha256'] !== 'string') throw Error('explicit_supported_backend_required');
 if (options['--routing-ws-only'] !== undefined && options['--routing-ws-only'] !== 'yes') throw Error('invalid_case_selector');
 const executable = await fs.realpath(options['--backend']);
 const reviewedHash = 'bc45017e8239dc150258f69309ced9df6bbcdf5b8e4f346decf780ac0999e226';
@@ -26,7 +28,9 @@ const expectedHash = options['--expected-sha256'] ?? reviewedHash;
 if (!/^[a-f0-9]{64}$/u.test(expectedHash)) throw Error('invalid_expected_backend_sha256');
 const actualHash = createHash('sha256').update(await fs.readFile(executable)).digest('hex');
 assert.equal(actualHash, expectedHash, 'backend hash does not match the explicit fixture candidate');
-const report = { schema: 1, backendSha256: actualHash, ...(actualHash !== reviewedHash ? { candidateUnreviewed: true } : {}), ...(options['--routing-ws-only'] === 'yes' ? { caseSelector: 'routing-ws-only' } : {}), transport: 'provider-endpoint', proxyConfigured: false, certificateConfigured: false, cases: [] };
+const report = { schema: 1, platform: process.platform, arch: process.arch, backendSha256: actualHash,
+  ...(macCandidate || actualHash !== reviewedHash ? { candidateUnreviewed: true } : {}),
+  ...(options['--routing-ws-only'] === 'yes' ? { caseSelector: 'routing-ws-only' } : {}), transport: 'provider-endpoint', proxyConfigured: false, certificateConfigured: false, cases: [] };
 const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'codlet-plaintext-'));
 const originLog = [];
 const sockets = new Set();
@@ -151,24 +155,43 @@ const endpoint = `http://127.0.0.1:${server.address().port}`;
 const environment = Object.fromEntries(Object.entries(process.env).filter(([key]) => /^(PATH|SYSTEMROOT|WINDIR|COMSPEC|PATHEXT|PROCESSOR_ARCHITECTURE|NUMBER_OF_PROCESSORS)$/iu.test(key)));
 let child, lines;
 const pending = new Map(), notifications = [];
-const powershell = path.join(process.env.SYSTEMROOT, 'System32/WindowsPowerShell/v1.0/powershell.exe');
+const powershell = process.platform === 'win32' ? path.join(process.env.SYSTEMROOT, 'System32/WindowsPowerShell/v1.0/powershell.exe') : null;
 const owned = new Map();
 function ps(script, env = {}) { return execFileSync(powershell, ['-NoProfile', '-NonInteractive', '-Command', script], { env: { ...process.env, ...env }, windowsHide: true, encoding: 'utf8', timeout: 10000 }).trim(); }
-function snapshot() { return JSON.parse(ps("Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,ExecutablePath,@{n='Created';e={$_.CreationDate.ToUniversalTime().ToString('o')}} | ConvertTo-Json -Compress")); }
+function snapshot() {
+  if (process.platform === 'win32') return JSON.parse(ps("Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,ExecutablePath,@{n='Created';e={$_.CreationDate.ToUniversalTime().ToString('o')}} | ConvertTo-Json -Compress"));
+  const rows = execFileSync('/bin/ps', ['-axo', 'pid=,ppid=,lstart=,comm='], { encoding: 'utf8', timeout: 10000 });
+  return rows.split('\n').flatMap(row => {
+    const match = /^\s*(\d+)\s+(\d+)\s+(.{24})\s+(.+?)\s*$/u.exec(row);
+    return match ? [{ ProcessId: Number(match[1]), ParentProcessId: Number(match[2]), Created: match[3], ExecutablePath: match[4] }] : [];
+  });
+}
 const original = snapshot();
 function capture() {
   const values = snapshot(), live = new Map(values.map(value => [value.ProcessId, value]));
   for (let changed = true; changed;) { changed = false; for (const value of values) {
     if (owned.has(value.ProcessId) || original.some(item => item.ProcessId === value.ProcessId && item.Created === value.Created)) continue;
     const parent = owned.get(value.ParentProcessId);
-    if ((value.ProcessId === child?.pid && value.ExecutablePath?.toLowerCase() === executable.toLowerCase()) || (parent && live.get(parent.ProcessId)?.Created === parent.Created)) { owned.set(value.ProcessId, value); changed = true; }
+    if ((value.ProcessId === child?.pid && (macCandidate || value.ExecutablePath?.toLowerCase() === executable.toLowerCase()))
+      || (parent && live.get(parent.ProcessId)?.Created === parent.Created)) { owned.set(value.ProcessId, value); changed = true; }
   } }
 }
 async function closeChild() {
   for (const call of pending.values()) { clearTimeout(call.timer); call.reject(Error('fixture_closed')); }
   pending.clear(); lines?.close();
   capture();
-  for (const value of [...owned.values()]) ps("$p=Get-CimInstance Win32_Process -Filter ('ProcessId='+$env:CODLET_OWNED_PID); if($p -and $p.CreationDate.ToUniversalTime().ToString('o') -eq $env:CODLET_OWNED_CREATED) { try { Stop-Process -Id ([int]$env:CODLET_OWNED_PID) -ErrorAction Stop } catch { $still=Get-CimInstance Win32_Process -Filter ('ProcessId='+$env:CODLET_OWNED_PID); if($still -and $still.CreationDate.ToUniversalTime().ToString('o') -eq $env:CODLET_OWNED_CREATED) { throw } } }", { CODLET_OWNED_PID: String(value.ProcessId), CODLET_OWNED_CREATED: value.Created });
+  for (const value of [...owned.values()].reverse()) {
+    if (process.platform === 'win32') ps("$p=Get-CimInstance Win32_Process -Filter ('ProcessId='+$env:CODLET_OWNED_PID); if($p -and $p.CreationDate.ToUniversalTime().ToString('o') -eq $env:CODLET_OWNED_CREATED) { try { Stop-Process -Id ([int]$env:CODLET_OWNED_PID) -ErrorAction Stop } catch { $still=Get-CimInstance Win32_Process -Filter ('ProcessId='+$env:CODLET_OWNED_PID); if($still -and $still.CreationDate.ToUniversalTime().ToString('o') -eq $env:CODLET_OWNED_CREATED) { throw } } }", { CODLET_OWNED_PID: String(value.ProcessId), CODLET_OWNED_CREATED: value.Created });
+    else if (snapshot().some(item => item.ProcessId === value.ProcessId && item.Created === value.Created)) {
+      try { process.kill(value.ProcessId, 'SIGTERM'); } catch (error) { if (error.code !== 'ESRCH') throw error; }
+    }
+  }
+  if (macCandidate) {
+    await new Promise(resolve => setTimeout(resolve, 200));
+    for (const value of [...owned.values()].reverse()) if (snapshot().some(item => item.ProcessId === value.ProcessId && item.Created === value.Created)) {
+      try { process.kill(value.ProcessId, 'SIGKILL'); } catch (error) { if (error.code !== 'ESRCH') throw error; }
+    }
+  }
   child?.stdin?.destroy(); child?.stdout?.destroy(); child?.stderr?.destroy();
   child = undefined;
 }
@@ -305,16 +328,23 @@ try {
   await new Promise(resolve => server.close(resolve));
   await new Promise(resolve => upstream.close(resolve));
   try {
-    ps("$p=[IO.Path]::GetFullPath($env:CODLET_FIXTURE_DIRECTORY); if([IO.Path]::GetDirectoryName($p) -ne [IO.Path]::GetTempPath().TrimEnd('\\') -or [IO.Path]::GetFileName($p) -notlike 'codlet-plaintext-*') { throw 'bad_fixture_path' }; $p='\\\\?\\'+$p; $items=@(Get-ChildItem -LiteralPath $p -Recurse -Force -ErrorAction Stop); if(@($items | Where-Object {($_.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0}).Count) { throw 'fixture_reparse' }; foreach($item in $items) { $item.Attributes=$item.Attributes -band (-bnot ([IO.FileAttributes]::ReadOnly -bor [IO.FileAttributes]::Hidden)) }; Remove-Item -LiteralPath $p -Recurse -ErrorAction Stop", { CODLET_FIXTURE_DIRECTORY: directory });
+    if (process.platform === 'win32') ps("$p=[IO.Path]::GetFullPath($env:CODLET_FIXTURE_DIRECTORY); if([IO.Path]::GetDirectoryName($p) -ne [IO.Path]::GetTempPath().TrimEnd('\\') -or [IO.Path]::GetFileName($p) -notlike 'codlet-plaintext-*') { throw 'bad_fixture_path' }; $p='\\\\?\\'+$p; $items=@(Get-ChildItem -LiteralPath $p -Recurse -Force -ErrorAction Stop); if(@($items | Where-Object {($_.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0}).Count) { throw 'fixture_reparse' }; foreach($item in $items) { $item.Attributes=$item.Attributes -band (-bnot ([IO.FileAttributes]::ReadOnly -bor [IO.FileAttributes]::Hidden)) }; Remove-Item -LiteralPath $p -Recurse -ErrorAction Stop", { CODLET_FIXTURE_DIRECTORY: directory });
+    else {
+      const resolved = await fs.realpath(directory), temporary = await fs.realpath(os.tmpdir());
+      if (path.dirname(resolved) !== temporary || !path.basename(resolved).startsWith('codlet-plaintext-')) throw Error('bad_fixture_path');
+      await fs.rm(resolved, { recursive: true });
+    }
     report.cleanup = true;
   } catch { report.cleanup = false; report.retainedDirectory = directory; }
   const after = snapshot();
-  report.originalClientIdentitiesUnchanged = original.filter(value => /\\(?:ChatGPT|Codex)\.exe$/iu.test(value.ExecutablePath ?? '')).every(value => after.some(item => item.ProcessId === value.ProcessId && item.Created === value.Created));
+  report.originalClientIdentitiesUnchanged = original.filter(value => process.platform === 'win32'
+    ? /\\(?:ChatGPT|Codex)\.exe$/iu.test(value.ExecutablePath ?? '')
+    : /\/(?:ChatGPT|Codex)$/u.test(value.ExecutablePath ?? '')).every(value => after.some(item => item.ProcessId === value.ProcessId && item.Created === value.Created));
   report.ownedRemaining = [...owned.values()].filter(value => after.some(item => item.ProcessId === value.ProcessId && item.Created === value.Created)).length;
   report.observed = originLog;
   report.authenticationPreserved = originLog.every(value => value.expectedAuthentication);
   await fs.mkdir(new URL('../.artifacts/request-chain/', import.meta.url), { recursive: true });
-  const reportName = options['--routing-ws-only'] === 'yes' ? 'backend-plaintext-routing-ws.json' : 'backend-plaintext.json';
+  const reportName = `${macCandidate ? 'macos-' : ''}${options['--routing-ws-only'] === 'yes' ? 'backend-plaintext-routing-ws.json' : 'backend-plaintext.json'}`;
   await fs.writeFile(new URL(`../.artifacts/request-chain/${reportName}`, import.meta.url), JSON.stringify(report, null, 2) + '\n');
   console.log(JSON.stringify(report));
   if (report.cases.some(value => !value.passed) || !report.cleanup || report.ownedRemaining || !report.originalClientIdentitiesUnchanged || !report.authenticationPreserved) process.exitCode = 1;
