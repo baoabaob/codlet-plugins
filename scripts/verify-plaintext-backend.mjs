@@ -11,9 +11,10 @@ import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const { WebSocketServer } = require('../frontend/node_modules/ws');
+const { probeCodexTraffic } = require('../host/codex-traffic.cjs');
 if (process.argv.includes('--help')) {
   console.log('Usage: node scripts/verify-plaintext-backend.mjs --run-owned yes --backend ABSOLUTE_CODEX_BINARY [--expected-sha256 LOWERCASE_SHA256] [--routing-ws-only yes]');
-  console.log('Windows defaults to its reviewed backend. macOS Apple Silicon requires an explicit candidate hash; this never changes a production allowlist.');
+  console.log('Windows defaults to its reviewed backend. macOS Apple Silicon requires an explicit backend hash; this driver never changes a production allowlist.');
   console.log('The default run exercises eight synthetic local cases. --routing-ws-only runs the two-thread WebSocket and cold-resume case. Reports are written under .artifacts/request-chain/.');
   process.exit(0);
 }
@@ -29,7 +30,7 @@ if (!/^[a-f0-9]{64}$/u.test(expectedHash)) throw Error('invalid_expected_backend
 const actualHash = createHash('sha256').update(await fs.readFile(executable)).digest('hex');
 assert.equal(actualHash, expectedHash, 'backend hash does not match the explicit fixture candidate');
 const report = { schema: 1, platform: process.platform, arch: process.arch, backendSha256: actualHash,
-  ...(macCandidate || actualHash !== reviewedHash ? { candidateUnreviewed: true } : {}),
+  ...(!probeCodexTraffic({ platform: process.platform, binarySha256: actualHash }).fixtureVerified ? { candidateUnreviewed: true } : {}),
   ...(options['--routing-ws-only'] === 'yes' ? { caseSelector: 'routing-ws-only' } : {}), transport: 'provider-endpoint', proxyConfigured: false, certificateConfigured: false, cases: [] };
 const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'codlet-plaintext-'));
 const originLog = [];

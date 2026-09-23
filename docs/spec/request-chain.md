@@ -121,11 +121,19 @@ Reports contain counters and synthetic metadata, not bodies or account secrets.
 
 These are local synthetic upstreams. They do **not** prove live login refresh,
 enterprise workspace routing, attachments, remote/cloud backend model sockets,
-browser page WS, Realtime/WebRTC, HTTP/2 behavior, macOS, or arbitrary providers.
+browser page WS, Realtime/WebRTC, HTTP/2 behavior, or arbitrary providers.
 Changing destination in this fixture proves routing control, not portability of
 `previous_response_id`, cached model state or tool transactions between real
 providers. Response repair must honor protocol state; a replacement cannot undo a
 tool already executed or justify automatic replay of a non-idempotent request.
+
+Separate native Apple Silicon checks cover official client `26.917.62051`
+(build `10789`) and its reviewed local backend. The eight backend scenarios and
+owned-main HTTP/WS checks exercise both Desktop and model sources, synthetic
+ChatGPT compression, task correlation and owned-process cleanup. The exact
+reviewed inputs live in `tests/fixtures/traffic/mac-plaintext-reviewed.json`;
+[the traffic contract](traffic.md) records the source boundaries. This does not
+establish manual Mac GUI, installer, live login or provider acceptance.
 
 An additional owned-backend check used two tasks in the same local AppServer and
 started their turns concurrently. On the reviewed binary, `x-client-request-id`

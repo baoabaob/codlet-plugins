@@ -9,6 +9,9 @@ const VERIFIED_BACKENDS = Object.freeze({
     Object.freeze({ sha256: 'bc45017e8239dc150258f69309ced9df6bbcdf5b8e4f346decf780ac0999e226', version: '0.155.0-alpha.9.2', evidence: 'controlled-custom-provider-two-thread-http-ws' }),
     Object.freeze({ sha256: '97d4d67419d0ac2f71342f9a5e850f9468aa622618de8ea823223edb9a91926a', version: '0.155.0-alpha.16', evidence: 'controlled-custom-provider-two-thread-http-ws' }),
   ]),
+  darwin: Object.freeze([
+    Object.freeze({ sha256: 'c67698d0990aae05211d9c43ab343ad9517e406824dea77eca103a2806232b3a', version: '0.155.0-alpha.16.3', evidence: 'controlled-custom-provider-two-thread-http-ws' }),
+  ]),
 });
 function probeCodexTraffic({ platform = process.platform, binarySha256 } = {}) {
   const backend = VERIFIED_BACKENDS[platform]?.find(profile => binarySha256?.toLowerCase() === profile.sha256);

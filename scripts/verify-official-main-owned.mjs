@@ -21,7 +21,7 @@ const routedModel = 'codlet-routed-model';
 const options = {};
 for (let index = 2; index < process.argv.length; index += 2) {
   const key = process.argv[index], value = process.argv[index + 1];
-  if (!['--run-owned', '--executable', '--backend', '--backend-sha256', '--core', '--protocol', '--bootstrap-bundle', '--main-bundle', '--app-server-module', '--fetch-wrapper-symbol', '--application-network-factory', '--mac-candidate'].includes(key) || value == null || options[key] !== undefined) {
+  if (!['--run-owned', '--executable', '--backend', '--backend-sha256', '--core', '--protocol', '--bootstrap-bundle', '--main-bundle', '--app-server-module', '--fetch-wrapper-symbol', '--application-network-factory'].includes(key) || value == null || options[key] !== undefined) {
     process.stdout.write(JSON.stringify({ failure: 'invalid_arguments' }) + '\n');
     process.exitCode = 1;
     process.exit();
@@ -189,13 +189,12 @@ function activationHas(handshake, id, coverage) {
 
 async function main() {
   const protocol = options['--protocol'] ?? 'ws';
-  const artifactRelativeDirectory = macRunner ? '.artifacts/request-chain/macos-candidate/owned-acceptance'
+  const artifactRelativeDirectory = macRunner ? '.artifacts/request-chain/macos-product/owned-acceptance'
     : '.artifacts/request-chain/current/owned-acceptance';
   const report = {
     schema: 1,
     kind: 'official-main-owned-plaintext-acceptance',
     platform: process.platform, architecture: process.arch,
-    ...(options['--mac-candidate'] === 'yes' ? { candidateUnreviewed: true } : {}),
     protocol,
     backendSha256: /^[0-9a-f]{64}$/iu.test(expectedBackendHash) ? expectedBackendHash.toLowerCase() : undefined,
     build: { bootstrapBundle: options['--bootstrap-bundle'], mainBundle: options['--main-bundle'], appServerModule: options['--app-server-module'],
@@ -355,7 +354,7 @@ async function main() {
 
   try {
     if (!(process.platform === 'win32' && process.version === 'v24.21.0' || macRunner && process.version === 'v22.23.2')
-      || options['--run-owned'] !== 'yes' || options['--mac-candidate'] !== undefined && (!macRunner || options['--mac-candidate'] !== 'yes')
+      || options['--run-owned'] !== 'yes'
       || macRunner && options['--backend-sha256'] === undefined
       || !path.isAbsolute(options['--executable'] ?? '') || !path.isAbsolute(options['--backend'] ?? '')
       || !['ws', 'http'].includes(protocol) || !safeBundleName(options['--bootstrap-bundle'])
@@ -370,11 +369,11 @@ async function main() {
     backend = await fs.realpath(options['--backend']);
     if (createHash('sha256').update(await fs.readFile(backend)).digest('hex') !== expectedBackendHash) throw failure('backend_build_unverified');
     if (macRunner) {
-      const candidate = JSON.parse(await fs.readFile(path.join(root, 'tests/fixtures/traffic/mac-plaintext-candidate.json'), 'utf8'));
+      const reviewed = JSON.parse(await fs.readFile(path.join(root, 'tests/fixtures/traffic/mac-plaintext-reviewed.json'), 'utf8'));
       const resources = path.resolve(path.dirname(executable), '..', 'Resources');
-      if (backend !== path.join(resources, 'codex') || expectedBackendHash !== candidate.backend.sha256
-        || createHash('sha256').update(await fs.readFile(path.join(resources, 'app.asar'))).digest('hex') !== candidate.asarSha256)
-        throw failure('mac_candidate_artifact_mismatch');
+      if (reviewed.status !== 'native-plaintext-reviewed' || backend !== path.join(resources, 'codex') || expectedBackendHash !== reviewed.backend.sha256
+        || createHash('sha256').update(await fs.readFile(path.join(resources, 'app.asar'))).digest('hex') !== reviewed.asarSha256)
+        throw failure('mac_reviewed_artifact_mismatch');
     }
     const [{ createTrafficRuntime }, { createTrafficInterceptors }, { createPlaintextSource }, { verifyOwnedMainHandshake }] = [
       require(path.join(coreRoot, 'runtime/host-traffic-bundle.cjs')),
@@ -580,9 +579,7 @@ async function main() {
     });
     source = await createPlaintextSource({ runtime, gateway: { handlers: registry.handlers }, signal: lifetime.signal });
     const traffic = { source: source.descriptor, environmentPatch: { set: {}, removeCaseInsensitive: [] } };
-    const adapterPath = options['--mac-candidate'] === 'yes'
-      ? (await (await import('./build-macos-plaintext-candidate.mjs')).buildMacCandidateHost(path.join(directory, 'candidate-host.cjs'))).outputPath
-      : path.join(root, 'bundled/codex-desktop-adapter/host.cjs');
+    const adapterPath = path.join(root, 'bundled/codex-desktop-adapter/host.cjs');
     const { prepareClientLaunch } = require(adapterPath);
     const prepared = await prepareClientLaunch({ traffic, signal: lifetime.signal });
     if (!Array.isArray(prepared?.arguments) || !prepared.arguments.every(value => typeof value === 'string')) throw failure('adapter_prepare_failed');
@@ -689,8 +686,7 @@ async function main() {
     const injected = await observer.send('Debugger.evaluateOnCallFrame', { callFrameId: frame.callFrameId, expression, returnByValue: true });
     if (injected.exceptionDetails || injected?.result?.value !== true) throw failure('observer_fixture_injection_failed');
     const resumeCount = observer.resumedCount;
-    const handshakePromise = verifyOwnedMainHandshake({ inspectorUrl, expectedPid: child.pid, executable, traffic, signal: lifetime.signal,
-      ...(options['--mac-candidate'] === 'yes' ? { candidateHostEntry: adapterPath } : {}) });
+    const handshakePromise = verifyOwnedMainHandshake({ inspectorUrl, expectedPid: child.pid, executable, traffic, signal: lifetime.signal });
     handshakePromise.catch(() => {});
     const handshakeEvent = observer.waitForResumedAfter(resumeCount, 10500).then(() => 'resumed', () => 'resume_wait_finished');
     await Promise.race([handshakeEvent, handshakePromise.then(() => 'attached', () => 'attach_failed')]);

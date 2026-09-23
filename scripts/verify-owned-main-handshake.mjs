@@ -28,16 +28,16 @@ function compactSources(values) {
   }));
 }
 
-export async function verifyOwnedMainHandshake({ inspectorUrl, expectedPid, executable, traffic, signal, candidateHostEntry }) {
+export async function verifyOwnedMainHandshake({ inspectorUrl, expectedPid, executable, traffic, signal }) {
   const supportedRuntime = process.platform === 'win32' && process.versions.node.split('.')[0] === '24'
     || process.platform === 'darwin' && process.arch === 'arm64' && process.version === 'v22.23.2';
-  if (!supportedRuntime || candidateHostEntry !== undefined && (process.platform !== 'darwin' || !path.isAbsolute(candidateHostEntry))
-    || !Number.isSafeInteger(expectedPid) || expectedPid < 1 || !path.isAbsolute(executable ?? '') || !signal) throw fail('owned_process_identity_required');
+  if (!supportedRuntime || !Number.isSafeInteger(expectedPid) || expectedPid < 1 || !path.isAbsolute(executable ?? '') || !signal)
+    throw fail('owned_process_identity_required');
   try {
     const url = new URL(inspectorUrl);
     if (url.protocol !== 'ws:' || url.hostname !== '127.0.0.1' || !url.port || url.username || url.password || url.search || url.hash || !/^\/[a-f0-9-]{36}$/u.test(url.pathname)) throw fail('inspector_descriptor_invalid');
     validTraffic(traffic);
-    const { attachClientLaunch } = require(candidateHostEntry ?? '../bundled/codex-desktop-adapter/host.cjs');
+    const { attachClientLaunch } = require('../bundled/codex-desktop-adapter/host.cjs');
     const value = await attachClientLaunch({ inspectorUrl, expectedPid, executable, traffic, signal });
     const report = {
       installed: value?.installed === true,

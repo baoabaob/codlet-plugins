@@ -30,9 +30,10 @@ Electron's native manual redirect mode cancels a 302 before returning a response
 | Verified Desktop JS and local backend | Separate Desktop and model source activation |
 | Verified Desktop JS, unsupported backend | Desktop source only; model source reported unavailable |
 | All requested sources unavailable | Requested traffic launch fails closed |
-| Remote/cloud backend, browser networking, attachments, Realtime/WebRTC, macOS | Coverage not established |
+| Reviewed Apple Silicon `26.917.62051` local Desktop and app-server | HTTP/SSE and Responses WebSocket paths passed controlled native acceptance |
+| Remote/cloud backend, browser networking, attachments, Realtime/WebRTC | Coverage not established |
 
-The old proxy/certificate route was removed. Legitimate user provider CA settings remain scoped to the private provider route. Current synthetic acceptance does not prove live OAuth refresh, enterprise workspace routing or arbitrary provider protocols. The versioned Apple Silicon `26.917.62051` client has been analyzed statically; its Host and backend remain candidates until controlled native acceptance passes. [The traffic contract](spec/traffic.md) records what each source intercepts and the permissions required for task correlation.
+The old proxy/certificate route was removed. Legitimate user provider CA settings remain scoped to the private provider route. Native Apple Silicon acceptance used a signed versioned `26.917.62051` client with synthetic credentials and local endpoints; it verified both source activations and HTTP/WS model turns, but does not prove live OAuth refresh, enterprise workspace routing, arbitrary provider protocols or native GUI/installer behavior. [The traffic contract](spec/traffic.md) records what each source intercepts and the permissions required for task correlation.
 
 ## Pending product work
 

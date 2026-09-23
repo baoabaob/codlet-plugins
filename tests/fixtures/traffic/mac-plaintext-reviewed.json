@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "status": "static-candidate-native-unverified",
+  "status": "native-plaintext-reviewed",
   "source": {
     "page": "https://learn.chatgpt.com/docs/app",
     "appcast": "https://persistent.oaistatic.com/codex-app-prod/appcast.xml",

@@ -6,7 +6,7 @@ const { EventEmitter } = require('node:events');
 const { Readable } = require('node:stream');
 const { AsyncLocalStorage } = require('node:async_hooks');
 
-// Private symbols are specific to two source-reviewed Owl builds. The hashes
+// Private symbols are specific to source-reviewed Owl builds. The hashes
 // guard every append; a new build needs a new inspected profile.
 const PROFILES = Object.freeze({
   'bootstrap-DK4EfNwt.js': { hash: 'dbdbdd3ef5dde93dd196a59846edf244dc653341213e0fd45eebb133b5df10ba', kind: 'bootstrap', symbol: 'Pt' },
@@ -15,6 +15,9 @@ const PROFILES = Object.freeze({
   'bootstrap-DwqRMhlU.js': { hash: '79ad86bda1f6171d43bab09b1b4a5d379afefc07a13d6f4f58470a823f6f575f', kind: 'bootstrap', symbol: 'Nt' },
   'main-Bx5zswAj.js': { hash: '610ea8b045f207360ac50fcccfe43ca896c6298fa75562f323f1a45ed2364a1b', kind: 'main', symbol: 'ZTe' },
   'src-mOb8On4V.js': { hash: '0639e87d51c132a7440bfa06624fb8e99031a3bb331ae11577278ce4a515cbb4', kind: 'src', symbol: 'Pq', managerExport: 'un' },
+  'bootstrap-C4dRql4x.js': { hash: '0757af0981f4552ca79ed1a364eafa6a73e71a92e65ea4fce747c7b6c715ed4a', kind: 'bootstrap', symbol: 'Nt' },
+  'main-C-Mhak1n.js': { hash: '457c79be69620d4489e94c14ac665f81731d869635606dcf175b7b4cc2e8b467', kind: 'main', symbol: 'ZTe' },
+  'src-DldfpmrL.js': { hash: '88ec69722b5d87a7081edf2e2d6a2e21c3f25300cee587363d74b8b87969a412', kind: 'src', symbol: 'WQ', managerExport: 'un' },
 });
 const HASHES = Object.freeze(Object.fromEntries(Object.entries(PROFILES).map(([name, profile]) => [name, profile.hash])));
 const fail = code => Object.assign(new Error(code), { code });
