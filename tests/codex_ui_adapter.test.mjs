@@ -72,6 +72,27 @@ test('Mac native pages use their own reviewed resources and refuse a mismatched 
   assert.ok(Object.isFrozen(profile.page.exports));
   assert.throws(()=>f.adapter.pageProfile({appVersion:'26.908.70816',buildNumber:8881}),{code:'ui_build_drift'});
 });
+test('Apple Silicon build 10640 selects its reviewed shared and initial modules',t=>{
+  const f=fixture(t),profile=f.adapter.pageProfile({appVersion:'26.917.61114',buildNumber:10640});
+  assert.equal(profile.entry,'app://-/assets/index-f1fb589dc48d.js');
+  assert.equal(profile.module,'app://-/assets/app-initial-e1f6333a805b.js');
+  assert.equal(profile.scopeModule,'app://-/assets/app-shared-6d89d53e1c60.js');
+  assert.equal(profile.postboxModule,profile.scopeModule);
+  assert.equal(profile.page.primary,profile.module);
+  assert.deepEqual(JSON.parse(JSON.stringify(profile.exports)),{scope:'ZI',manager:'AZt',client:'jZt',services:'Tnt',postbox:'X3'});
+  assert.deepEqual(JSON.parse(JSON.stringify(profile.page.exports)),{react:'e6',dom:'P3',client:'N3',sidebar:'MC',headerInit:'T7',header:'w7',newTaskInit:'C2',newTask:'D2'});
+  assert.throws(()=>f.adapter.pageProfile({appVersion:'26.917.61114',buildNumber:10492}),{code:'ui_build_drift'});
+});
+test('Apple Silicon build 10789 resolves the reviewed native page and connection exports',t=>{
+  const f=fixture(t),profile=f.adapter.pageProfile({appVersion:'26.917.62051',buildNumber:10789});
+  assert.equal(profile.entry,'app://-/assets/index-88e5ba1e2117.js');
+  assert.equal(profile.module,'app://-/assets/app-initial-37097744327a.js');
+  assert.equal(profile.scopeModule,'app://-/assets/app-shared-70a4f71efb70.js');
+  assert.equal(profile.postboxModule,profile.scopeModule);
+  assert.deepEqual(JSON.parse(JSON.stringify(profile.exports)),{scope:'ZI',manager:'vZt',client:'yZt',services:'pnt',postbox:'X3'});
+  assert.deepEqual(JSON.parse(JSON.stringify(profile.page.exports)),{react:'e6',dom:'P3',client:'N3',sidebar:'bC',headerInit:'p7',header:'f7',newTaskInit:'d2',newTask:'h2'});
+  assert.throws(()=>f.adapter.pageProfile({appVersion:'26.917.62051',buildNumber:10640}),{code:'ui_build_drift'});
+});
 test('only a boolean toolbar request is accepted and an unavailable native header does not add a route',async t=>{
   const f=fixture(t),count=f.shell.routes.length;
   for(const toolbar of ['true',{},1,null])assert.throws(()=>register(f,{toolbar}),{code:'invalid_argument'});

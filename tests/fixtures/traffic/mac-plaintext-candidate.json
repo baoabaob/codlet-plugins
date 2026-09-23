@@ -3,35 +3,36 @@
   "status": "static-candidate-native-unverified",
   "source": {
     "page": "https://learn.chatgpt.com/docs/app",
-    "dmg": "https://persistent.oaistatic.com/codex-app-prod/Codex.dmg",
-    "dmgSha256": "6b1f9abd5bc73962e503efc2ec1af38d5a4d18eeb769a80083d60025be02a81d"
+    "appcast": "https://persistent.oaistatic.com/codex-app-prod/appcast.xml",
+    "zip": "https://persistent.oaistatic.com/codex-app-prod/ChatGPT-darwin-arm64-26.917.62051.zip",
+    "zipSha256": "ca4a4443f41e9fc5762eeda60254ff57cc8b9ef7b990c31ae58bddfbb9d0b6b3"
   },
   "platform": "darwin",
   "architecture": "arm64",
-  "appVersion": "26.917.61114",
-  "buildNumber": "10640",
-  "asarSha256": "13a55e6ea7808380b78415bce7319fbc895ec15b3a82afdf60d14ff956c6187c",
+  "appVersion": "26.917.62051",
+  "buildNumber": "10789",
+  "asarSha256": "c41157d36d701d3228c82e56852f49da2381941a7e5ccfac2d58b7e10e31aefd",
   "backend": {
     "path": "ChatGPT.app/Contents/Resources/codex",
-    "sha256": "3faf4499d4044cae5285f8548eb54ddedd5fd75694ec3f394c91543655662ae5",
-    "versionString": "0.155.0-alpha.16"
+    "sha256": "c67698d0990aae05211d9c43ab343ad9517e406824dea77eca103a2806232b3a",
+    "versionString": "0.155.0-alpha.16.3"
   },
   "main": {
     "bootstrap": {
-      "name": "bootstrap-CbmE0G_n.js",
-      "sha256": "a67026dc815eca66be680250f89791d571c814fd5bcab689b92d12b4516c7263",
+      "name": "bootstrap-C4dRql4x.js",
+      "sha256": "0757af0981f4552ca79ed1a364eafa6a73e71a92e65ea4fce747c7b6c715ed4a",
       "class": "Nt",
       "applicationNetworkFactoryExport": "x"
     },
     "fetch": {
-      "name": "main-DOn0I1A9.js",
-      "sha256": "2e300508312972be3d0bb7f02bf48fbeac93d6888943400a2db75bb8c54650e4",
+      "name": "main-C-Mhak1n.js",
+      "sha256": "457c79be69620d4489e94c14ac665f81731d869635606dcf175b7b4cc2e8b467",
       "class": "ZTe"
     },
     "appServer": {
-      "name": "src-mOb8On4V.js",
-      "sha256": "0639e87d51c132a7440bfa06624fb8e99031a3bb331ae11577278ce4a515cbb4",
-      "stdioClass": "Pq",
+      "name": "src-DldfpmrL.js",
+      "sha256": "88ec69722b5d87a7081edf2e2d6a2e21c3f25300cee587363d74b8b87969a412",
+      "stdioClass": "WQ",
       "managerExport": "un"
     }
   }

@@ -32,7 +32,7 @@ Electron's native manual redirect mode cancels a 302 before returning a response
 | All requested sources unavailable | Requested traffic launch fails closed |
 | Remote/cloud backend, browser networking, attachments, Realtime/WebRTC, macOS | Coverage not established |
 
-The old proxy/certificate route was removed. Legitimate user provider CA settings remain scoped to the private provider route. Current synthetic acceptance does not prove live OAuth refresh, enterprise workspace routing or arbitrary provider protocols. The Apple Silicon `26.917.61114` installer has been analyzed statically, but its Host and backend candidate are not production coverage until controlled native acceptance passes. [The traffic contract](spec/traffic.md) records what each source intercepts and the permissions required for task correlation.
+The old proxy/certificate route was removed. Legitimate user provider CA settings remain scoped to the private provider route. Current synthetic acceptance does not prove live OAuth refresh, enterprise workspace routing or arbitrary provider protocols. The versioned Apple Silicon `26.917.62051` client has been analyzed statically; its Host and backend remain candidates until controlled native acceptance passes. [The traffic contract](spec/traffic.md) records what each source intercepts and the permissions required for task correlation.
 
 ## Pending product work
 
