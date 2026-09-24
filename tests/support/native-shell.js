@@ -6,11 +6,19 @@ const h=React.createElement;
 export function SidebarItem({label,icon,isActive,onClick,...props}){
   return h('button',{className:'sidebar-item',onClick,'aria-current':isActive?'page':undefined,'aria-label':props['aria-label']},icon?h(icon,{className:isActive?'native-active-icon':''}):null,label);
 }
-export function mount({fragmentRouteRoot=false}={}){
+export function mount({fragmentRouteRoot=false,multipleComposers=false}={}){
   const listeners=new Set(),history=[{pathname:'/local/start',search:'',hash:'',state:null}];let index=0;
   const navigator={get location(){return history[index];},listen(fn){listeners.add(fn);return()=>listeners.delete(fn);},push(to,state){history.splice(++index);history[index]=typeof to==='string'?{pathname:to,search:'',hash:'',state}:to;listeners.forEach(fn=>fn());},replace(to,state){history[index]=typeof to==='string'?{pathname:to,search:'',hash:'',state}: {...to,state};listeners.forEach(fn=>fn());},go(delta){index=Math.max(0,Math.min(history.length-1,index+delta));listeners.forEach(fn=>fn());}};
   function Route() {throw Error('Route descriptor must never render');}
-  const collection=[h(Route,{path:'/inbox',element:h('p',null,'Inbox')}),h(Route,{path:'/connector/oauth_callback',element:null}),h(Route,{path:'/local/start',element:h('input',{id:'native-composer'})})];
+  function NativeComposer({placement,index=0}){
+    return h('div',{'data-codex-composer-root':'','data-composer-placement':placement},
+      h('div',{'data-composer-utility-bar-scroll-area':'',role:'group','aria-label':'Composer utility bar'},
+        h('div',null,h('button',{type:'button','data-native-composer-action':String(index)},'Native action'))),
+      h('input',{id:index===0?'native-composer':undefined}));
+  }
+  const startComposer=multipleComposers?h(React.Fragment,null,h(NativeComposer,{placement:'home',index:0}),h(NativeComposer,{placement:'floating',index:1})):h(NativeComposer,{placement:'home'});
+  const collection=[h(Route,{path:'/inbox',element:h('p',null,'Inbox')}),h(Route,{path:'/connector/oauth_callback',element:null}),
+    h(Route,{path:'/local/start',element:startComposer}),h(Route,{path:'/local/thread/one',element:h(NativeComposer,{placement:'thread'})})];
   const routeChildren=[h(Route,{path:'/avatar-overlay',element:null,key:'avatar'}),h(Route,{children:fragmentRouteRoot?h(React.Fragment,{children:collection}):collection,key:'main'})];
   const tree=h(Route,{children:fragmentRouteRoot?h(React.Fragment,null,...routeChildren):routeChildren});
   function Routes({children,navigator}){

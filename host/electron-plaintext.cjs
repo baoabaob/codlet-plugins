@@ -9,6 +9,8 @@ const { AsyncLocalStorage } = require('node:async_hooks');
 // Private symbols are specific to source-reviewed Owl builds. The hashes
 // guard every append; a new build needs a new inspected profile.
 const PROFILES = Object.freeze({
+  'bootstrap-CiIGnI3y.js': { hash: '119bb54ee12ed5d2b0d3b98dd068a4322232a4aa342323eb9cb5dfa6575ca158', kind: 'bootstrap', symbol: 'Nt' },
+  'main-BR_2NHW6.js': { hash: '1f2b91cf92fc023fb2fa41e1c1d03698fa6e37354ecd07dd0cebd21337607b08', kind: 'main', symbol: 'ZTe' },
   'bootstrap-DK4EfNwt.js': { hash: 'dbdbdd3ef5dde93dd196a59846edf244dc653341213e0fd45eebb133b5df10ba', kind: 'bootstrap', symbol: 'Pt' },
   'main-LM8MUIFp.js': { hash: 'c71bf3ffecef5fd390b4cd16d120d39dce30d30bffe3c563c8c74c1b691da018', kind: 'main', symbol: 'wEe' },
   'src-C3YaUE83.js': { hash: '14c8c23e8b8dfa874d3fb5a50d54fb28eccf55fb83232c3ab29cb7c0ef0a0472', kind: 'src', symbol: 'mQ', managerExport: 'un' },

@@ -18,9 +18,13 @@ The Windows x64 package `OpenAI.Codex_26.917.8451.0` reports frontend `26.917.62
 
 The initial independent distribution rehearsal used private repositories and draft releases. It verified reproducible per-plugin source closures, archive digests, remote ownership checks and idempotent synchronization. That evidence does not establish current public release visibility or public-import acceptance. Git retains the historical receipt details; current release administration uses `dist/release-lock.json` and verified remote state.
 
-The unauthenticated GitHub importer cannot install private repositories or draft releases. Existing local installer presets remain local sources until a separately verified migration; publishing a repository does not silently convert their source or enable GitHub auto-updates.
+The unauthenticated GitHub importer cannot install private repositories or draft releases. Verified installer presets with a bound update channel participate in the normal GitHub update checks. Their first remote replacement requires the existing adoption review; unrelated local author folders are not enrolled automatically.
 
 ## Traffic activation boundaries
+
+Windows package `26.917.8451.0` (frontend 10789, backend `0.155.0-alpha.16.3`) passed isolated exact-child Desktop fetch/upload/redirect and model HTTP/SSE/WS acceptance. Both model protocol runs completed two turns; the HTTP run preserved WebSocket 426 and then fell back to HTTP. The runs used synthetic credentials and loopback endpoints, left the original client identities unchanged and cleaned their owned children. This does not establish live OAuth or arbitrary external provider compatibility.
+
+Composer actions and loaded-thread provider reconfiguration currently have a reviewed Windows 10789 profile. Provider configuration is an intentional change to a real conversation, separate from side-effect-free local fixtures. Restore the original provider before disabling its route-owning plugin. Forced retirement or process failure closes the private route but does not guarantee automatic restoration of an already loaded native task; restarting the client releases that runtime session. An automatic, ownership-aware restore protocol is not yet implemented. Plugins must preserve an unknown-result route until the user can confirm or restore the conversation, and may not report closing a channel as successful provider restoration.
 
 The Desktop Adapter's plaintext source is scoped to a newly owned, exact-version Owl main process. Its Desktop branch covers final `performDesktopFetch` HTTP/SSE calls and the upload-progress request path. Its model branch covers a verified local `codex app-server` child routed through provider base URLs for HTTP/SSE and Responses WebSocket. Native reports these as separate `activatedSources`; a working Desktop hook alone does not make model interception available.
 

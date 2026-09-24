@@ -208,7 +208,7 @@ async function run(kind, websockets, sessionRouting = false) {
     'cli_auth_credentials_store="file"', 'sandbox_mode="read-only"', 'approval_policy="never"', 'model="gpt-5.4"',
     `chatgpt_base_url=${JSON.stringify(endpoint + '/backend-api/')}`, `openai_base_url=${JSON.stringify(endpoint + '/v1')}`,
     'model_provider="' + (kind === 'custom' ? 'codlet_fixture' : 'openai') + '"',
-    '[analytics]', 'enabled=false', '[features]', 'code_mode_host=false', 'remote_models=false', 'remote_plugin=false',
+    '[analytics]', 'enabled=false', '[features]', 'plugins=false', 'code_mode_host=false', 'remote_models=false', 'remote_plugin=false',
     'responses_websockets=' + websockets, 'responses_websockets_v2=' + websockets,
     '[mcp_servers.codex_app]', 'command=""', 'enabled=false',
     ...(kind !== 'custom' ? [] : ['[model_providers.codlet_fixture]', 'name="Fixture"', 'wire_api="responses"', 'supports_websockets=' + websockets, 'request_max_retries=0', 'stream_max_retries=0', `base_url=${JSON.stringify(endpoint + '/v1')}`, 'requires_openai_auth=false']),
@@ -273,6 +273,20 @@ async function run(kind, websockets, sessionRouting = false) {
       state.phase = 'active_threads';
       state.coldResumed = true;
       await runBoth('resumed');
+      // Reconfigure a loaded idle task without restarting its backend. The
+      // native unsubscribe/resume path must really replace the provider.
+      state.phase = 'reconfiguring';
+      const switching = ids.get('a');
+      const stopped = await rpc('thread/unsubscribe', { threadId: switching });
+      assert.equal(stopped.status, 'unsubscribed');
+      const changed = await rpc('thread/resume', { threadId: switching, modelProvider: 'codlet_switched', model: 'gpt-5.4',
+        config: { 'model_providers.codlet_switched': { name: 'Switched fixture', wire_api: 'responses', base_url: endpoint + '/switched', supports_websockets: websockets, requires_openai_auth: false } } });
+      assert.equal(changed.modelProvider, 'codlet_switched');
+      assert.equal(changed.thread.id, switching);
+      const beforeSwitch = originLog.length;
+      state.phase = 'active_threads'; await runBoth('reconfigured');
+      assert(originLog.slice(beforeSwitch).some(value => value.path === '/switched/responses' && (value.routeTag === 'a' || value.sessionHeaderMatches['x-client-request-id'] === 'a')));
+      state.providerReconfigured = true;
       const observed = originLog.slice(observedStart);
       state.httpMatched = Object.fromEntries(tags.map(tag => [tag, observed.filter(value => value.protocol === 'http' && value.routeTag === tag).length]));
       state.wsHandshakeMatched = Object.fromEntries(tags.map(tag => [tag, observed.filter(value => value.protocol === 'websocket-handshake' && value.routeTag === tag).length]));
@@ -320,6 +334,7 @@ async function run(kind, websockets, sessionRouting = false) {
 }
 try {
   if (options['--routing-ws-only'] === 'yes') await run('custom', true, true);
+  else if (options['--routing-only'] === 'yes') for (const websockets of [false, true]) await run('custom', websockets, true);
   else {
     for (const kind of ['custom', 'builtin', 'chatgpt']) for (const websockets of [false, true]) await run(kind, websockets);
     for (const websockets of [false, true]) await run('custom', websockets, true);

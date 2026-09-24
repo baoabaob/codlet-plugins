@@ -5,6 +5,19 @@ import {uiFixture,tick,deferred} from './support/ui-fixture.mjs';
 import {displayPath} from '../frontend/src/codlet/paths.js';
 async function fixture(t,locale='en'){const demo=createPreviewRuntime(),f=uiFixture({locale,request:demo.request}),plugin=f.load('bundled/codlet/dist/renderer.js');t.after(()=>{plugin.deactivate();f.dispose();});await plugin.activate(f.context);return {...f,demo,plugin};}
 async function importPlugins(f){const add=f.control('Add');add.focus();await f.key(add,'ArrowDown');await f.click('Import plugin');}
+
+test('installer channel enables the actual check and update-all controls without a managed GitHub registration',async t=>{
+  const f=await fixture(t,'en');
+  const list=await f.demo.request(null,'list',null);
+  const seed={...list.plugins.find(p=>p.id==='local.notes'),ownership:'installer-seed',updateSource:{kind:'github',repositoryUrl:'https://github.com/example/notes',versionKey:'seed-key',operation:'adopt'}};
+  f.overrides.set('list',()=>({...list,plugins:[seed]}));
+  f.overrides.set('checkPluginUpdates',()=>f.demo.state.pluginUpdates={phase:'completed',checkedAt:1,plugins:{[seed.id]:{versionKey:'seed-key',status:'available',releaseTag:'v2.0.0',releaseUrl:'https://github.com/example/notes/releases/tag/v2.0.0'}},error:null});
+  f.overrides.set('updatePlugins',args=>({id:1,running:true,items:args.pluginIds.map(id=>({pluginId:id,versionKey:'seed-key',phase:'downloading'}))}));
+  await f.open();assert.equal(f.control('Check for plugin updates').disabled,false);
+  await f.click('Check for plugin updates');assert.ok(f.control('Update all (1)'));
+  await f.click('Update all (1)');assert.deepEqual(f.calls.find(c=>c.method==='updatePlugins').args.pluginIds,[seed.id]);
+  assert.equal(f.calls.some(c=>c.method==='githubPrepare'||c.method==='submit'),false);
+});
 test('Codlet loads only on its native page and tears down on route changes',async t=>{
   const f=await fixture(t);assert.equal(f.calls.some(c=>c.method==='list'),false);assert.equal(f.document.querySelector('[data-codlet-panel]'),null);
   assert.equal(f.document.querySelector('[data-codlet-official-styles]'),null);assert.equal(f.mediaListeners.size,0);

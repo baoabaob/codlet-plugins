@@ -29,6 +29,9 @@ test('each source snapshot contains its own installable bundle and build closure
     assert.ok(createdRelative&&!createdRelative.startsWith('..')&&!isAbsolute(createdRelative)&&!createdRelative.includes(sep));
     assert.ok(basename(createdPath).startsWith('codlet-distribution-test-'));
     execFileSync(process.execPath,[resolve(root,'scripts/package.mjs'),'--output',outputDirectory],{cwd:root,encoding:'utf8',windowsHide:true});
+    const catalog=JSON.parse(await readFile(resolve(outputDirectory,'catalog.json'),'utf8'));
+    const identities=JSON.parse(await readFile(resolve(root,'compatibility/official-sources.json'),'utf8'));
+    for(const pkg of catalog.packages){const identity=identities.sources.find(s=>s.pluginIds.includes(pkg.id));assert.deepEqual(pkg.updateSource,{kind:'github',repositoryUrl:`https://github.com/${identity.repository}`,repositoryId:identity.repositoryId,ownerId:identity.ownerId,assetNameTemplate:`${pkg.id}-{version}.zip`});}
     const plan=await prepareDistribution(root,{allowDirty:true,outputDirectory});
     for(const plugin of plan.plugins){
       const folder=resolve(outputDirectory,plugin.directory),paths=plugin.files.map(f=>f.path);

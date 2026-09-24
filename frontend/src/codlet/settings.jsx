@@ -16,7 +16,7 @@ export function createSettingsView({React,C,I,manager,t,Copy,mutationBusy}){
           <Row label="Automatically check for Codlet updates" description={config.availability.updateChecks?'Check for Codlet releases in the background. Downloads and installation remain manual.':'This development build has no configured update source.'}>
             <C.Switch aria-label={t('Automatically check for Codlet updates')} checked={config.effective.automaticUpdateChecks} disabled={disabled||!config.availability.updateChecks} onCheckedChange={value=>manager.saveSettings({automaticUpdateChecks:value})}/>
           </Row>
-          <Row label="Check for plugin updates at startup" description="Check plugins imported from GitHub once when Codlet starts. Downloads and installation remain manual.">
+          <Row label="Check for plugin updates at startup" description="Check plugins with verified update channels once when Codlet starts. Downloads and installation remain manual.">
             <C.Switch aria-label={t('Check for plugin updates at startup')} checked={config.effective.checkPluginUpdatesOnStartup} disabled={disabled||!config.availability.pluginUpdateChecks} onCheckedChange={value=>manager.saveSettings({checkPluginUpdatesOnStartup:value})}/>
           </Row>
           <Row label="Show plugin tags" description="Show literal labels after plugin versions in the management list.">

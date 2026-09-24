@@ -353,7 +353,7 @@ async function main() {
   }
 
   try {
-    if (!(process.platform === 'win32' && process.version === 'v24.21.0' || macRunner && process.version === 'v22.23.2')
+    if (!(process.platform === 'win32' && process.versions.node.split('.')[0] === '24' || macRunner && process.version === 'v22.23.2')
       || options['--run-owned'] !== 'yes'
       || macRunner && options['--backend-sha256'] === undefined
       || !path.isAbsolute(options['--executable'] ?? '') || !path.isAbsolute(options['--backend'] ?? '')
@@ -601,7 +601,7 @@ async function main() {
       'responses_websockets=true',
       'responses_websockets_v2=true',
       '[analytics]', 'enabled=false',
-      '[features]', 'remote_models=false', 'remote_plugin=false', 'code_mode_host=false',
+      '[features]', 'plugins=false', 'remote_models=false', 'remote_plugin=false', 'code_mode_host=false',
       '[mcp_servers.codex_app]', 'command=""', 'enabled=false',
     ].join('\n') + '\n';
     await fs.writeFile(path.join(paths.codexHome, 'config.toml'), config);

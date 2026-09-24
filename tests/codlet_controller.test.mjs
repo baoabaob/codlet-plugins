@@ -5,6 +5,32 @@ import {createPreviewRuntime} from '../scripts/preview-runtime.mjs';
 import {deferred} from './support/ui-fixture.mjs';
 async function setup(t){const demo=createPreviewRuntime(),calls=[],overrides=new Map(),context={pluginId:'codlet-gui',i18n:{locale:'en'},rpc:{async request(cap,method,args){calls.push({method,args});return overrides.has(method)?overrides.get(method)(args):demo.request(cap,method,args);}}};const m=new Manager(context);t.after(()=>m.dispose());await m.open();await Promise.resolve();return {m,calls,overrides,demo,context};}
 const count=(f,method)=>f.calls.filter(c=>c.method===method).length;
+
+test('verified installer channels join checks and update-all while same-name locals stay excluded',async t=>{
+  const f=await setup(t);f.m.setVisible(false);
+  const channel={kind:'github',repositoryUrl:'https://github.com/example/seed',repositoryId:12,ownerId:34,versionKey:'seed-v1',operation:'adopt'};
+  const seed={id:'dev.seed',version:'1.0.0',source:'local',ownership:'installer-seed',registered:true,enabled:false,updateSource:channel};
+  const local={...seed,id:'dev.author',ownership:'development-directory',updateSource:null};
+  f.m.set({plugins:[seed,local],pluginUpdates:{phase:'completed',checkedAt:1,plugins:{'dev.seed':{versionKey:'seed-v1',status:'available',releaseTag:'v2.0.0',releaseUrl:'https://github.com/example/seed/releases/tag/v2.0.0'}},error:null}});
+  assert.deepEqual(f.m.githubPlugins().map(p=>p.id),['dev.seed']);assert.deepEqual(f.m.updateCandidates().map(p=>p.id),['dev.seed']);
+  f.overrides.set('updatePlugins',args=>({id:9,running:true,items:args.pluginIds.map(id=>({pluginId:id,versionKey:'seed-v1',phase:'downloading'}))}));
+  await f.m.updatePlugins();assert.deepEqual(f.calls.find(c=>c.method==='updatePlugins').args.pluginIds,['dev.seed']);
+  f.m.set({pluginInstall:{id:9,running:false,items:[]},plugins:[{...seed,updateSource:{...channel,versionKey:'changed'}},local]});
+  assert.equal(f.m.updateCandidates().length,0);assert.match(f.m.pluginCheckMessage(),/Check again/);
+});
+
+test('first remote seed review submits adoption and keeps disabled state and every existing scope',async t=>{
+  const f=await setup(t);f.m.setVisible(false);
+  const seed={id:'dev.seed',source:'local',registered:true,ownership:'installer-seed',updateSource:{kind:'github',versionKey:'seed-v1',operation:'adopt'}};
+  const policy={readRoots:['C:/Read'],writeRoots:['C:/Write'],watchRoots:['C:/Watch'],networkOrigins:['https://example.com'],executables:['C:/Tool.exe'],cwdRoots:['C:/Work'],envKeys:['SELECTED'],shortcuts:['Ctrl+Shift+K']};
+  const grants=['ui.dom','host.fs','host.fs.write','host.fs.watch','host.network','host.process.spawn','core.shortcuts'];
+  const p={schema:1,kind:'codlet.managed-preview',operation:'adopt',ownership:'core-managed-github',path:'C:/stage',contentDigest:'a'.repeat(64),registrationDigest:'b'.repeat(64),manifest:{id:'dev.seed',version:'2.0.0',permissions:['ui.dom']},source:{repositoryUrl:'https://github.com/example/seed',tag:'v2.0.0',assetName:'seed.zip',sha256:'c'.repeat(64)},existingRegistration:{grants,brokerPolicy:policy},existingEnabled:false,changes:{restartRequired:false}};
+  f.m.set({plugins:[seed],pluginInstall:{id:9,running:false,items:[{pluginId:seed.id,versionKey:'seed-v1',phase:'reviewRequired'}]}});f.overrides.set('pluginUpdateReview',()=>p);
+  await f.m.reviewPluginUpdate(seed);assert.equal(f.m.state.importOperation,'adopt');assert.equal(f.m.state.preview,p);assert.equal(f.m.state.enableAfter,false);
+  p.changes.restartRequired=true;assert.equal(f.m.importReady(),false,'Entry-shape changes must not submit an unsafe hot update');p.changes.restartRequired=false;
+  let submitted;f.m.mutate=(id,action,request)=>{submitted={id,action,request};};
+  f.m.submitImport();f.m.confirmImport();assert.equal(submitted.action,'update');assert.equal(submitted.request.local_import.managed,'adopt');assert.equal(submitted.request.local_import.enable,false);assert.deepEqual(submitted.request.local_import.grants,grants);assert.deepEqual(submitted.request.local_import.brokerPolicy,policy);
+});
 test('one-click updates use one Core batch without manual release or download steps and survive closing the page',async t=>{
   const f=await setup(t),p=f.m.state.plugins.find(p=>p.id==='managed.notes');let batch={id:1,running:true,items:[{pluginId:p.id,versionKey:p.managedVersionKey??'old',phase:'downloading'}]};
   f.overrides.set('updatePlugins',()=>batch);const old=f.demo.request;

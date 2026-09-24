@@ -97,7 +97,7 @@ function PluginList({s}) {
     <div className="codlet-list-toolbar"><div className="codlet-filters" role="group" aria-label={t('Filter plugins')}>
       {[['all','All'],['enabled','Enabled'],['disabled','Not enabled']].map(([value,label])=><C.Button key={value} color="secondary" variant={s.filter===value?'soft':'ghost'} size="sm" aria-pressed={s.filter===value} onClick={()=>manager.setFilter(value)}>{t(label)}</C.Button>)}
     </div>
-      <div className="codlet-update-actions"><C.Tooltip content={t('Check plugins imported from GitHub')}><C.Button color="secondary" variant="ghost" size="sm" aria-label={t('Check for plugin updates')} disabled={mutationBusy(s)||s.loading||s.listStale||checking||!s.githubAvailable||!manager.githubPlugins().length} loading={checking} onClick={()=>manager.checkPluginUpdates()}><I.Regenerate/>{t('Check for updates')}</C.Button></C.Tooltip>
+      <div className="codlet-update-actions"><C.Tooltip content={t('Check plugins with verified update channels')}><C.Button color="secondary" variant="ghost" size="sm" aria-label={t('Check for plugin updates')} disabled={mutationBusy(s)||s.loading||s.listStale||checking||!s.githubAvailable||!manager.githubPlugins().length} loading={checking} onClick={()=>manager.checkPluginUpdates()}><I.Regenerate/>{t('Check for updates')}</C.Button></C.Tooltip>
         {(updates>0||manager.installingPlugins())&&<C.Button color="info" variant="soft" size="sm" disabled={mutationBusy(s)||s.loading||s.listStale||checking} loading={manager.installingPlugins()} onClick={()=>manager.updatePlugins()}><I.Download/>{t('Update all')} ({updates})</C.Button>}
       </div>
     </div>
@@ -191,13 +191,14 @@ function Details({s}){
       <div className="codlet-details-identity"><div className="codlet-details-heading"><h2>{name(p)}</h2>{p.version&&<span className="codlet-version">{p.version}</span>}{p.source!=='bundled'&&<IconAction icon={I.FolderOpen} label="Open plugin folder" onClick={()=>manager.openFolder()}/>}</div>
         <Copy>{p.id}</Copy>{description(p)&&<Copy>{description(p)}</Copy>}</div>
       {p.ownership==='core-managed-github'&&<Source source={p.managedSource} metadata={p.metadata}/>}
+      {p.updateSource&&p.ownership!=='core-managed-github'&&<Copy>{t('Installer update channel')}{': '}{p.updateSource.repositoryUrl}</Copy>}
       <Compatibility metadata={p.metadata} device={p.deviceCompatibility??s.deviceCompatibility} clientStatus={s.clientStatus}/>
       {p.grants?.length>0&&<h2>{t('Granted permissions')}</h2>}
       {(p.grants??[]).map(permission=><div className="codlet-permission-line" key={permission}><Copy>{permission}{'\n'}{t(PERMISSION_COPY[permission]||'')}</Copy>
         {p.source!=='bundled'&&<C.Button color="secondary" variant="ghost" size="sm" data-codlet-focus-key={`revoke:${p.id}:${permission}`} aria-label={t(`Revoke ${permission}`)} onClick={()=>manager.requestRemoval(p,permission)}>{t('Revoke')}</C.Button>}</div>)}
       {[['readRoots','Allowed read folders'],['writeRoots','Allowed write folders'],['watchRoots','Allowed watch folders'],['networkOrigins','Allowed network origins'],['executables','Allowed child programs'],['cwdRoots','Allowed working folders'],['envKeys','Allowed environment keys'],['shortcuts','Allowed global shortcuts']].filter(([key])=>p.brokerPolicy?.[key]?.length).map(([key,label])=><Copy key={key}>{t(label)}{'\n'}{p.brokerPolicy[key].join('\n')}</Copy>)}
       {manager.removalRequiresCli(p)?<div className="codlet-removal-notice"><Copy>{t('The GUI plugin cannot uninstall itself or its dependencies')}</Copy><p className="codlet-copy codlet-removal-actions"><span>{t('To uninstall, use the CLI or ')}</span><button type="button" className="codlet-inline-link" disabled={s.createBusy||s.detailsBusy||mutationBusy(s)} onClick={()=>manager.uninstallWithCodex()}>{t('use Codex')}<I.ArrowUpRight aria-hidden="true"/></button></p></div>:p.source!=='bundled'&&<C.Button color="danger" variant="soft" size="md" data-codlet-focus-key={`remove:${p.id}`} aria-label={t(`Remove ${name(p)}`)} onClick={()=>manager.requestRemoval(p)}>{t('Remove plugin')}</C.Button>}
-      {p.ownership==='core-managed-github'&&<>
+      {(p.updateSource===undefined?p.ownership==='core-managed-github':p.updateSource?.kind==='github')&&<>
         <C.Button color="secondary" variant="soft" size="md" aria-label={t('Check GitHub versions')} onClick={()=>manager.importPage('github',p)}>{t('Check GitHub versions')}</C.Button>
       </>}
     </>}

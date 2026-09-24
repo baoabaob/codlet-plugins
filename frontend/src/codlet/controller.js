@@ -61,7 +61,7 @@ export class Manager {
   available() { return this.alive && this.state.open && !this.state.listStale && !this.pending && !this.state.confirmation && !this.state.combinedConfirmation && !this.combiningUpdates() && !this.installingPlugins(); }
   installingPlugins(){return this.state.pluginInstallBusy||this.state.pluginInstallUncertain||this.state.pluginInstall?.running===true;}
   checkingPlugins(){return this.state.pluginUpdateBusy||this.state.pluginUpdates?.phase==='checking';}
-  githubPlugins(){return this.state.plugins.filter(p=>p.registered!==false&&p.ownership==='core-managed-github');}
+  githubPlugins(){return this.state.plugins.filter(p=>p.registered!==false&&(p.updateSource===undefined?p.ownership==='core-managed-github':p.updateSource?.kind==='github'));}
   updateCandidates(){return this.githubPlugins().filter(p=>this.pluginUpdate(p)?.status==='available');}
   pluginSummary(){
     const plugins=this.state.plugins.filter(p=>p.registered!==false);
@@ -74,12 +74,12 @@ export class Manager {
     if(this.checkingPlugins())return 'Checking plugin updates...';
     if(!status||status.phase==='idle')return '';
     if(status.phase==='failed')return 'Plugin update check failed.';
-    if(!this.githubPlugins().length)return 'No GitHub plugins to check.';
+    if(!this.githubPlugins().length)return 'No plugins with an update channel to check.';
     if(this.githubPlugins().some(p=>!this.pluginUpdate(p)))return 'Check again to refresh plugin update status';
     if(this.githubPlugins().some(p=>!['available','upToDate'].includes(this.pluginUpdate(p)?.status)))return 'Some plugins could not be checked. Try again or open their details.';
-    return this.updateCandidates().length?'':'GitHub plugins are up to date';
+    return this.updateCandidates().length?'':'Plugins with update channels are up to date';
   }
-  installState(plugin){const item=this.state.pluginInstall?.items.find(item=>item.pluginId===plugin.id);if(!item)return null;if(item.phase==='updated')return item.version===plugin.version?item:null;return !this.state.pluginInstall.running&&item.versionKey!==plugin.managedVersionKey?null:item;}
+  installState(plugin){const item=this.state.pluginInstall?.items.find(item=>item.pluginId===plugin.id);if(!item)return null;if(item.phase==='updated')return item.version===plugin.version?item:null;return !this.state.pluginInstall.running&&item.versionKey!==(plugin.updateSource?.versionKey??plugin.managedVersionKey)?null:item;}
   async updatePlugins(plugins=null){
     if(!this.available()||this.checkingPlugins()||!(plugins??this.updateCandidates()).length)return;
     this.set({pluginInstallBusy:true,pluginInstallError:''});
@@ -91,8 +91,8 @@ export class Manager {
     if(!this.available())return;
     const batch=this.state.pluginInstall?.id;if(!batch)return;
     this.invalidateImport();const sequence=this.sequence.page;
-    this.set({page:'import',mode:'github',target:plugin,importOperation:'update',importBusy:true,catalog:null,release:'',asset:'',importStatus:'Loading update review...',importError:''});
-    try{const p=await this.rpc('pluginUpdateReview',{batchId:batch,pluginId:plugin.id});if(!this.current('page',sequence,'import'))return;this.validatePreview(p,true);this.set({preview:p,trusted:true,grants:p.manifest.permissions.filter(permission=>p.existingRegistration?.grants?.includes(permission)),enableAfter:p.existingEnabled===true,policy:Object.fromEntries(Object.entries(p.existingRegistration?.brokerPolicy??{}).map(([key,value])=>[key,value.join('\n')])),importStatus:'Review the changed permissions and dependencies before installing.'});}
+    this.set({page:'import',mode:'github',target:plugin,importOperation:plugin.updateSource?.operation??'update',importBusy:true,catalog:null,release:'',asset:'',importStatus:'Loading update review...',importError:''});
+    try{const p=await this.rpc('pluginUpdateReview',{batchId:batch,pluginId:plugin.id});if(!this.current('page',sequence,'import'))return;this.validatePreview(p,true);this.set({preview:p,trusted:true,grants:[...(p.existingRegistration?.grants??[])],enableAfter:p.existingEnabled===true,policy:Object.fromEntries(Object.entries(p.existingRegistration?.brokerPolicy??{}).map(([key,value])=>[key,value.join('\n')])),importStatus:p.changes?.restartRequired?'This update changes plugin entry shape. Apply it with the CLI while Codlet is stopped, then restart Codlet.':p.operation==='adopt'?'Review the first update from the installer package to its GitHub channel. Existing settings will be preserved.':'Review the changed permissions and dependencies before installing.'});}
     catch(error){if(this.current('page',sequence,'import'))this.set({importStatus:message(error)});}
     finally{if(this.current('page',sequence,'import'))this.set({importBusy:false});}
   }
@@ -132,7 +132,7 @@ export class Manager {
       return terms.every(term=>term.startsWith('#')?tags.includes(term.slice(1)):text.includes(term));
     });
   }
-  pluginUpdate(plugin){const result=this.state.pluginUpdates?.plugins[plugin.id];return result?.versionKey===plugin.managedVersionKey?result:null;}
+  pluginUpdate(plugin){const result=this.state.pluginUpdates?.plugins[plugin.id];return result?.versionKey===(plugin.updateSource?.versionKey??plugin.managedVersionKey)?result:null;}
   async checkPluginUpdates(){
     if(!this.available()||!this.state.githubAvailable||this.checkingPlugins()||!this.githubPlugins().length)return;
     this.set({pluginUpdateBusy:true,pluginUpdateError:''});
@@ -355,7 +355,7 @@ export class Manager {
     const importPreviousPage=this.state.page==='import'?this.state.importPreviousPage:this.state.page;
     this.invalidateImport();
     this.marketSet({reviewReturn:false});
-    this.set({page:'import',mode,target,importPreviousPage,importOperation:target?'update':'install',catalog:null,release:'',asset:'',url:target?.managedSource?.repositoryUrl??this.state.url,importStatus:'',importError:''});
+    this.set({page:'import',mode,target,importPreviousPage,importOperation:target?(target.updateSource?.operation??'update'):'install',catalog:null,release:'',asset:'',url:target?.updateSource?.repositoryUrl??target?.managedSource?.repositoryUrl??this.state.url,importStatus:'',importError:''});
     if(mode==='local' && this.state.path.trim()) this.setPath(this.state.path);
     if(mode==='github' && target) return this.readReleases();
   }
@@ -401,7 +401,7 @@ export class Manager {
     try {await accept(await this.rpc('chooseLocalFolder',{locale:this.context.i18n?.locale??'en'}));}catch(error){fail(error);}
   }
   grant(permission,value) { if(!this.state.preview?.manifest.permissions.includes(permission)) return; this.set({grants:value?[...new Set([...this.state.grants,permission])]:this.state.grants.filter(p=>p!==permission)}); }
-  importReady() {const s=this.state;return this.available() && s.page==='import' && !!s.preview && s.preview.deviceCompatibility?.status!=='incompatible' && !s.importBusy && !s.createBusy && s.trusted && s.preview.manifest.permissions.every(p=>s.grants.includes(p));}
+  importReady() {const s=this.state;return this.available() && s.page==='import' && !!s.preview && !s.preview.changes?.restartRequired && s.preview.deviceCompatibility?.status!=='incompatible' && !s.importBusy && !s.createBusy && s.trusted && s.preview.manifest.permissions.every(p=>s.grants.includes(p));}
   submitImport() {
     if(!this.importReady()||this.state.importWarning) return;
     this.set({importWarning:{preview:this.state.preview,sequence:this.sequence.page},importReviewError:''});
@@ -414,7 +414,7 @@ export class Manager {
     const s=this.state,p=s.preview;
     const policyPermissions={readRoots:['host.fs'],writeRoots:['host.fs.write'],watchRoots:['host.fs.watch'],networkOrigins:['host.network'],executables:['host.process','host.process.spawn'],cwdRoots:['host.process.spawn'],envKeys:['host.process.spawn'],shortcuts:['core.shortcuts']};
     const brokerPolicy=Object.fromEntries(Object.entries(s.policy).filter(([key])=>policyPermissions[key]?.some(permission=>s.grants.includes(permission))).map(([key,value])=>[key,value.split(/\r?\n/).map(line=>line.trim()).filter(Boolean)]));
-    const local_import={path:p.path,contentDigest:p.contentDigest,registrationDigest:p.registrationDigest,trusted:true,grants:p.manifest.permissions.filter(permission=>s.grants.includes(permission)),brokerPolicy,enable:s.enableAfter,...(s.mode==='github'?{managed:s.importOperation}:{})};
+    const local_import={path:p.path,contentDigest:p.contentDigest,registrationDigest:p.registrationDigest,trusted:true,grants:[...new Set([...s.grants,...(p.existingRegistration?.grants??[]).filter(permission=>!p.manifest.permissions.includes(permission))])],brokerPolicy,enable:s.enableAfter,...(s.mode==='github'?{managed:s.importOperation}:{})};
     const action=s.mode==='github' && s.importOperation==='adopt'?'update':s.mode==='github' && s.importOperation!=='install'?s.importOperation:'import';
     const marketReturn=s.market.reviewReturn;
     this.invalidateImport();this.marketSet({reviewReturn:false});this.set({page:marketReturn?'marketDetails':'plugins'});
@@ -476,7 +476,8 @@ export class Manager {
           this.marketSet({selected:verified,items:this.state.market.items.map(candidate=>marketItemKey(candidate)===marketItemKey(item)?verified:candidate)});
           if(declarationChanged)job.declarationChanged=true;
         }
-        this.set({preview:reply.result,importStatus:job.declarationChanged?'Published listing details differ from the reviewed ZIP. Review the actual package below.':'Review the exact source, compatibility, dependencies and permissions before confirming.'});
+        const existing=reply.result.existingRegistration;
+        this.set({preview:reply.result,...(existing?{grants:[...existing.grants],enableAfter:reply.result.existingEnabled===true,policy:Object.fromEntries(Object.entries(existing.brokerPolicy??{}).map(([key,value])=>[key,value.join('\n')]))}:{}),importStatus:reply.result.changes?.restartRequired?'This update changes plugin entry shape. Apply it with the CLI while Codlet is stopped, then restart Codlet.':job.declarationChanged?'Published listing details differ from the reviewed ZIP. Review the actual package below.':'Review the exact source, compatibility, dependencies and permissions before confirming.'});
       }
     } else if(['cancelled','failed'].includes(reply.status)) this.set({importStatus:reply.error?.code==='github_timeout'?githubTimeout(job.kind):reply.error?.message||'GitHub task cancelled. No installation was submitted; temporary download files may remain.'});
     else throw new Error('GitHub task returned an unknown status.');
@@ -497,7 +498,7 @@ export class Manager {
       const reply=plugin.source==='bundled'?{pluginId:plugin.id,registration:{path:'',grants:plugin.grants??[]}}:await this.rpc('permissions',{pluginId:plugin.id});
       if(!this.current('page',sequence,'details')) return;
       if(reply?.pluginId!==plugin.id || !Array.isArray(reply.registration?.grants) || typeof reply.registration.path!=='string') throw new Error('Permission details are unavailable.');
-      this.set({details:{...plugin,...reply.registration,...(reply.ownership?{ownership:reply.ownership}:{}),...(reply.managedSource?{managedSource:reply.managedSource}:{}),metadata:reply.metadata??plugin.metadata??null,deviceCompatibility:reply.deviceCompatibility??plugin.deviceCompatibility??this.state.deviceCompatibility??null}});
+      this.set({details:{...plugin,...reply.registration,...(Object.hasOwn(reply,'updateSource')?{updateSource:reply.updateSource}:{}),...(reply.ownership?{ownership:reply.ownership}:{}),...(reply.managedSource?{managedSource:reply.managedSource}:{}),metadata:reply.metadata??plugin.metadata??null,deviceCompatibility:reply.deviceCompatibility??plugin.deviceCompatibility??this.state.deviceCompatibility??null}});
     }catch(error){if(this.current('page',sequence,'details')) this.set({detailsError:message(error)});}
     finally{if(this.current('page',sequence,'details')) this.set({detailsBusy:false});}
   }

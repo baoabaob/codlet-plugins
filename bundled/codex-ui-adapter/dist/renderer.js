@@ -9,9 +9,9 @@ var __export = (target, all) => {
 };
 var __copyProps = (to, from, except, desc) => {
   if (from && typeof from === "object" || typeof from === "function") {
-    for (let key of __getOwnPropNames(from))
-      if (!__hasOwnProp.call(to, key) && key !== except)
-        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+    for (let key2 of __getOwnPropNames(from))
+      if (!__hasOwnProp.call(to, key2) && key2 !== except)
+        __defProp(to, key2, { get: () => from[key2], enumerable: !(desc = __getOwnPropDesc(from, key2)) || desc.enumerable });
   }
   return to;
 };
@@ -59,7 +59,7 @@ function createCodletIcons(React, fallback = {}) {
       return React.createElement(
         "svg",
         { width: "1em", height: "1em", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.5, strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": true, focusable: false, ...props, className: ("codlet-line-icon " + className).trim() },
-        ...elements.map(([tag, attributes], key) => React.createElement(tag, { ...attributes, key }))
+        ...elements.map(([tag, attributes], key2) => React.createElement(tag, { ...attributes, key: key2 }))
       );
     };
   }
@@ -233,6 +233,7 @@ var client_profiles_default = {
       navigation: true,
       runtimeSkill: true,
       threadConfiguration: true,
+      threadReconfiguration: true,
       officialUpdates: { stateSelector: "Pet" },
       entry: "app://-/assets/index-897000035213.js",
       module: "app://-/assets/app-initial-8f0e46979798.js",
@@ -244,7 +245,8 @@ var client_profiles_default = {
         dom: "app://-/assets/app-shared-baf181f346ac.js",
         client: "app://-/assets/app-shared-baf181f346ac.js",
         primary: "app://-/assets/app-initial-8f0e46979798.js",
-        exports: { react: "e6", dom: "P3", client: "N3", sidebar: "bC", headerInit: "p7", header: "f7", newTaskInit: "d2", newTask: "h2" }
+        exports: { react: "e6", dom: "P3", client: "N3", sidebar: "bC", headerInit: "p7", header: "f7", newTaskInit: "d2", newTask: "h2" },
+        composerAction: { rootAttribute: "data-codex-composer-root", scrollAreaAttribute: "data-composer-utility-bar-scroll-area" }
       }
     }
   ]
@@ -267,6 +269,200 @@ function clientProfile(build, entries = []) {
   return matches.length === 1 ? matches[0] : void 0;
 }
 
+// src/adapter/composer-action.js
+var COMPOSER_CAPABILITY = Object.freeze({ name: "codex.ui.composer.action", api: 1, scope: "target" });
+var COMPOSER_EVENT = "codlet:composer-action";
+var fail = (code, message) => Object.assign(new Error(message), { code });
+var TOKEN = /^[a-zA-Z0-9-]{16,80}$/;
+var PLACEMENT = /^[a-zA-Z0-9_-]{1,40}$/;
+function owner(args, invocation) {
+  const caller = invocation?.caller;
+  if (!caller || typeof caller.pluginId !== "string" || !Number.isSafeInteger(caller.generation))
+    throw fail("invalid_owner", "Composer action registration requires a Core-authenticated caller");
+  if (!args || Object.keys(args).some((key2) => !["label", "token"].includes(key2)) || typeof args.label !== "string" || !args.label.trim() || args.label.length > 48 || typeof args.token !== "string" || !TOKEN.test(args.token))
+    throw fail("invalid_argument", "Invalid composer action registration");
+  const matches = [...document.querySelectorAll("[data-codlet-composer-action-lease]")].filter((node) => node.dataset.codletComposerActionLease === args.token);
+  if (matches.length !== 1 || matches[0].dataset.codletComposerActionOwner !== caller.pluginId || matches[0].dataset.codletGeneration !== String(caller.generation))
+    throw fail("invalid_owner", "Composer action lease does not match its caller");
+  return { caller, lease: matches[0] };
+}
+function key(caller, token) {
+  return `${caller.pluginId}\0${token}`;
+}
+function ownedMutation(node) {
+  return node?.nodeType === 1 && (node.matches?.("[data-codlet-composer-action-instance], [data-codlet-composer-action-style], [data-codlet-composer-action-lease]") || node.closest?.("[data-codlet-composer-action-instance]"));
+}
+function createComposerActions(context, host, profile) {
+  const entries = /* @__PURE__ */ new Map();
+  const instances = /* @__PURE__ */ new Map();
+  const rootSelector = profile?.rootAttribute ? `[${profile.rootAttribute}]` : null;
+  const areaSelector = profile?.scrollAreaAttribute ? `[${profile.scrollAreaAttribute}]` : null;
+  let alive = true, pending = false, style, nextInstance = 1;
+  const supported = !!(rootSelector && areaSelector && !host.auxiliary);
+  const hostLive = () => document.getElementById("root") === host.rootNode && host.rootNode.isConnected;
+  const live = (entry) => entry.lease.isConnected && entry.lease.dataset.codletComposerActionOwner === entry.caller.pluginId && entry.lease.dataset.codletGeneration === String(entry.caller.generation) && entry.lease.dataset.codletComposerActionLease === entry.token;
+  const removeInstance = (record) => {
+    record.container.remove();
+    instances.delete(record.id);
+  };
+  const retire = (entry) => {
+    if (!entries.delete(key(entry.caller, entry.token))) return;
+    for (const record of [...instances.values()]) if (record.entry === entry) removeInstance(record);
+  };
+  function placements() {
+    if (!supported || !hostLive()) return [];
+    const result = [];
+    for (const root of host.rootNode.querySelectorAll(rootSelector)) {
+      const placement = root.getAttribute("data-composer-placement");
+      if (!PLACEMENT.test(placement || "")) continue;
+      const areas = [...root.querySelectorAll(areaSelector)].filter((area) => area.closest(rootSelector) === root);
+      if (areas.length !== 1 || areas[0].getAttribute("role") !== "group" || areas[0].children.length !== 1 || areas[0].firstElementChild?.tagName !== "DIV") continue;
+      result.push({ root, placement, outlet: areas[0].firstElementChild });
+    }
+    return result;
+  }
+  function ensureStyle() {
+    if (style?.isConnected) return;
+    style = document.createElement("style");
+    style.dataset.codletComposerActionStyle = "1";
+    style.textContent = `[data-codlet-composer-action-instance] button{display:inline-flex;align-items:center;min-height:28px;padding:0 8px;border:0;border-radius:8px;background:transparent;color:inherit;font:inherit;font-size:12px;white-space:nowrap;cursor:pointer}
+[data-codlet-composer-action-instance] button:hover{background:color-mix(in srgb,currentColor 8%,transparent)}
+[data-codlet-composer-action-instance] button:focus-visible{outline:2px solid currentColor;outline-offset:2px}`;
+    document.head.append(style);
+  }
+  function mount(entry, placement, index) {
+    const id = `${key(entry.caller, entry.token)}\0${index}`;
+    let record = instances.get(id);
+    if (record && record.root !== placement.root) {
+      removeInstance(record);
+      record = null;
+    }
+    if (!record) {
+      const container = document.createElement("span");
+      container.dataset.codletComposerActionInstance = entry.token;
+      const instance = `action-${nextInstance++}`;
+      container.dataset.codletComposerActionInstanceId = instance;
+      container.dataset.codletComposerActionOwner = entry.caller.pluginId;
+      container.dataset.codletGeneration = String(entry.caller.generation);
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = entry.label;
+      button.setAttribute("aria-label", entry.label);
+      button.addEventListener("click", () => {
+        if (!alive || !live(entry) || !hostLive() || !record.root.isConnected || record.outlet !== placements().find((item) => item.root === record.root)?.outlet) return;
+        entry.lease.dispatchEvent(new CustomEvent(COMPOSER_EVENT, {
+          detail: JSON.stringify({ api: 1, token: entry.token, placement: record.placement, instance: record.instance }),
+          bubbles: false
+        }));
+      });
+      container.append(button);
+      record = { id, instance, entry, root: placement.root, outlet: placement.outlet, placement: placement.placement, container, button };
+      instances.set(id, record);
+    }
+    record.placement = placement.placement;
+    if (record.button.textContent !== entry.label) record.button.textContent = entry.label;
+    if (record.button.getAttribute("aria-label") !== entry.label) record.button.setAttribute("aria-label", entry.label);
+    if (record.container.parentElement !== placement.outlet) placement.outlet.append(record.container);
+  }
+  function reconcile() {
+    if (!alive) return;
+    for (const entry of [...entries.values()]) if (!live(entry)) retire(entry);
+    const current2 = placements();
+    const roots = new Set(current2.map((item) => item.root));
+    for (const record of [...instances.values()])
+      if (!roots.has(record.root) || record.outlet !== current2.find((item) => item.root === record.root)?.outlet || !entries.has(key(record.entry.caller, record.entry.token)))
+        removeInstance(record);
+    if (!entries.size || !current2.length) {
+      if (!entries.size) {
+        style?.remove();
+        style = null;
+      }
+      return;
+    }
+    ensureStyle();
+    const ordered = [...entries.values()].sort((a, b) => a.caller.pluginId.localeCompare(b.caller.pluginId) || a.token.localeCompare(b.token));
+    for (const [index, placement] of current2.entries()) for (const entry of ordered) mount(entry, placement, index);
+  }
+  const schedule = (records) => {
+    if (!alive || pending) return;
+    const relevant = records.some((record) => {
+      if (record.type === "attributes") return record.target.matches?.(rootSelector) || record.target.matches?.(areaSelector) || record.target.closest?.(rootSelector) || [...instances.values()].some((item) => item.root === record.target || item.outlet.parentElement === record.target);
+      const nodes = [...record.addedNodes, ...record.removedNodes];
+      if (nodes.length && nodes.every(ownedMutation)) return true;
+      if (record.target.closest?.(rootSelector)) return true;
+      return nodes.some((node) => node.nodeType === 1 && (node.matches?.(rootSelector) || node.querySelector?.(rootSelector) || node.matches?.("[data-codlet-composer-action-lease]") || node.querySelector?.("[data-codlet-composer-action-lease]")));
+    });
+    if (!relevant) return;
+    pending = true;
+    queueMicrotask(() => {
+      pending = false;
+      reconcile();
+    });
+  };
+  const observer = supported ? new MutationObserver(schedule) : null;
+  observer?.observe(document.documentElement, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: [.../* @__PURE__ */ new Set(["data-composer-placement", "role", profile.rootAttribute, profile.scrollAreaAttribute])]
+  });
+  return {
+    register(args, invocation) {
+      if (!alive || invocation?.signal?.aborted) throw fail("ui_retired", "Composer action provider retired");
+      const { caller, lease } = owner(args, invocation);
+      if (!supported) {
+        lease.remove();
+        return { api: 1, token: args.token, available: false, reason: "unsupported_build" };
+      }
+      const id = key(caller, args.token), existing = entries.get(id);
+      if (existing) {
+        if (existing.lease !== lease || existing.caller.generation !== caller.generation) retire(existing);
+        else {
+          existing.label = args.label.trim();
+          reconcile();
+          return { api: 1, token: args.token, available: true, mounted: [...instances.values()].filter((record) => record.entry === existing).length };
+        }
+      }
+      if (entries.size >= 32 || [...entries.values()].filter((entry2) => entry2.caller.pluginId === caller.pluginId).length >= 8)
+        throw fail("resource_limit", "Too many composer actions");
+      const entry = { caller, lease, token: args.token, label: args.label.trim() };
+      entries.set(id, entry);
+      reconcile();
+      return { api: 1, token: entry.token, available: true, mounted: [...instances.values()].filter((record) => record.entry === entry).length };
+    },
+    unregister(args, invocation) {
+      const caller = invocation?.caller;
+      if (!caller || typeof caller.pluginId !== "string" || !Number.isSafeInteger(caller.generation) || !args || Object.keys(args).some((key2) => key2 !== "token") || typeof args.token !== "string" || !TOKEN.test(args.token))
+        throw fail("invalid_argument", "Invalid composer action removal");
+      const entry = entries.get(key(caller, args.token));
+      if (!entry || entry.caller.generation !== caller.generation) return { removed: false };
+      retire(entry);
+      reconcile();
+      return { removed: true };
+    },
+    status(args, invocation) {
+      const caller = invocation?.caller;
+      if (!caller || typeof caller.pluginId !== "string" || !Number.isSafeInteger(caller.generation) || !args || Object.keys(args).some((key2) => key2 !== "token") || typeof args.token !== "string" || !TOKEN.test(args.token))
+        throw fail("invalid_argument", "Invalid composer action status");
+      const entry = entries.get(key(caller, args.token));
+      if (!entry || entry.caller.generation !== caller.generation) return { registered: false, mounted: 0 };
+      reconcile();
+      return { registered: entries.has(key(caller, args.token)), mounted: [...instances.values()].filter((record) => record.entry === entry).length };
+    },
+    dispose() {
+      if (!alive) return;
+      alive = false;
+      observer?.disconnect();
+      for (const entry of [...entries.values()]) retire(entry);
+      style?.remove();
+      style = null;
+    }
+  };
+}
+function composerLease(args, invocation) {
+  return owner(args, invocation);
+}
+
 // src/adapter/navigation.js
 function pageProfile(build, entries = Array.from(document.scripts, (script) => script.src), readyState = document.readyState) {
   const profile = clientProfile(build, entries);
@@ -274,18 +470,18 @@ function pageProfile(build, entries = Array.from(document.scripts, (script) => s
     const sources = Array.isArray(entries) ? entries : [entries];
     const candidates = CLIENT_PROFILES.filter((profile2) => profile2.appVersion === build?.appVersion && profile2.buildNumber === String(build?.buildNumber));
     if (candidates.length && !candidates.some((profile2) => sources.includes(profile2.entry)) && readyState !== "complete")
-      throw fail("ui_host_pending", "Waiting for the reviewed Desktop entry resource");
-    throw fail("ui_build_drift", "No reviewed sidebar/page profile for this Desktop build");
+      throw fail2("ui_host_pending", "Waiting for the reviewed Desktop entry resource");
+    throw fail2("ui_build_drift", "No reviewed sidebar/page profile for this Desktop build");
   }
   return profile;
 }
 var CAPABILITY = Object.freeze({ name: "codex.ui.navigation.page", api: 1, scope: "target" });
-var fail = (code, message) => Object.assign(new Error(message), { code });
+var fail2 = (code, message) => Object.assign(new Error(message), { code });
 var current;
 function fibers() {
   const root = document.getElementById("root");
-  const key = root && Object.keys(root).find((key2) => key2.startsWith("__reactContainer$"));
-  const container = key && root[key], pending = [container?.stateNode?.current ?? container], seen = /* @__PURE__ */ new Set();
+  const key2 = root && Object.keys(root).find((key3) => key3.startsWith("__reactContainer$"));
+  const container = key2 && root[key2], pending = [container?.stateNode?.current ?? container], seen = /* @__PURE__ */ new Set();
   while (pending.length && seen.size < 2e4) {
     const fiber = pending.pop();
     if (!fiber || seen.has(fiber)) continue;
@@ -293,7 +489,7 @@ function fibers() {
     if (fiber.sibling) pending.push(fiber.sibling);
     if (fiber.child) pending.push(fiber.child);
   }
-  if (pending.length) throw fail("ui_host_drift", "The Desktop tree exceeded the reviewed probe boundary");
+  if (pending.length) throw fail2("ui_host_drift", "The Desktop tree exceeded the reviewed probe boundary");
   return seen;
 }
 function locateHost() {
@@ -305,10 +501,10 @@ function locateHost() {
     const routes = children?.type === Symbol.for("react.fragment") ? children.props?.children : children;
     if (child?.props?.element === void 0 && child?.type !== Symbol.for("react.fragment") && Array.isArray(routes) && routes.some((route) => route?.props?.path === "/avatar-overlay")) trees.add(child);
   }
-  if (navigators.size !== 1 || trees.size !== 1) throw fail("ui_host_pending", "A unique Desktop router and route tree are required");
+  if (navigators.size !== 1 || trees.size !== 1) throw fail2("ui_host_pending", "A unique Desktop router and route tree are required");
   const navigator = [...navigators][0], tree = [...trees][0];
   if (typeof navigator.push !== "function" || typeof navigator.replace !== "function" || typeof navigator.location?.pathname !== "string")
-    throw fail("ui_host_drift", "The Desktop memory router is unavailable in this window");
+    throw fail2("ui_host_drift", "The Desktop memory router is unavailable in this window");
   if (navigator.location.pathname === "/avatar-overlay" || navigator.location.pathname.startsWith("/avatar-overlay/"))
     return { navigator, tree, rootNode: document.getElementById("root"), auxiliary: true };
   const candidates = [];
@@ -322,15 +518,15 @@ function locateHost() {
   };
   visit(tree);
   if (candidates.length !== 1 || Object.isFrozen(candidates[0]) || !Object.isExtensible(candidates[0]))
-    throw fail("ui_host_drift", "The reviewed authenticated route collection is unavailable");
+    throw fail2("ui_host_drift", "The reviewed authenticated route collection is unavailable");
   return { navigator, routes: candidates[0], Route: tree.type, tree, rootNode: document.getElementById("root") };
 }
 function nativePlacement(SidebarItem) {
   const candidates = [];
   for (const button of document.querySelectorAll("nav button.sidebar-item")) {
     if (button.closest("[data-codlet-native-navigation]")) continue;
-    const key = Object.keys(button).find((key2) => key2.startsWith("__reactFiber$"));
-    let fiber = key && button[key];
+    const key2 = Object.keys(button).find((key3) => key3.startsWith("__reactFiber$"));
+    let fiber = key2 && button[key2];
     for (let depth = 0; fiber && depth < 16; depth++, fiber = fiber.return) {
       if (fiber.type !== SidebarItem) continue;
       const priority = ["sidebar-tasks", "sidebar-plugins", "sidebar-library"].indexOf(fiber.memoizedProps?.animatedIcon);
@@ -343,11 +539,11 @@ function nativePlacement(SidebarItem) {
 }
 function pageOwner(args, invocation) {
   const caller = invocation?.caller;
-  if (!caller || typeof caller.pluginId !== "string" || !Number.isSafeInteger(caller.generation)) throw fail("invalid_owner", "Page registration requires a Core-authenticated caller");
-  if (!args || Object.keys(args).some((key) => !["label", "icon", "token", "toolbar"].includes(key)) || typeof args.label !== "string" || !args.label.trim() || args.label.length > 64 || !["Cube", "CodeSquareSlash", "Codlet"].includes(args.icon) || args.toolbar !== void 0 && typeof args.toolbar !== "boolean" || typeof args.token !== "string" || !/^[a-zA-Z0-9-]{16,80}$/.test(args.token)) throw fail("invalid_argument", "Invalid page registration");
+  if (!caller || typeof caller.pluginId !== "string" || !Number.isSafeInteger(caller.generation)) throw fail2("invalid_owner", "Page registration requires a Core-authenticated caller");
+  if (!args || Object.keys(args).some((key2) => !["label", "icon", "token", "toolbar"].includes(key2)) || typeof args.label !== "string" || !args.label.trim() || args.label.length > 64 || !["Cube", "CodeSquareSlash", "Codlet"].includes(args.icon) || args.toolbar !== void 0 && typeof args.toolbar !== "boolean" || typeof args.token !== "string" || !/^[a-zA-Z0-9-]{16,80}$/.test(args.token)) throw fail2("invalid_argument", "Invalid page registration");
   const lease = [...document.querySelectorAll("[data-codlet-page-lease]")].find((node) => node.dataset.codletPageLease === args.token);
   if (!lease || lease.dataset.codletPageOwner !== caller.pluginId || lease.dataset.codletGeneration !== String(caller.generation))
-    throw fail("invalid_owner", "The page lifetime does not match its caller");
+    throw fail2("invalid_owner", "The page lifetime does not match its caller");
   return { caller, lease };
 }
 function createNavigation(context, native, host) {
@@ -355,12 +551,13 @@ function createNavigation(context, native, host) {
   const { Cube, CodeSquareSlash, PluginPuzzle } = createCodletIcons(React);
   const icons = { Cube, CodeSquareSlash, Codlet: PluginPuzzle };
   const entries = /* @__PURE__ */ new Map(), h = React.createElement;
+  const composerActions = createComposerActions(context, host, native.composerActionProfile);
   let alive = true, navContainer, navRoot, pending = false;
   const hostLive = () => document.getElementById("root") === host.rootNode && host.rootNode.isConnected;
   const check = () => {
     const current2 = alive ? locateHost() : null;
     if (!current2 || current2.tree !== host.tree || current2.navigator !== host.navigator)
-      throw fail("ui_host_drift", "Desktop route ownership changed; reload the UI adapter");
+      throw fail2("ui_host_drift", "Desktop route ownership changed; reload the UI adapter");
   };
   const renderNav = () => {
     if (!alive || !navRoot) return;
@@ -446,10 +643,10 @@ function createNavigation(context, native, host) {
     check();
     const caller = invocation?.caller, entry = entries.get(caller?.pluginId);
     if (!entry || !Number.isSafeInteger(caller.generation) || !entry.lease.isConnected || entry.lease.dataset.codletGeneration !== String(caller.generation) || !entry.active || !(host.navigator.location.pathname === entry.path || host.navigator.location.pathname.startsWith(entry.path + "/")) || invocation.signal?.aborted)
-      throw fail("invalid_owner", "A new task draft requires this caller\u2019s active page");
-    if (!args || Object.keys(args).some((key) => key !== "prompt") || typeof args.prompt !== "string" || !args.prompt.trim() || args.prompt.length > 16384)
-      throw fail("invalid_argument", "A new task draft requires a bounded prompt");
-    if (typeof entry.compose !== "function") throw fail("ui_composer_unavailable", "The native new-task composer is not ready");
+      throw fail2("invalid_owner", "A new task draft requires this caller\u2019s active page");
+    if (!args || Object.keys(args).some((key2) => key2 !== "prompt") || typeof args.prompt !== "string" || !args.prompt.trim() || args.prompt.length > 16384)
+      throw fail2("invalid_argument", "A new task draft requires a bounded prompt");
+    if (typeof entry.compose !== "function") throw fail2("ui_composer_unavailable", "The native new-task composer is not ready");
     entry.compose({ prefillPrompt: args.prompt, prefillLocalExecution: true, prefillComposerMode: "local", startInSidebar: true });
     return { opened: true, submitted: false };
   }
@@ -457,7 +654,7 @@ function createNavigation(context, native, host) {
     check();
     const { caller, lease } = pageOwner(args, invocation);
     if (host.auxiliary) return { api: 1, token: args.token, path: null, available: false };
-    if (args.toolbar && (!Header || !HeaderToolbar)) throw fail("ui_build_drift", "The reviewed native page toolbar is unavailable");
+    if (args.toolbar && (!Header || !HeaderToolbar)) throw fail2("ui_build_drift", "The reviewed native page toolbar is unavailable");
     const existing = entries.get(caller.pluginId);
     if (existing) {
       if (existing.token === args.token && existing.lease === lease) return existing.description;
@@ -507,43 +704,52 @@ function createNavigation(context, native, host) {
     renderNav();
     return entry.description;
   }
-  return { register, newTaskDraft, dispose() {
-    if (!alive) return;
-    observer.disconnect();
-    for (const entry of [...entries.values()]) retire(entry);
-    alive = false;
-    if (navRoot) DOM.flushSync(() => navRoot.unmount());
-    navContainer?.remove();
-  } };
+  return {
+    register,
+    newTaskDraft,
+    registerComposer: (args, invocation) => composerActions.register(args, invocation),
+    unregisterComposer: (args, invocation) => composerActions.unregister(args, invocation),
+    statusComposer: (args, invocation) => composerActions.status(args, invocation),
+    dispose() {
+      if (!alive) return;
+      observer.disconnect();
+      composerActions.dispose();
+      for (const entry of [...entries.values()]) retire(entry);
+      alive = false;
+      if (navRoot) DOM.flushSync(() => navRoot.unmount());
+      navContainer?.remove();
+    }
+  };
 }
 function reviewedHeader(initial, names) {
-  if (typeof initial[names.headerInit] !== "function") throw fail("ui_build_drift", "The reviewed native AppShell initializer changed");
+  if (typeof initial[names.headerInit] !== "function") throw fail2("ui_build_drift", "The reviewed native AppShell initializer changed");
   initial[names.headerInit]();
   const Header = initial[names.header]?.Header, HeaderToolbar = initial[names.header]?.HeaderToolbar;
   const component = (value) => typeof value === "function" || value?.$$typeof === Symbol.for("react.memo");
-  if (!component(Header) || !component(HeaderToolbar)) throw fail("ui_build_drift", "The reviewed native header exports changed");
+  if (!component(Header) || !component(HeaderToolbar)) throw fail2("ui_build_drift", "The reviewed native header exports changed");
   return { Header, HeaderToolbar };
 }
 async function loadNative() {
   const build = globalThis.electronBridge?.getSentryInitOptions?.();
   if (location.origin !== "app://-" || location.pathname !== "/index.html")
-    throw fail("ui_build_drift", "No reviewed sidebar/page profile for this Desktop build");
+    throw fail2("ui_build_drift", "No reviewed sidebar/page profile for this Desktop build");
   const profile = pageProfile(build), page = profile.page, names = page.exports;
   if (![...document.scripts].some((script) => script.src === profile.entry))
-    throw fail(document.readyState === "complete" ? "ui_build_drift" : "ui_host_pending", "The Desktop entry resource does not match this adapter");
+    throw fail2(document.readyState === "complete" ? "ui_build_drift" : "ui_host_pending", "The Desktop entry resource does not match this adapter");
   const [react, dom, client, primary, initial] = await Promise.all([import(page.react), import(page.dom), import(page.client), import(page.primary), import(profile.module)]);
   const native = { React: react[names.react ?? "t"](), DOM: dom[names.dom ?? "t"](), Client: client[names.client ?? "t"](), SidebarItem: primary[names.sidebar], ...reviewedHeader(initial, names) };
-  if (typeof initial[names.newTaskInit] !== "function") throw fail("ui_build_drift", "The reviewed new-task initializer changed");
+  native.composerActionProfile = page.composerAction ?? null;
+  if (typeof initial[names.newTaskInit] !== "function") throw fail2("ui_build_drift", "The reviewed new-task initializer changed");
   initial[names.newTaskInit]();
-  if (typeof initial[names.newTask] !== "function") throw fail("ui_build_drift", "The reviewed new-task hook changed");
+  if (typeof initial[names.newTask] !== "function") throw fail2("ui_build_drift", "The reviewed new-task hook changed");
   native.useStartNewConversation = initial[names.newTask];
   if (typeof native.React.createElement !== "function" || typeof native.Client.createRoot !== "function" || typeof native.SidebarItem !== "function")
-    throw fail("ui_build_drift", "The reviewed native UI exports changed");
+    throw fail2("ui_build_drift", "The reviewed native UI exports changed");
   return native;
 }
 function deferredNavigation(context, load = loadNative) {
   let alive = true, navigation, failure, cancelWait;
-  const pending = /* @__PURE__ */ new Map();
+  const pending = /* @__PURE__ */ new Map(), pendingComposer = /* @__PURE__ */ new Map();
   const ready = (async () => {
     let native, delay = 50;
     while (alive) {
@@ -565,7 +771,7 @@ function deferredNavigation(context, load = loadNative) {
         delay = Math.min(1e3, delay * 2);
       }
     }
-    if (!alive) throw fail("ui_retired", "The UI adapter retired during initialization");
+    if (!alive) throw fail2("ui_retired", "The UI adapter retired during initialization");
     for (const entry of pending.values()) {
       if (!entry.lease.isConnected) continue;
       try {
@@ -577,33 +783,77 @@ function deferredNavigation(context, load = loadNative) {
       }
     }
     pending.clear();
+    for (const entry of pendingComposer.values()) {
+      if (!entry.lease.isConnected) continue;
+      try {
+        const result = navigation.registerComposer(entry.args, { caller: entry.caller });
+        if (result.available === false) entry.lease.remove();
+      } catch (error) {
+        entry.lease.remove();
+        context.reportDiagnostic?.({ code: error.code || "ui_unavailable", message: error.message });
+      }
+    }
+    pendingComposer.clear();
     return navigation;
   })();
   ready.catch((error) => {
     failure = error;
     for (const entry of pending.values()) entry.lease.remove();
     pending.clear();
+    for (const entry of pendingComposer.values()) entry.lease.remove();
+    pendingComposer.clear();
     if (alive) context.reportDiagnostic?.({ code: error.code || "ui_unavailable", message: error.message });
   });
   return {
     ready,
     register(args, invocation) {
-      if (!alive || invocation?.signal?.aborted) throw fail("ui_retired", "The page registration retired");
+      if (!alive || invocation?.signal?.aborted) throw fail2("ui_retired", "The page registration retired");
       if (failure) throw failure;
       if (navigation) return navigation.register(args, invocation);
       const { caller, lease } = pageOwner(args, invocation);
       for (const [id, entry] of pending) if (!entry.lease.isConnected) pending.delete(id);
-      if (!pending.has(caller.pluginId) && pending.size >= 64) throw fail("resource_limit", "Too many pending native pages");
+      if (!pending.has(caller.pluginId) && pending.size >= 64) throw fail2("resource_limit", "Too many pending native pages");
       const previous = pending.get(caller.pluginId);
       if (previous && previous.lease !== lease) previous.lease.remove();
       pending.set(caller.pluginId, { args: { ...args }, caller: { ...caller }, lease });
       return { api: 1, token: args.token, path: "/codlet/" + encodeURIComponent(caller.pluginId), pending: true };
     },
     newTaskDraft(args, invocation) {
-      if (!alive) throw fail("ui_retired", "The page provider retired");
+      if (!alive) throw fail2("ui_retired", "The page provider retired");
       if (failure) throw failure;
-      if (!navigation) throw fail("ui_host_pending", "The native page is not ready");
+      if (!navigation) throw fail2("ui_host_pending", "The native page is not ready");
       return navigation.newTaskDraft(args, invocation);
+    },
+    registerComposer(args, invocation) {
+      if (!alive || invocation?.signal?.aborted) throw fail2("ui_retired", "The composer provider retired");
+      if (failure) throw failure;
+      if (navigation) return navigation.registerComposer(args, invocation);
+      const { caller, lease } = composerLease(args, invocation);
+      for (const [id2, entry] of pendingComposer) if (!entry.lease.isConnected) pendingComposer.delete(id2);
+      const id = `${caller.pluginId}\0${args.token}`;
+      if (!pendingComposer.has(id) && pendingComposer.size >= 64) throw fail2("resource_limit", "Too many pending composer actions");
+      const previous = pendingComposer.get(id);
+      if (previous && previous.lease !== lease) previous.lease.remove();
+      pendingComposer.set(id, { args: { ...args }, caller: { ...caller }, lease });
+      return { api: 1, token: args.token, available: true, pending: true, mounted: 0 };
+    },
+    unregisterComposer(args, invocation) {
+      if (!alive) throw fail2("ui_retired", "The composer provider retired");
+      if (navigation) return navigation.unregisterComposer(args, invocation);
+      const caller = invocation?.caller;
+      if (!caller || typeof caller.pluginId !== "string" || !Number.isSafeInteger(caller.generation) || typeof args?.token !== "string") throw fail2("invalid_argument", "Invalid composer action removal");
+      const id = `${caller.pluginId}\0${args.token}`, entry = pendingComposer.get(id);
+      if (!entry || entry.caller.generation !== caller.generation) return { removed: false };
+      pendingComposer.delete(id);
+      return { removed: true };
+    },
+    statusComposer(args, invocation) {
+      if (!alive) throw fail2("ui_retired", "The composer provider retired");
+      if (navigation) return navigation.statusComposer(args, invocation);
+      const caller = invocation?.caller;
+      if (!caller || typeof caller.pluginId !== "string" || !Number.isSafeInteger(caller.generation) || typeof args?.token !== "string") throw fail2("invalid_argument", "Invalid composer action status");
+      const entry = pendingComposer.get(`${caller.pluginId}\0${args.token}`);
+      return { registered: !!entry && entry.caller.generation === caller.generation, mounted: 0, pending: true };
     },
     dispose() {
       if (!alive) return;
@@ -612,6 +862,8 @@ function deferredNavigation(context, load = loadNative) {
       for (const entry of pending.values()) entry.lease.remove();
       pending.clear();
       navigation?.dispose();
+      for (const entry of pendingComposer.values()) entry.lease.remove();
+      pendingComposer.clear();
     }
   };
 }
@@ -625,6 +877,9 @@ async function activate(context) {
   current = session;
   context.rpc.provide(CAPABILITY, "register", async (args, invocation) => session.register(args, invocation));
   context.rpc.provide(CAPABILITY, "newTaskDraft", async (args, invocation) => session.newTaskDraft(args, invocation));
+  context.rpc.provide(COMPOSER_CAPABILITY, "register", async (args, invocation) => session.registerComposer(args, invocation));
+  context.rpc.provide(COMPOSER_CAPABILITY, "unregister", async (args, invocation) => session.unregisterComposer(args, invocation));
+  context.rpc.provide(COMPOSER_CAPABILITY, "status", async (args, invocation) => session.statusComposer(args, invocation));
 }
 
 /*
