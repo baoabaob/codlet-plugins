@@ -12,6 +12,18 @@ These plugins run in the main world and explicitly require `ui.mainWorld`; UI na
 
 ## UI adapter
 
+Cold startup observes the existing native router before importing or initializing
+the main AppShell. It never bootstraps the client on its behalf. The avatar window
+declines page/composer leases without loading any main-window UI modules. This
+matters for build 10789: calling the lazy Header initializer before its owning
+shell initializes can reenter native module initialization and throw in an
+uninitialized registration Set, leaving the official page loading indefinitely.
+The fix was checked against the real Windows 26.917.8451.0 client in a fresh,
+private profile; a fake local API key avoids accessing the user's account.
+The original adapter reproduced `z4r → g3r.add` through `reviewedHeader → pq`;
+the guarded adapter let both the main onboarding page and avatar render. This is
+cold-start evidence, not full authenticated GUI or macOS acceptance.
+
 `codex.ui.adapter` provides target capability `codex.ui.navigation.page@1` through `frontend/src/adapter/navigation.js`:
 
 - `register({label, icon, token, toolbar?})` requires a Core-authenticated caller and a matching live DOM page lease owned by its plugin ID and generation. The route is `/codlet/<pluginId>/*`; auxiliary windows return an unavailable page with `path: null`.

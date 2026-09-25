@@ -547,6 +547,30 @@ function pageOwner(args, invocation) {
   return { caller, lease };
 }
 function createNavigation(context, native, host) {
+  if (host.auxiliary) {
+    const actions = createComposerActions(context, host, null);
+    let alive2 = true;
+    return {
+      register(args, invocation) {
+        if (!alive2) throw fail2("ui_retired", "The UI adapter retired");
+        const current2 = locateHost();
+        if (!current2.auxiliary || current2.tree !== host.tree || current2.navigator !== host.navigator)
+          throw fail2("ui_host_drift", "Desktop route ownership changed; reload the UI adapter");
+        pageOwner(args, invocation);
+        return { api: 1, token: args.token, path: null, available: false };
+      },
+      newTaskDraft() {
+        throw fail2("ui_composer_unavailable", "This window has no task composer");
+      },
+      registerComposer: (args, invocation) => actions.register(args, invocation),
+      unregisterComposer: (args, invocation) => actions.unregister(args, invocation),
+      statusComposer: (args, invocation) => actions.status(args, invocation),
+      dispose() {
+        alive2 = false;
+        actions.dispose();
+      }
+    };
+  }
   const { React, DOM, Client, SidebarItem, Header, HeaderToolbar } = native;
   const { Cube, CodeSquareSlash, PluginPuzzle } = createCodletIcons(React);
   const icons = { Cube, CodeSquareSlash, Codlet: PluginPuzzle };
@@ -628,7 +652,7 @@ function createNavigation(context, native, host) {
     });
   };
   const observer = new MutationObserver(schedule);
-  if (!host.auxiliary) observer.observe(document.documentElement, { childList: true, subtree: true });
+  observer.observe(document.documentElement, { childList: true, subtree: true });
   function DraftBridge({ entry }) {
     const compose = native.useStartNewConversation();
     React.useLayoutEffect(() => {
@@ -653,7 +677,6 @@ function createNavigation(context, native, host) {
   function register(args, invocation) {
     check();
     const { caller, lease } = pageOwner(args, invocation);
-    if (host.auxiliary) return { api: 1, token: args.token, path: null, available: false };
     if (args.toolbar && (!Header || !HeaderToolbar)) throw fail2("ui_build_drift", "The reviewed native page toolbar is unavailable");
     const existing = entries.get(caller.pluginId);
     if (existing) {
@@ -729,13 +752,17 @@ function reviewedHeader(initial, names) {
   if (!component(Header) || !component(HeaderToolbar)) throw fail2("ui_build_drift", "The reviewed native header exports changed");
   return { Header, HeaderToolbar };
 }
-async function loadNative() {
+function nativeProfile() {
   const build = globalThis.electronBridge?.getSentryInitOptions?.();
   if (location.origin !== "app://-" || location.pathname !== "/index.html")
     throw fail2("ui_build_drift", "No reviewed sidebar/page profile for this Desktop build");
-  const profile = pageProfile(build), page = profile.page, names = page.exports;
+  const profile = pageProfile(build);
   if (![...document.scripts].some((script) => script.src === profile.entry))
     throw fail2(document.readyState === "complete" ? "ui_build_drift" : "ui_host_pending", "The Desktop entry resource does not match this adapter");
+  return profile;
+}
+async function loadNative() {
+  const profile = nativeProfile(), page = profile.page, names = page.exports;
   const [react, dom, client, primary, initial] = await Promise.all([import(page.react), import(page.dom), import(page.client), import(page.primary), import(profile.module)]);
   const native = { React: react[names.react ?? "t"](), DOM: dom[names.dom ?? "t"](), Client: client[names.client ?? "t"](), SidebarItem: primary[names.sidebar], ...reviewedHeader(initial, names) };
   native.composerActionProfile = page.composerAction ?? null;
@@ -754,6 +781,12 @@ function deferredNavigation(context, load = loadNative) {
     let native, delay = 50;
     while (alive) {
       try {
+        if (load === loadNative) nativeProfile();
+        const host = locateHost();
+        if (host.auxiliary) {
+          navigation = createNavigation(context, null, host);
+          break;
+        }
         native ??= await load();
         if (!alive) break;
         navigation = createNavigation(context, native, locateHost());

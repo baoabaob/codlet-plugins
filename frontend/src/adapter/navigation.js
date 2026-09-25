@@ -99,6 +99,27 @@ function pageOwner(args, invocation) {
 }
 
 export function createNavigation(context, native, host) {
+  // The pet window mounts a router, but never mounts the main AppShell. Its
+  // lazy header/composer modules must not be initialized by this adapter.
+  if (host.auxiliary) {
+    const actions = createComposerActions(context, host, null);
+    let alive = true;
+    return {
+      register(args, invocation) {
+        if (!alive) throw fail('ui_retired', 'The UI adapter retired');
+        const current = locateHost();
+        if (!current.auxiliary || current.tree !== host.tree || current.navigator !== host.navigator)
+          throw fail('ui_host_drift', 'Desktop route ownership changed; reload the UI adapter');
+        pageOwner(args, invocation);
+        return { api: 1, token: args.token, path: null, available: false };
+      },
+      newTaskDraft() { throw fail('ui_composer_unavailable', 'This window has no task composer'); },
+      registerComposer: (args, invocation) => actions.register(args, invocation),
+      unregisterComposer: (args, invocation) => actions.unregister(args, invocation),
+      statusComposer: (args, invocation) => actions.status(args, invocation),
+      dispose() { alive = false; actions.dispose(); },
+    };
+  }
   const { React, DOM, Client, SidebarItem, Header, HeaderToolbar } = native;
   const { Cube, CodeSquareSlash, PluginPuzzle } = createCodletIcons(React);
   const icons = { Cube, CodeSquareSlash, Codlet: PluginPuzzle };
@@ -162,7 +183,7 @@ export function createNavigation(context, native, host) {
     pending = true; queueMicrotask(() => { pending = false; reconcile(); });
   };
   const observer = new MutationObserver(schedule);
-  if(!host.auxiliary)observer.observe(document.documentElement, { childList: true, subtree: true });
+  observer.observe(document.documentElement, { childList: true, subtree: true });
   function DraftBridge({entry}) {
     const compose=native.useStartNewConversation();
     React.useLayoutEffect(()=>{entry.compose=compose;return()=>{if(entry.compose===compose)entry.compose=null;};},[entry,compose]);
@@ -182,9 +203,6 @@ export function createNavigation(context, native, host) {
   function register(args, invocation) {
     check();
     const { caller, lease } = pageOwner(args, invocation);
-    // The Desktop pet is a reviewed auxiliary route, not a page surface.
-    // Tell the public helper to release its pending DOM without an error.
-    if(host.auxiliary)return {api:1,token:args.token,path:null,available:false};
     if(args.toolbar && (!Header || !HeaderToolbar))throw fail('ui_build_drift','The reviewed native page toolbar is unavailable');
     const existing = entries.get(caller.pluginId);
     if (existing) {
@@ -236,13 +254,18 @@ export function reviewedHeader(initial, names) {
   return { Header, HeaderToolbar };
 }
 
-async function loadNative() {
+function nativeProfile() {
   const build = globalThis.electronBridge?.getSentryInitOptions?.();
   if (location.origin !== 'app://-' || location.pathname !== '/index.html')
     throw fail('ui_build_drift', 'No reviewed sidebar/page profile for this Desktop build');
-  const profile = pageProfile(build), page = profile.page, names = page.exports;
+  const profile = pageProfile(build);
   if (![...document.scripts].some(script => script.src === profile.entry))
     throw fail(document.readyState === 'complete' ? 'ui_build_drift' : 'ui_host_pending', 'The Desktop entry resource does not match this adapter');
+  return profile;
+}
+
+async function loadNative() {
+  const profile = nativeProfile(), page = profile.page, names = page.exports;
   const [react, dom, client, primary, initial] = await Promise.all([import(page.react), import(page.dom), import(page.client), import(page.primary), import(profile.module)]);
   const native = { React: react[names.react??'t'](), DOM: dom[names.dom??'t'](), Client: client[names.client??'t'](), SidebarItem: primary[names.sidebar], ...reviewedHeader(initial, names) };
   native.composerActionProfile = page.composerAction ?? null;
@@ -264,8 +287,18 @@ export function deferredNavigation(context, load = loadNative) {
     let native, delay = 50;
     while (alive) {
       try {
+        if (load === loadNative) nativeProfile();
+        // Importing Native's lazy modules and invoking their initializers before
+        // its own router commits can mutate partially initialized registries.
+        // Observe the existing tree first; never bootstrap the host for it.
+        const host = locateHost();
+        if (host.auxiliary) {
+          navigation = createNavigation(context, null, host);
+          break;
+        }
         native ??= await load();
         if (!alive) break;
+        // The document/tree may have changed while the imports were pending.
         navigation = createNavigation(context, native, locateHost());
         break;
       } catch (error) {

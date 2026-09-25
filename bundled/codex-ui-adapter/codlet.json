@@ -8,7 +8,7 @@
     "zh": { "name": "Codex 界面适配器", "description": "将插件页面与 composer 操作接入 Codex 界面。" },
     "en": { "name": "Codex UI Adapter", "description": "Connect plugin pages and composer actions to Codex navigation." }
   },
-  "version": "0.1.4",
+  "version": "0.1.5",
   "renderer": {
     "entry": "dist/renderer.js",
     "world": "main"

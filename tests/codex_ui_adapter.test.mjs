@@ -163,6 +163,24 @@ test('cold startup accepts a page lease without holding its activation RPC and m
   loading.resolve(f.native);await bridge.ready;await tick();assert.ok(f.control('Codlet'));f.control('Codlet').click();await tick();assert.ok(f.document.querySelector('[data-codlet-page-host]'));
   assert.equal(f.errors.length,0);ui.dispose();await tick();assert.equal(f.control('Codlet'),undefined);bridge.dispose();await tick();
 });
+
+test('cold startup never invokes native lazy initializers before the existing router mounts',async t=>{
+  const f=fixture(t);f.navigation.dispose();
+  const root=f.document.getElementById('root');root.id='not-mounted-yet';
+  let loads=0;
+  const bridge=f.adapter.deferredNavigation(f.context,async()=>{loads++;return f.native;});
+  t.after(()=>bridge.dispose());
+  await new Promise(resolve=>setTimeout(resolve,180));assert.equal(loads,0);
+  root.id='root';await bridge.ready;assert.equal(loads,1);assert.equal(f.errors.length,0);
+});
+
+test('retiring before native startup cancels the wait without importing any host module',async t=>{
+  const f=fixture(t);f.navigation.dispose();
+  const root=f.document.getElementById('root');root.id='not-mounted-yet';
+  let loads=0;const bridge=f.adapter.deferredNavigation(f.context,async()=>{loads++;return f.native;});
+  bridge.dispose();await assert.rejects(bridge.ready,{code:'ui_retired'});
+  root.id='root';await tick();assert.equal(loads,0);
+});
 test('deferred registration retires with its page or provider and never adds a late route',async t=>{
   const f=fixture(t);f.navigation.dispose();const count=f.shell.routes.length,loading=deferred(),bridge=f.adapter.deferredNavigation(f.context,()=>loading.promise);
   f.overrides.set('register',args=>bridge.register(args,{caller:{pluginId:f.context.pluginId,generation:f.context.generation}}));
@@ -175,4 +193,10 @@ test('a deferred avatar page releases its UI resources when the native router de
   f.overrides.set('register',args=>bridge.register(args,{caller:{pluginId:f.context.pluginId,generation:f.context.generation}}));
   const ui=f.context.ui.create();await ui.page({label:'Codlet',render:()=>null});loading.resolve(f.native);await bridge.ready;await tick();
   assert.equal(f.document.querySelector('[data-codlet-page-lease]'),null);assert.equal(f.control('Codlet'),undefined);assert.equal(f.document.querySelector('[data-codlet-official-ui]'),null);assert.equal(f.errors.length,0);ui.dispose();bridge.dispose();await tick();
+});
+
+test('an auxiliary window never imports or initializes main-window modules',async t=>{
+  const f=fixture(t);f.navigation.dispose();f.shell.navigator.push('/avatar-overlay');await tick();
+  let loads=0;const bridge=f.adapter.deferredNavigation(f.context,async()=>{loads++;throw Error('main-window initializer in avatar');});
+  t.after(()=>bridge.dispose());await bridge.ready;assert.equal(loads,0);assert.equal(f.errors.length,0);
 });
