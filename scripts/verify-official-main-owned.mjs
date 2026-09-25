@@ -136,6 +136,7 @@ function compactAcceptance(value) {
   })) : [];
   return {
     finished: value.finished === true,
+    ...(typeof value.stage === 'string' && ['app_ready', 'app_server', 'production_attached', 'application_network', 'desktop_requests', 'same_origin_redirect', 'backend_turns'].includes(value.stage) ? { stage: value.stage } : {}),
     ...(typeof value.failure === 'string' && /^[a-z_]{1,100}$/u.test(value.failure) ? { failure: value.failure } : {}),
     ...(typeof value.failureStage === 'string' && ['app_ready', 'app_server', 'production_attached', 'application_network', 'desktop_requests', 'same_origin_redirect', 'backend_turns'].includes(value.failureStage) ? { failureStage: value.failureStage } : {}),
     ...(value.dialogAction === 'cancel_error' || value.dialogAction === 'acknowledge_information' ? { dialogAction: value.dialogAction } : {}),
@@ -317,15 +318,18 @@ async function main() {
   }
   async function readReceiptUntilFinished() {
     const deadline = Date.now() + 40000;
+    let last;
     while (Date.now() < deadline) {
       try {
         const value = JSON.parse(await fs.readFile(receiptPath, 'utf8'));
+        last = value;
         if (value?.finished === true) return value;
       } catch (error) {
         if (error.code !== 'ENOENT' && !(error instanceof SyntaxError)) throw failure('fixture_receipt_invalid');
       }
       await sleep(100);
     }
+    if (last) report.acceptance = compactAcceptance(last);
     throw failure('fixture_timeout');
   }
   async function stopOwnedTree() {

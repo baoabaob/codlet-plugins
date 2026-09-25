@@ -127,14 +127,16 @@ function installOwnedAcceptance(electron, config) {
   }
   async function run() {
     let stage = 'app_ready';
+    const entering = value => { stage = value; report.stage = value; save(); };
+    entering(stage);
     try {
       await electron.app.whenReady();
-      stage = 'app_server';
+      entering('app_server');
       await wait(() => state.FetchWrapper && [...state.managers].some(value => value.initialized && value.isLocal), 'app_server');
-      stage = 'production_attached';
+      entering('production_attached');
       await wait(() => fs.existsSync(config.go), 'production_attached', 20000);
       const manager = [...state.managers].find(value => value.initialized && value.isLocal);
-      stage = 'application_network';
+      entering('application_network');
       report.adapterState = adapterSnapshot(); save();
       const network = require(process.resourcesPath + '/app.asar/.vite/build/' + config.bootstrapBundle)[config.applicationNetworkFactory]().applicationNetwork;
       await network.whenReady();
@@ -229,7 +231,7 @@ function installOwnedAcceptance(electron, config) {
       fs.writeFileSync(config.rawDiagnosticPath, JSON.stringify({ schema: 1, kind: 'electron-network-diagnostics', protocol: config.protocol, probes: report.rawDiagnosticFetch }, null, 2) + '\n');
       save();
       const wrapper = new state.FetchWrapper(null, { applicationNetwork: network, appServerConnectionRegistry: { getConnection: () => manager }, desktopOriginator: 'Codex Desktop', prodApiBaseUrl: 'https://chatgpt.com/backend-api', devApiBaseUrl: 'http://localhost:8000/api' });
-      stage = 'desktop_requests';
+      entering('desktop_requests');
       for (const progress of [false, true]) {
         const { response } = await wrapper.performDesktopFetch({ body: 'codlet-original-request', headers: { 'content-type': 'text/plain' }, method: 'POST', resolvedUrl: config.upstream + '/desktop/' + (progress ? 'progress' : 'fetch'), signal: AbortSignal.timeout(5000), ...(progress ? { onUploadProgress() {} } : {}) });
         report.desktop[progress ? 'progress' : 'fetch'] = { status: response.status, changed: await response.text() === text.replace('original', 'modified') }; save();
@@ -247,14 +249,14 @@ function installOwnedAcceptance(electron, config) {
       report.rawDiagnosticFetch.cookies.bridgeCrossOriginFinalSent = report.cookieDiagnostics.bridgeCrossOriginFinalSent;
       fs.writeFileSync(config.rawDiagnosticPath, JSON.stringify({ schema: 1, kind: 'electron-network-diagnostics', protocol: config.protocol, probes: report.rawDiagnosticFetch }, null, 2) + '\n');
       save();
-      stage = 'same_origin_redirect';
+      entering('same_origin_redirect');
       const redirected = await wrapper.performDesktopFetch({ headers: {}, method: 'GET', resolvedUrl: config.upstream + '/desktop/redirect', signal: AbortSignal.timeout(15000), onUploadProgress() {} });
       report.desktop.redirect = { status: redirected.response.status, changed: await redirected.response.text() === text.replace('original', 'modified') }; save();
       const emptyRedirect = await wrapper.performDesktopFetch({ headers: {}, method: 'GET', resolvedUrl: config.upstream + '/desktop/redirect-empty', signal: AbortSignal.timeout(5000), onUploadProgress() {} });
       report.desktop.emptyRedirect = { status: emptyRedirect.response.status, changed: await emptyRedirect.response.text() === text.replace('original', 'modified') }; save();
       const crossOriginRedirect = await wrapper.performDesktopFetch({ headers: {}, method: 'GET', resolvedUrl: config.upstream + '/desktop/cross-origin-redirect', signal: AbortSignal.timeout(5000), onUploadProgress() {} });
       report.desktop.crossOriginRedirect = { status: crossOriginRedirect.response.status, unchanged: await crossOriginRedirect.response.text() === config.crossOriginResponse }; save();
-      stage = 'backend_turns';
+      entering('backend_turns');
       const notifications = [];
       report.backend.turnCompletions = [];
       const off = manager.registerInternalNotificationHandler(value => {
