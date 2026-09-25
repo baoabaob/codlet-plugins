@@ -7,10 +7,9 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createInterface } from 'node:readline';
 import { once } from 'node:events';
-import { createRequire } from 'node:module';
+import { pathToFileURL } from 'node:url';
 import { WebSocketServer } from '../frontend/node_modules/ws/wrapper.mjs';
 import { createThreadConfiguration } from '../frontend/src/desktop/thread-configuration.js';
-const { createTrafficRuntime } = createRequire(import.meta.url)('../.core-sdk/runtime/host-traffic-bundle.cjs');
 
 // Opt-in native acceptance: isolated home, synthetic prompt, loopback Responses
 // fixture only. No user auth file or actual model endpoint is used.
@@ -57,15 +56,10 @@ for (const mode of ['http', 'websocket']) test(`official AppServer starts and re
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     const upstreamOrigin = `http://127.0.0.1:${server.address().port}`;
     const trafficAbort = new AbortController();
-    const managed = createTrafficRuntime({ rootSignal: trafficAbort.signal, makeError: (code, message) => Object.assign(new Error(message), { code }), async coreRequest(method, params, signal) {
-        if (signal.aborted) throw signal.reason;
-        if (method === 'host.network.authorizeChannel') return {};
-        assert.equal(method, 'host.network.authorizeForward');
-        const destination = new URL(params.url), origin = new URL(destination);
-        if (origin.protocol === 'ws:') origin.protocol = 'http:';
-        assert.equal(origin.origin, upstreamOrigin, 'fixture must only contact its owned loopback server');
-        return { url: destination.href, origin: origin.origin };
-    } });
+    assert(process.env.CODLET_CORE_ROOT, 'set CODLET_CORE_ROOT and build its native traffic fixture for this opt-in acceptance');
+    const { nativeTraffic } = await import(pathToFileURL(path.join(process.env.CODLET_CORE_ROOT, 'tests/support/native-traffic.mjs')).href);
+    const native = await nativeTraffic(t, { origins: [upstreamOrigin], noIntercept: true });
+    const managed = native.runtime();
     const channel = await managed.api.openChannel({}, {
         ...(mode === 'http' ? { http: (incoming, exchange) => exchange.forward({ url: upstreamOrigin + incoming.path, method: incoming.method, headers: [['content-type', 'application/json']], body: incoming.body }) } : {}),
         ...(mode === 'websocket' ? { webSocket: (incoming, exchange) => exchange.forward({ url: upstreamOrigin.replace('http:', 'ws:') + incoming.path, protocols: incoming.protocols }) } : {})

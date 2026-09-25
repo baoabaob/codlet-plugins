@@ -8,7 +8,7 @@ import { gunzipSync, gzipSync, zstdCompressSync, zstdDecompressSync } from 'node
 import { createHash } from 'node:crypto';
 import { spawn, execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const require = createRequire(import.meta.url);
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -375,10 +375,8 @@ async function main() {
         || createHash('sha256').update(await fs.readFile(path.join(resources, 'app.asar'))).digest('hex') !== reviewed.asarSha256)
         throw failure('mac_reviewed_artifact_mismatch');
     }
-    const [{ createTrafficRuntime }, { createTrafficInterceptors }, { createPlaintextSource }, { verifyOwnedMainHandshake }] = [
-      require(path.join(coreRoot, 'runtime/host-traffic-bundle.cjs')),
-      require(path.join(coreRoot, 'runtime/traffic-interceptors.cjs')),
-      require(path.join(coreRoot, 'runtime/plaintext-source.cjs')),
+    const [{ nativeTraffic }, { verifyOwnedMainHandshake }] = [
+      await import(pathToFileURL(path.join(coreRoot, 'tests/support/native-traffic.mjs')).href),
       await import('./verify-owned-main-handshake.mjs'),
     ];
     const { WebSocketServer } = require('../frontend/node_modules/ws');
@@ -507,31 +505,9 @@ async function main() {
     server = upstream;
     const endpoint = `http://127.0.0.1:${server.address().port}`;
     const origin = new URL(endpoint).origin;
-    const authorize = async (_owner, action, url) => action !== 'sensitiveHeaders' && normalizeOrigin(url) === origin;
-    const nativeRequest = async (method, params) => {
-      if (method === 'host.network.authorizeChannel') return {};
-      if (method === 'host.network.authorizeForward') {
-        try { if (normalizeOrigin(params.url) === origin) return { url: params.url }; } catch {}
-        fixture.unauthorizedForwardAttempts++;
-        throw Object.assign(new Error('fixture_only'), { code: 'permission_denied' });
-      }
-      if (method === 'services.network.resolve') {
-        try {
-          if (params?.profile === 'native-inherited' && normalizeOrigin(params.url) === origin) return { proxyUrl: null, caPem: '' };
-        } catch {}
-        throw Object.assign(new Error('fixture_only'), { code: 'permission_denied' });
-      }
-      if (method === 'services.traffic.status') {
-        const status = registry?.status?.() ?? {};
-        return { registered: safeInteger(status.registered), active: safeInteger(status.active), pending: 0 };
-      }
-      throw Object.assign(new Error('fixture_only'), { code: 'permission_denied' });
-    };
-    runtime = createTrafficRuntime({ coreRequest: nativeRequest, rootSignal: lifetime.signal,
-      makeError: (code, message) => Object.assign(new Error(message ?? code), { code }) });
-    registry = createTrafficInterceptors({ rootSignal: lifetime.signal, authorize });
-    owner = new AbortController();
-    registry.register({ pluginId: 'codlet-owned-acceptance', generation: 1, signal: owner.signal }, {
+    source = await nativeTraffic(null, { origins: [origin] });
+    runtime = source.runtime();
+    registry = await runtime.api.registerInterceptor({
       id: 'synthetic-local-production-acceptance', origins: [origin], priority: 0, timeoutMs: 1800,
     }, {
       async request(request) {
@@ -577,7 +553,6 @@ async function main() {
         };
       },
     });
-    source = await createPlaintextSource({ runtime, gateway: { handlers: registry.handlers }, signal: lifetime.signal });
     const traffic = { source: source.descriptor, environmentPatch: { set: {}, removeCaseInsensitive: [] } };
     const adapterPath = path.join(root, 'bundled/codex-desktop-adapter/host.cjs');
     const { prepareClientLaunch } = require(adapterPath);
@@ -724,10 +699,10 @@ async function main() {
     try { await stopOwnedTree(); } catch { report.ownedTreeCleanupFailed = true; }
     child?.stdout?.destroy(); child?.stderr?.destroy();
     lifetime?.abort(failure('acceptance_finished'));
-    try { source?.close(); } catch {}
     try { owner?.abort(); } catch {}
-    try { registry?.close(); } catch {}
+    try { await registry?.close(); } catch {}
     try { runtime?.closeAll(); } catch {}
+    try { await source?.close(); } catch {}
     try { await closeObserver(); } catch {}
     if (webSockets) for (const connection of webSockets.clients) connection.terminate();
     if (server) {
