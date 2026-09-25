@@ -53,7 +53,7 @@ powershell -NoProfile -File scripts/Sync-Distribution.ps1 -Apply -AllowPublic
 
 在 `plugins.json` 增加 ID、bundle 目录、入口、分发仓库、说明、topics 和依赖；同时添加普通 `codlet.json` 与插件源码。修改某插件后，只调整它的版本。版本由 manifest 提供，同步器拒绝用同一标签替换已发布或已有草稿的内容。共享源码导致多个插件发生变化时，这些插件都应调整版本。
 
-`installerPlugins` 单独指定安装包携带的三个核心官方插件。新增普通官方插件默认只分发到自己的仓库，不自动扩大 MSI/便携包的预装集合；Core 构建器只读取这个预装子集。
+`installerPlugins` 标记推荐用于初始设置的插件；打包器仍可生成独立 ZIP 和分发 catalog。Core 安装包不读取该 catalog、不携带插件代码，也不依赖本仓库的某个源码提交。增加官方插件不会自动增加安装器的下载勾选项。
 
 ## 可见性与来源迁移
 
@@ -61,9 +61,9 @@ powershell -NoProfile -File scripts/Sync-Distribution.ps1 -Apply -AllowPublic
 
 核对草稿后使用 `-Apply -AllowPublic -Publish` 发布。新增分发仓库仍默认私有，需要另外调整可见性；脚本本身不改可见性。仓库仍为私有时 `-Apply -Publish` 只会发布私有 Release，不会让导入器获得访问凭据。
 
-通过 GitHub 安装的插件，更新来源就是自己的分发仓库，现有 Core 的单插件 Release 检查可以直接使用。安装器继续从相同 `dist/catalog.json` 选择、校验并携带离线包，catalog 记录各插件的独立仓库和版本。
+通过 GitHub 安装的插件，更新来源就是自己的分发仓库，现有 Core 的单插件 Release 检查可以直接使用。Core 安装器只携带下载选项与来源身份，首次设置通过普通 CLI 从各自 GitHub 仓库获取最新正式插件 Release。因此必须先发布可用的插件 Release，再交付依赖该修复的新安装体验；只推送源码不算可供下载安装。
 
-**预装的本地来源不会被伪装为 GitHub 安装。** 用户可在 GUI 或 CLI 中预览并确认切换到对应 GitHub Release；Core 会核对安装器回执与完整文件集，并保留启停偏好和已有授权，新增权限仍需确认。自定义或改动过的目录不会自动替换。仓库同步本身不修改正在运行的插件注册，完整流程见 [Core 管理契约](https://github.com/baoabaob/codlet/blob/main/docs/spec/management.md)。
+**旧安装器留下的本地来源不会被伪装为 GitHub 安装。** 新安装从第一次下载起就是普通 GitHub 插件。 用户可在 GUI 或 CLI 中预览并确认切换到对应 GitHub Release；Core 会核对安装器回执与完整文件集，并保留启停偏好和已有授权，新增权限仍需确认。自定义或改动过的目录不会自动替换。仓库同步本身不修改正在运行的插件注册，完整流程见 [Core 管理契约](https://github.com/baoabaob/codlet/blob/main/docs/spec/management.md)。
 
 ## 检查
 
