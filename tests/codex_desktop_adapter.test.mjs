@@ -58,6 +58,17 @@ function fixture(buildIndex = 0, withNavigation = false) {
     return { ...adapter, context, scope, endpoints, cleanup, sent, failures, callbacks, approvals, requestCalls, client, postbox, original, thread, threads, navigator, nativeNavigation, navigationCalls, replaceNavigator(value) { currentNavigator = value; }, responses, owner, submit, connection: { manager, client, postbox, build, check() {} }, drift() { replaced = true; } };
 }
 
+test('native integer JSON-RPC errors remain valid public failures without retiring the adapter', async () => {
+    const f=fixture();
+    f.responses.set('thread/turns/list',Object.assign(new Error('Thread has no persisted turns'),{code:-32600}));
+    await assert.rejects(f.api.read('turns.list',{threadId:'thread-a'}),e=>
+        e.code==='desktop_request_failed'&&e.message.includes('(-32600)')&&e.message.includes('Thread has no persisted turns'));
+    assert.equal(f.probe().available,true);
+    f.responses.set('thread/turns/list',{data:[],nextCursor:null});
+    assert.deepEqual(plain(await f.api.read('turns.list',{threadId:'thread-a'})),{turns:[],cursor:null});
+    f.dispose();
+});
+
 test('ordered pre-submit rewrite/context preserves identities, attachment and Desktop options before dispatch', async () => {
     const f = fixture(), order = [];
     f.api.registerPreSubmit(f.owner('z-plugin').ctx, { id: 'last', priority: 1 }, draft => { order.push(['last', draft.text]); return { context: [{ text: 'plugin context' }] }; });
@@ -436,11 +447,11 @@ test('same numbered Mac and Windows builds wait for their own delayed entry befo
     }
 });
 
-test('current reviewed build reads AppScope and postbox from one shared module', async () => {
+for (const appVersion of ['26.917.62051', '26.924.22138']) test(`${appVersion} reuses its reviewed AppScope, connection and postbox modules`, async () => {
     const scope = vm.createContext({ module: { exports: {} }, setTimeout, clearTimeout, location: { origin: 'app://-', pathname: '/index.html' } });
     vm.runInContext(source, scope);
     const native = vm.runInContext(`(() => {
-        const build = BUILDS.at(-1), token = { id: 'AppScope' };
+        const build = BUILDS.find(value=>value.appVersion===${JSON.stringify(appVersion)} && value.platform==='windows-x86_64'), token = { id: 'AppScope' };
         const client = { requestPromises: new Map(), getAppServerVersion: () => build.appServerVersion, onError() {} };
         const manager = { requestClient: client, getHostId: () => 'local' };
         for (const name of ['sendRequest', 'getConversation', 'getStreamRole', 'addNotificationCallback', 'addConversationStateCallback', 'replyWithCommandExecutionApprovalDecision', 'replyWithFileChangeApprovalDecision', 'replyWithPermissionsRequestApprovalResponse', 'replyWithUserInputResponse']) manager[name] = () => {};
@@ -449,16 +460,18 @@ test('current reviewed build reads AppScope and postbox from one shared module',
         const root = { __reactContainer$test: { memoizedProps: { value: new Map([[token.id, node]]) } } };
         globalThis.document = { scripts: [{ src: build.entry }], getElementById: () => root };
         globalThis.electronBridge = { getSentryInitOptions: () => build, sendMessageFromView() {} };
-        return { build, appModule: { [build.exports.manager]: managerFamily, [build.exports.client]: clientFamily, [build.exports.services]: {} },
-            shared: { [build.exports.scope]: token, [build.exports.postbox]: { postMessage() {} } } };
+        const appModule = { [build.exports.manager]: managerFamily, [build.exports.client]: clientFamily, [build.exports.services]: {} };
+        const shared = { [build.exports.scope]: token, [build.exports.postbox]: { postMessage() {} } };
+        if (!build.scopeModule) Object.assign(appModule, shared);
+        return { build, appModule, shared: build.scopeModule ? shared : appModule };
     })()`, scope);
     const imports = [];
     const connection = await vm.runInContext('probeDesktop', scope)(async resource => {
         imports.push(resource);
         return resource === native.build.module ? native.appModule : resource === native.build.scopeModule ? native.shared : null;
     }, 500);
-    assert.deepEqual(imports, [native.build.module, native.build.scopeModule]);
-    assert.equal(native.build.scopeModule, native.build.postboxModule);
+    assert.deepEqual(imports, [...new Set([native.build.module, native.build.scopeModule ?? native.build.module])]);
+    assert.equal(native.build.scopeModule ?? native.build.module, native.build.postboxModule ?? native.build.module);
     assert.equal(connection.build, native.build);
     connection.check();
     native.shared[native.build.exports.postbox] = { postMessage() {} };

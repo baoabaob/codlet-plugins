@@ -22,6 +22,26 @@ The unauthenticated GitHub importer cannot install private repositories or draft
 
 ## Traffic activation boundaries
 
+**Windows `26.924.2738.0` does not currently support the existing transparent
+traffic launch path.** Its signed `chrome.dll` has Electron fuse wire
+`010011001` (v1): `nodeCliInspect` and `nodeOptions` are disabled. An isolated
+launch with the original private `--inspect-brk` flag starts native UI but never
+provides the required inspector; the owned launch fails with
+`client_inspector_unavailable`. Its native main-inspector toggle also explicitly
+reports unavailable. GUI/read APIs and standalone backend fixtures passing do
+not override this limitation. No binary/fuse/ASAR modification, certificate or
+proxy workaround is shipped. Keep a traffic consumer disabled on this build
+until a replacement integration has been verified; silently bypassing an
+enabled interceptor is not an acceptable fallback.
+
+The backend `0.158.0-alpha.2.1` separately passed controlled HTTP/SSE and WS
+fixtures for request/response rewrites, error repair, cancellation/continuation
+and two-thread routing/resume. New JS module mappings have source review and
+split-module regression coverage, **not** an activated official main-process
+source acceptance. The new UI profile was exercised against signed unpacked
+files in the existing registered Windows package context; a new-MSIX install,
+real account session, Windows ARM64 and new macOS build remain untested.
+
 Windows package `26.917.8451.0` (frontend 10789, backend `0.155.0-alpha.16.3`) passed isolated exact-child Desktop fetch/upload/redirect and model HTTP/SSE/WS acceptance. Both model protocol runs completed two turns; the HTTP run preserved WebSocket 426 and then fell back to HTTP. The runs used synthetic credentials and loopback endpoints, left the original client identities unchanged and cleaned their owned children. This does not establish live OAuth or arbitrary external provider compatibility.
 
 Composer actions and loaded-thread provider reconfiguration currently have a reviewed Windows 10789 profile. Provider configuration is an intentional change to a real conversation, separate from side-effect-free local fixtures. Restore the original provider before disabling its route-owning plugin. Forced retirement or process failure closes the private route but does not guarantee automatic restoration of an already loaded native task; restarting the client releases that runtime session. An automatic, ownership-aware restore protocol is not yet implemented. Plugins must preserve an unknown-result route until the user can confirm or restore the conversation, and may not report closing a channel as successful provider restoration.

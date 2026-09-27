@@ -248,6 +248,29 @@ var client_profiles_default = {
         exports: { react: "e6", dom: "P3", client: "N3", sidebar: "bC", headerInit: "p7", header: "f7", newTaskInit: "d2", newTask: "h2" },
         composerAction: { rootAttribute: "data-codex-composer-root", scrollAreaAttribute: "data-composer-utility-bar-scroll-area" }
       }
+    },
+    {
+      appVersion: "26.924.22138",
+      buildNumber: "11645",
+      platform: "windows-x86_64",
+      appServerVersion: "0.158.0-alpha.2.1",
+      navigation: true,
+      runtimeSkill: true,
+      threadConfiguration: true,
+      threadReconfiguration: true,
+      entry: "app://-/assets/index-90c6cda9bd3d.js",
+      module: "app://-/assets/app-shared-c568b0b98683.js",
+      exports: { scope: "tSt", manager: "_C", client: "yC", services: "nC", postbox: "Z1t" },
+      page: {
+        react: "app://-/assets/app-shared-c568b0b98683.js",
+        dom: "app://-/assets/app-shared-c568b0b98683.js",
+        client: "app://-/assets/app-shared-c568b0b98683.js",
+        primary: "app://-/assets/app-initial-ff48311587c5.js",
+        initial: "app://-/assets/app-initial-ff48311587c5.js",
+        exports: { react: "t0t", dom: "F1t", client: "P1t", sidebar: "nkt", sidebarGroup: "rkt", headerInit: "rTt", header: "nTt", newTaskInit: "Uct", newTask: "qct" },
+        composerAction: { rootAttribute: "data-codex-composer-root", scrollAreaAttribute: "data-composer-utility-bar-scroll-area" },
+        newTaskOptions: { codexAppMode: "codex" }
+      }
     }
   ]
 };
@@ -463,6 +486,46 @@ function composerLease(args, invocation) {
   return owner(args, invocation);
 }
 
+// src/native-navigation.js
+var bridges = /* @__PURE__ */ new WeakMap();
+function reviewedNavigator(navigators, contexts) {
+  if (navigators.size !== 1) return null;
+  const navigator = [...navigators][0];
+  if (typeof navigator?.location?.pathname === "string" && ["push", "replace", "listen"].every((name) => typeof navigator[name] === "function")) return navigator;
+  const matches = [...contexts].filter((value) => value.navigator === navigator && value.router);
+  const routers = new Set(matches.map((value) => value.router));
+  if (routers.size !== 1) return null;
+  const router = [...routers][0];
+  if (typeof router.state?.location?.pathname !== "string" || typeof router.navigate !== "function" || typeof router.subscribe !== "function" || !Array.isArray(router.routes) || router.routes.length !== 1 || router.routes[0].path !== "*") return null;
+  const existing = bridges.get(router);
+  if (existing) return existing.navigator === navigator && existing.navigate === router.navigate && existing.subscribe === router.subscribe ? existing.bridge : null;
+  const navigate = router.navigate, subscribe = router.subscribe;
+  const bridge = {
+    get location() {
+      return router.state.location;
+    },
+    push(to, state) {
+      return navigate.call(router, to, { state });
+    },
+    replace(to, state) {
+      return navigate.call(router, to, { replace: true, state });
+    },
+    go(delta) {
+      return navigate.call(router, delta);
+    },
+    listen(listener) {
+      let location2 = router.state.location;
+      return subscribe.call(router, (state) => {
+        if (state.location === location2) return;
+        location2 = state.location;
+        listener({ location: location2, action: state.historyAction });
+      });
+    }
+  };
+  bridges.set(router, { navigator, navigate, subscribe, bridge });
+  return bridge;
+}
+
 // src/adapter/navigation.js
 function pageProfile(build, entries = Array.from(document.scripts, (script) => script.src), readyState = document.readyState) {
   const profile = clientProfile(build, entries);
@@ -493,17 +556,20 @@ function fibers() {
   return seen;
 }
 function locateHost() {
-  const navigators = /* @__PURE__ */ new Set(), trees = /* @__PURE__ */ new Set();
+  const navigators = /* @__PURE__ */ new Set(), routerContexts = /* @__PURE__ */ new Set(), trees = /* @__PURE__ */ new Set();
   for (const fiber of fibers()) {
-    for (const value of [fiber.memoizedProps, fiber.memoizedProps?.value]) if (value?.navigator) navigators.add(value.navigator);
+    for (const value of [fiber.memoizedProps, fiber.memoizedProps?.value]) if (value?.navigator) {
+      navigators.add(value.navigator);
+      if (value.router) routerContexts.add(value);
+    }
     const child = fiber.memoizedProps?.children;
     const children = child?.props?.children;
     const routes = children?.type === Symbol.for("react.fragment") ? children.props?.children : children;
     if (child?.props?.element === void 0 && child?.type !== Symbol.for("react.fragment") && Array.isArray(routes) && routes.some((route) => route?.props?.path === "/avatar-overlay")) trees.add(child);
   }
   if (navigators.size !== 1 || trees.size !== 1) throw fail2("ui_host_pending", "A unique Desktop router and route tree are required");
-  const navigator = [...navigators][0], tree = [...trees][0];
-  if (typeof navigator.push !== "function" || typeof navigator.replace !== "function" || typeof navigator.location?.pathname !== "string")
+  const navigator = reviewedNavigator(navigators, routerContexts), tree = [...trees][0];
+  if (!navigator)
     throw fail2("ui_host_drift", "The Desktop memory router is unavailable in this window");
   if (navigator.location.pathname === "/avatar-overlay" || navigator.location.pathname.startsWith("/avatar-overlay/"))
     return { navigator, tree, rootNode: document.getElementById("root"), auxiliary: true };
@@ -521,7 +587,7 @@ function locateHost() {
     throw fail2("ui_host_drift", "The reviewed authenticated route collection is unavailable");
   return { navigator, routes: candidates[0], Route: tree.type, tree, rootNode: document.getElementById("root") };
 }
-function nativePlacement(SidebarItem) {
+function nativePlacement(SidebarItem, SidebarGroup) {
   const candidates = [];
   for (const button of document.querySelectorAll("nav button.sidebar-item")) {
     if (button.closest("[data-codlet-native-navigation]")) continue;
@@ -529,8 +595,20 @@ function nativePlacement(SidebarItem) {
     let fiber = key2 && button[key2];
     for (let depth = 0; fiber && depth < 16; depth++, fiber = fiber.return) {
       if (fiber.type !== SidebarItem) continue;
-      const priority = ["sidebar-tasks", "sidebar-plugins", "sidebar-library"].indexOf(fiber.memoizedProps?.animatedIcon);
-      if (priority !== -1) candidates.push({ parent: button.parentElement, anchor: button, priority });
+      const anchors = SidebarGroup ? ["sidebar-tasks", "sidebar-plugins", "sidebar-library", "sidebar-new-chat"] : ["sidebar-tasks", "sidebar-plugins", "sidebar-library"];
+      const priority = anchors.indexOf(fiber.memoizedProps?.animatedIcon);
+      if (priority !== -1) {
+        if (SidebarGroup) {
+          let group = fiber.return;
+          for (let n = 0; group && group.type !== SidebarGroup && n < 20; n++) group = group.return;
+          const parent = group?.type === SidebarGroup ? group.child?.stateNode : null;
+          if (parent?.nodeType === 1 && parent.contains(button)) {
+            let anchor = button;
+            while (anchor.parentElement !== parent) anchor = anchor.parentElement;
+            candidates.push({ parent, anchor, priority });
+          }
+        } else candidates.push({ parent: button.parentElement, anchor: button, priority });
+      }
       break;
     }
   }
@@ -622,7 +700,7 @@ function createNavigation(context, native, host) {
       return;
     }
     for (const entry of [...entries.values()]) if (!entry.lease.isConnected) retire(entry);
-    const placement = nativePlacement(SidebarItem);
+    const placement = nativePlacement(SidebarItem, native.SidebarGroup);
     if (!placement || !entries.size) {
       navContainer?.remove();
       return;
@@ -671,7 +749,7 @@ function createNavigation(context, native, host) {
     if (!args || Object.keys(args).some((key2) => key2 !== "prompt") || typeof args.prompt !== "string" || !args.prompt.trim() || args.prompt.length > 16384)
       throw fail2("invalid_argument", "A new task draft requires a bounded prompt");
     if (typeof entry.compose !== "function") throw fail2("ui_composer_unavailable", "The native new-task composer is not ready");
-    entry.compose({ prefillPrompt: args.prompt, prefillLocalExecution: true, prefillComposerMode: "local", startInSidebar: true });
+    entry.compose({ ...native.newTaskOptions, prefillPrompt: args.prompt, prefillLocalExecution: true, prefillComposerMode: "local", startInSidebar: true });
     return { opened: true, submitted: false };
   }
   function register(args, invocation) {
@@ -763,9 +841,12 @@ function nativeProfile() {
 }
 async function loadNative() {
   const profile = nativeProfile(), page = profile.page, names = page.exports;
-  const [react, dom, client, primary, initial] = await Promise.all([import(page.react), import(page.dom), import(page.client), import(page.primary), import(profile.module)]);
+  const [react, dom, client, primary, initial] = await Promise.all([import(page.react), import(page.dom), import(page.client), import(page.primary), import(page.initial ?? profile.module)]);
   const native = { React: react[names.react ?? "t"](), DOM: dom[names.dom ?? "t"](), Client: client[names.client ?? "t"](), SidebarItem: primary[names.sidebar], ...reviewedHeader(initial, names) };
   native.composerActionProfile = page.composerAction ?? null;
+  native.SidebarGroup = names.sidebarGroup ? primary[names.sidebarGroup] : void 0;
+  if (names.sidebarGroup && typeof native.SidebarGroup !== "function") throw fail2("ui_build_drift", "The reviewed native sidebar group changed");
+  native.newTaskOptions = page.newTaskOptions ?? {};
   if (typeof initial[names.newTaskInit] !== "function") throw fail2("ui_build_drift", "The reviewed new-task initializer changed");
   initial[names.newTaskInit]();
   if (typeof initial[names.newTask] !== "function") throw fail2("ui_build_drift", "The reviewed new-task hook changed");

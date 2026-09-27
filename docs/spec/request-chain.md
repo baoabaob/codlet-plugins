@@ -4,6 +4,36 @@ This is an evidence-backed design decision, not a new shipped interception path.
 The production compatibility gate in [traffic](traffic.md) remains unchanged.
 Do not extend the failed Desktop CONNECT/proxy-auth/certificate workaround.
 
+## Windows 26.924 boundary
+
+Package `26.924.2738.0` / frontend `26.924.22138` (11645) splits Stdio transport
+and the connection manager into separate modules. Both exact hashes and both
+hooks must be verified before task routing is available:
+
+| Input | SHA-256 |
+| --- | --- |
+| `bootstrap-D2PJMYEh.js` | `0d62d7be4491d5ef84d93ea9b753c270096de217f2e49064e5f8f701af53e9ed` |
+| `main-DAwJoFgo.js` | `18beea7d7e46866168528ff5dab5108ffe6d39fc13433367ce8dee7b187044f8` |
+| `application-network-startup-CY4ZWOz-.js` | `7936a5b6373be818c7cce78cad7c18e4e156c8400d3b16f5b440d2626a1cc661` |
+| `src-BSSLXJxP.js` | `50c7cf9c144594cfa6f33298e977f0b144976cc70c579f59fdc7242615c4af98` |
+| `codex.exe` (`0.158.0-alpha.2.1`) | `8f0554ede25bbc5450921897c468b2e84635aa513c5017457997af0954581f49` |
+| `chrome.dll` | `b6f5c2323c642c3ad3dfdc3501aa94482970f88b4c12db0875ce593aece75c16` |
+
+These JS mappings have source review and synthetic hook tests. The real binary
+has disabled `nodeCliInspect` and `nodeOptions` fuses (`v1`, `010011001`). The
+owned startup experiment received no inspector endpoint; passing Node options
+as a command-line wrapper did not change that result. The main-process inspector
+toggle throws `Feature unavailable`. Per [Electron's fuse contract](https://www.electronjs.org/docs/latest/tutorial/fuses#nodecliinspect),
+the disabled inspect fuse suppresses inspect CLI arguments. Do not mark this
+Desktop traffic path accepted or alter the signed binary to claim acceptance.
+
+The unmodified backend passed the six HTTP/WS provider cases and two-thread
+HTTP routing; a separate WS routing run passed six turns with resume/provider
+reconfiguration. An unidentified WS warm-up can arrive while `thread/start`
+replies are still pending. The fixture rejects it with 409 and records it as a
+blocked pre-turn probe. Unidentified requests during submitted turns still fail
+the routing test; no request is assigned to a guessed thread.
+
 ## Reviewed build
 
 Windows package `26.915.4065.0` runs the **Owl app shell**, reporting

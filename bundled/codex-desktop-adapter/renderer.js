@@ -207,6 +207,29 @@ var client_profiles_default = {
         exports: { react: "e6", dom: "P3", client: "N3", sidebar: "bC", headerInit: "p7", header: "f7", newTaskInit: "d2", newTask: "h2" },
         composerAction: { rootAttribute: "data-codex-composer-root", scrollAreaAttribute: "data-composer-utility-bar-scroll-area" }
       }
+    },
+    {
+      appVersion: "26.924.22138",
+      buildNumber: "11645",
+      platform: "windows-x86_64",
+      appServerVersion: "0.158.0-alpha.2.1",
+      navigation: true,
+      runtimeSkill: true,
+      threadConfiguration: true,
+      threadReconfiguration: true,
+      entry: "app://-/assets/index-90c6cda9bd3d.js",
+      module: "app://-/assets/app-shared-c568b0b98683.js",
+      exports: { scope: "tSt", manager: "_C", client: "yC", services: "nC", postbox: "Z1t" },
+      page: {
+        react: "app://-/assets/app-shared-c568b0b98683.js",
+        dom: "app://-/assets/app-shared-c568b0b98683.js",
+        client: "app://-/assets/app-shared-c568b0b98683.js",
+        primary: "app://-/assets/app-initial-ff48311587c5.js",
+        initial: "app://-/assets/app-initial-ff48311587c5.js",
+        exports: { react: "t0t", dom: "F1t", client: "P1t", sidebar: "nkt", sidebarGroup: "rkt", headerInit: "rTt", header: "nTt", newTaskInit: "Uct", newTask: "qct" },
+        composerAction: { rootAttribute: "data-codex-composer-root", scrollAreaAttribute: "data-composer-utility-bar-scroll-area" },
+        newTaskOptions: { codexAppMode: "codex" }
+      }
     }
   ]
 };
@@ -493,6 +516,46 @@ function createThreadReconfiguration({ manager, client, check, supported, select
   return { apply, available, busy: (id) => pending.has(id) };
 }
 
+// src/native-navigation.js
+var bridges = /* @__PURE__ */ new WeakMap();
+function reviewedNavigator(navigators, contexts) {
+  if (navigators.size !== 1) return null;
+  const navigator = [...navigators][0];
+  if (typeof navigator?.location?.pathname === "string" && ["push", "replace", "listen"].every((name) => typeof navigator[name] === "function")) return navigator;
+  const matches = [...contexts].filter((value) => value.navigator === navigator && value.router);
+  const routers = new Set(matches.map((value) => value.router));
+  if (routers.size !== 1) return null;
+  const router = [...routers][0];
+  if (typeof router.state?.location?.pathname !== "string" || typeof router.navigate !== "function" || typeof router.subscribe !== "function" || !Array.isArray(router.routes) || router.routes.length !== 1 || router.routes[0].path !== "*") return null;
+  const existing = bridges.get(router);
+  if (existing) return existing.navigator === navigator && existing.navigate === router.navigate && existing.subscribe === router.subscribe ? existing.bridge : null;
+  const navigate = router.navigate, subscribe = router.subscribe;
+  const bridge = {
+    get location() {
+      return router.state.location;
+    },
+    push(to, state) {
+      return navigate.call(router, to, { state });
+    },
+    replace(to, state) {
+      return navigate.call(router, to, { replace: true, state });
+    },
+    go(delta) {
+      return navigate.call(router, delta);
+    },
+    listen(listener) {
+      let location2 = router.state.location;
+      return subscribe.call(router, (state) => {
+        if (state.location === location2) return;
+        location2 = state.location;
+        listener({ location: location2, action: state.historyAction });
+      });
+    }
+  };
+  bridges.set(router, { navigator, navigate, subscribe, bridge });
+  return bridge;
+}
+
 // src/desktop/entry.js
 var BUILDS = CLIENT_PROFILES;
 var publicBuild = (build) => ({ appVersion: build.appVersion, buildNumber: build.buildNumber, appServerVersion: build.appServerVersion });
@@ -678,17 +741,21 @@ function locateNavigator() {
   const root = document.getElementById("root");
   const key = root && Object.keys(root).find((key2) => key2.startsWith("__reactContainer$"));
   const container = key ? root[key] : null;
-  const pending = [container?.stateNode?.current ?? container], seen = /* @__PURE__ */ new Set(), candidates = /* @__PURE__ */ new Set();
+  const pending = [container?.stateNode?.current ?? container], seen = /* @__PURE__ */ new Set(), candidates = /* @__PURE__ */ new Set(), routerContexts = /* @__PURE__ */ new Set();
   while (pending.length && seen.size < 4096) {
     const fiber = pending.pop();
     if (!fiber || seen.has(fiber)) continue;
     seen.add(fiber);
-    for (const value of [fiber.memoizedProps, fiber.memoizedProps?.value]) if (value?.navigator) candidates.add(value.navigator);
+    for (const value of [fiber.memoizedProps, fiber.memoizedProps?.value]) if (value?.navigator) {
+      candidates.add(value.navigator);
+      if (value.router) routerContexts.add(value);
+    }
     if (fiber.sibling) pending.push(fiber.sibling);
     if (fiber.child) pending.push(fiber.child);
   }
   if (pending.length || candidates.size !== 1) throw fail3("desktop_navigation_unavailable", "A unique Desktop memory router is required");
-  const navigator = [...candidates][0];
+  const navigator = reviewedNavigator(candidates, routerContexts);
+  if (!navigator) throw fail3("desktop_navigation_unavailable", "The reviewed Desktop router is unavailable");
   if (typeof navigator.location?.pathname !== "string" || !navigator.location.pathname.startsWith("/") || navigator.location.pathname.startsWith("/avatar-overlay") || typeof navigator.listen !== "function") throw fail3("desktop_navigation_unavailable", "Task navigation is unavailable in this Desktop window");
   return navigator;
 }
@@ -857,6 +924,12 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
       check();
       if (signal?.aborted) throw fail3("outcome_unknown", "Caller retired after dispatch; inspect the Desktop event stream before retrying a write");
       return result;
+    } catch (error) {
+      if (typeof error?.code === "number") throw fail3(
+        "desktop_request_failed",
+        `Desktop rejected ${method} (${error.code}): ${optionalText(error.message, 2048) ?? "Request failed"}`
+      );
+      throw error;
     } finally {
       if (submissionId) submissions.delete(submissionId);
     }

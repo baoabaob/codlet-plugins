@@ -9,6 +9,10 @@ const { AsyncLocalStorage } = require('node:async_hooks');
 // Private symbols are specific to source-reviewed Owl builds. The hashes
 // guard every append; a new build needs a new inspected profile.
 const PROFILES = Object.freeze({
+  'bootstrap-D2PJMYEh.js': { hash: '0d62d7be4491d5ef84d93ea9b753c270096de217f2e49064e5f8f701af53e9ed', kind: 'bootstrap', symbol: 'He' },
+  'main-DAwJoFgo.js': { hash: '18beea7d7e46866168528ff5dab5108ffe6d39fc13433367ce8dee7b187044f8', kind: 'main', symbol: 'kEe' },
+  'application-network-startup-CY4ZWOz-.js': { hash: '7936a5b6373be818c7cce78cad7c18e4e156c8400d3b16f5b440d2626a1cc661', kind: 'stdio', symbol: '$s' },
+  'src-BSSLXJxP.js': { hash: '50c7cf9c144594cfa6f33298e977f0b144976cc70c579f59fdc7242615c4af98', kind: 'connection', symbol: 'Yh' },
   'bootstrap-CiIGnI3y.js': { hash: '119bb54ee12ed5d2b0d3b98dd068a4322232a4aa342323eb9cb5dfa6575ca158', kind: 'bootstrap', symbol: 'Nt' },
   'main-BR_2NHW6.js': { hash: '1f2b91cf92fc023fb2fa41e1c1d03698fa6e37354ecd07dd0cebd21337607b08', kind: 'main', symbol: 'ZTe' },
   'bootstrap-DK4EfNwt.js': { hash: 'dbdbdd3ef5dde93dd196a59846edf244dc653341213e0fd45eebb133b5df10ba', kind: 'bootstrap', symbol: 'Pt' },
@@ -112,7 +116,7 @@ function installDesktopPlaintext({ app }, { source, deadlineUnixMs, ownsBackendP
   const symbol = Symbol('codlet.private.plaintext');
   const originalCompile = Module.prototype._compile;
   let bootstrapVerified = false, mainVerified = false, srcVerified = false, fetchInstalled = false, requestInstalled = false,
-    stdioInstalled = false, connectionInstalled = false, desktopReason = null, taskReason = null, mismatch = null, closed = false;
+    stdioVerified = false, connectionVerified = false, stdioInstalled = false, connectionInstalled = false, desktopReason = null, taskReason = null, mismatch = null, closed = false;
   const restores = [];
   const taskRoutes = new Set(), routesByProcess = new WeakMap(), sendQueues = new WeakMap();
   function reserve(url, proc) {
@@ -267,20 +271,24 @@ function installDesktopPlaintext({ app }, { source, deadlineUnixMs, ownsBackendP
       symbol: name.startsWith('bootstrap-') ? 'Pt' : name.startsWith('main-') ? 'wEe' : 'mQ' };
     const observedSha256 = createHash('sha256').update(code).digest('hex');
     if (observedSha256 !== expectedHashes[name]) {
-      if (profile.kind === 'src') taskReason = 'unsupported_build'; else desktopReason = 'unsupported_build';
+      if (['src', 'stdio', 'connection'].includes(profile.kind)) taskReason = 'unsupported_build'; else desktopReason = 'unsupported_build';
       mismatch = { name, observedSha256 }; return originalCompile.call(this, code, filename);
     }
     const result = originalCompile.call(this, `${code}\n;Object.defineProperty(module.exports,Symbol.for(${JSON.stringify(String(symbol))}),{value:${profile.symbol},configurable:true});`, filename);
     const captured = this.exports[Symbol.for(String(symbol))]; delete this.exports[Symbol.for(String(symbol))];
     if (profile.kind === 'bootstrap') { bootstrapVerified = true; hookNetwork(captured); }
     else if (profile.kind === 'main') { mainVerified = true; hookFetchWrapper(captured); }
-    else { srcVerified = true; hookStdio(captured); hookConnection(this.exports[profile.managerExport ?? 'un']); }
+    else if (profile.kind === 'stdio') { stdioVerified = true; hookStdio(captured); }
+    else if (profile.kind === 'connection') { connectionVerified = true; hookConnection(captured); }
+    else { stdioVerified = true; connectionVerified = true; hookStdio(captured); hookConnection(this.exports[profile.managerExport ?? 'un']); }
+    srcVerified = stdioVerified && connectionVerified;
     return result;
   };
   restores.push(() => { if (Module.prototype._compile === wrappedCompile) Module.prototype._compile = originalCompile; });
   const wrappedCompile = Module.prototype._compile;
   const desktopDone = () => desktopReason || bootstrapVerified && mainVerified && fetchInstalled && requestInstalled;
-  const taskDone = () => taskReason || !Object.keys(expectedHashes).some(name => name.startsWith('src-')) || srcVerified && stdioInstalled && connectionInstalled;
+  const needsTaskSources = Object.keys(expectedHashes).some(name => ['src', 'stdio', 'connection'].includes(PROFILES[name]?.kind) || name.startsWith('src-'));
+  const taskDone = () => taskReason || !needsTaskSources || srcVerified && stdioInstalled && connectionInstalled;
   return Object.freeze({
     async ready() {
       while (!closed && !(desktopDone() && taskDone()) && Date.now() < deadlineUnixMs - 500) await new Promise(resolve => setTimeout(resolve, 20));

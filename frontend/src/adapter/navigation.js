@@ -1,6 +1,7 @@
 import { createCodletIcons } from '../icons.js';
 import { CLIENT_PROFILES, clientProfile } from '../../../compatibility/client-profiles.js';
 import { COMPOSER_CAPABILITY, createComposerActions, composerLease } from './composer-action.js';
+import { reviewedNavigator } from '../native-navigation.js';
 
 // Host internals belong only to this optional adapter. Never run these imports
 // outside the reviewed Desktop build, or create another app-host connection.
@@ -35,9 +36,12 @@ export function fibers() {
 }
 
 export function locateHost() {
-  const navigators = new Set(), trees = new Set();
+  const navigators = new Set(), routerContexts = new Set(), trees = new Set();
   for (const fiber of fibers()) {
-    for (const value of [fiber.memoizedProps, fiber.memoizedProps?.value]) if (value?.navigator) navigators.add(value.navigator);
+    for (const value of [fiber.memoizedProps, fiber.memoizedProps?.value]) if (value?.navigator) {
+      navigators.add(value.navigator);
+      if (value.router) routerContexts.add(value);
+    }
     const child = fiber.memoizedProps?.children;
     // Build 9771 wraps the route collection in a Fragment inside the same
     // element-less root Route. Keep the Route identity for appended pages.
@@ -47,9 +51,8 @@ export function locateHost() {
         routes.some(route => route?.props?.path === '/avatar-overlay')) trees.add(child);
   }
   if (navigators.size !== 1 || trees.size !== 1) throw fail('ui_host_pending', 'A unique Desktop router and route tree are required');
-  const navigator = [...navigators][0], tree = [...trees][0];
-  if (typeof navigator.push !== 'function' || typeof navigator.replace !== 'function' ||
-      typeof navigator.location?.pathname !== 'string')
+  const navigator = reviewedNavigator(navigators, routerContexts), tree = [...trees][0];
+  if (!navigator)
     throw fail('ui_host_drift', 'The Desktop memory router is unavailable in this window');
   if(navigator.location.pathname==='/avatar-overlay'||navigator.location.pathname.startsWith('/avatar-overlay/'))
     return {navigator,tree,rootNode:document.getElementById('root'),auxiliary:true};
@@ -68,7 +71,7 @@ export function locateHost() {
   return { navigator, routes: candidates[0], Route: tree.type, tree, rootNode: document.getElementById('root') };
 }
 
-function nativePlacement(SidebarItem) {
+function nativePlacement(SidebarItem, SidebarGroup) {
   const candidates = [];
   for (const button of document.querySelectorAll('nav button.sidebar-item')) {
     if (button.closest('[data-codlet-native-navigation]')) continue;
@@ -76,8 +79,21 @@ function nativePlacement(SidebarItem) {
     let fiber = key && button[key];
     for (let depth = 0; fiber && depth < 16; depth++, fiber = fiber.return) {
       if (fiber.type !== SidebarItem) continue;
-      const priority = ['sidebar-tasks', 'sidebar-plugins', 'sidebar-library'].indexOf(fiber.memoizedProps?.animatedIcon);
-      if (priority !== -1) candidates.push({ parent: button.parentElement, anchor: button, priority });
+      const anchors = SidebarGroup ? ['sidebar-tasks', 'sidebar-plugins', 'sidebar-library', 'sidebar-new-chat'] : ['sidebar-tasks', 'sidebar-plugins', 'sidebar-library'];
+      const priority = anchors.indexOf(fiber.memoizedProps?.animatedIcon);
+      if (priority !== -1) {
+        if (SidebarGroup) {
+          // Build 11645 puts New chat inside a drag/drop wrapper. Insert beside
+          // that row in the reviewed group, not inside its interactive region.
+          let group = fiber.return;
+          for (let n=0;group&&group.type!==SidebarGroup&&n<20;n++) group=group.return;
+          const parent = group?.type===SidebarGroup ? group.child?.stateNode : null;
+          if (parent?.nodeType===1 && parent.contains(button)) {
+            let anchor=button;while(anchor.parentElement!==parent)anchor=anchor.parentElement;
+            candidates.push({parent,anchor,priority});
+          }
+        } else candidates.push({ parent: button.parentElement, anchor: button, priority });
+      }
       break;
     }
   }
@@ -157,7 +173,7 @@ export function createNavigation(context, native, host) {
     if (!alive) return;
     if (!hostLive()) { navContainer?.remove(); return; }
     for (const entry of [...entries.values()]) if (!entry.lease.isConnected) retire(entry);
-    const placement = nativePlacement(SidebarItem);
+    const placement = nativePlacement(SidebarItem, native.SidebarGroup);
     if (!placement || !entries.size) { navContainer?.remove(); return; }
     if (!navContainer) {
       navContainer = document.createElement('div'); navContainer.dataset.codletNativeNavigation = '1';
@@ -197,7 +213,7 @@ export function createNavigation(context, native, host) {
     if(!args||Object.keys(args).some(key=>key!=='prompt')||typeof args.prompt!=='string'||!args.prompt.trim()||args.prompt.length>16384)
       throw fail('invalid_argument','A new task draft requires a bounded prompt');
     if(typeof entry.compose!=='function')throw fail('ui_composer_unavailable','The native new-task composer is not ready');
-    entry.compose({prefillPrompt:args.prompt,prefillLocalExecution:true,prefillComposerMode:'local',startInSidebar:true});
+    entry.compose({...native.newTaskOptions,prefillPrompt:args.prompt,prefillLocalExecution:true,prefillComposerMode:'local',startInSidebar:true});
     return {opened:true,submitted:false};
   }
   function register(args, invocation) {
@@ -266,9 +282,12 @@ function nativeProfile() {
 
 async function loadNative() {
   const profile = nativeProfile(), page = profile.page, names = page.exports;
-  const [react, dom, client, primary, initial] = await Promise.all([import(page.react), import(page.dom), import(page.client), import(page.primary), import(profile.module)]);
+  const [react, dom, client, primary, initial] = await Promise.all([import(page.react), import(page.dom), import(page.client), import(page.primary), import(page.initial ?? profile.module)]);
   const native = { React: react[names.react??'t'](), DOM: dom[names.dom??'t'](), Client: client[names.client??'t'](), SidebarItem: primary[names.sidebar], ...reviewedHeader(initial, names) };
   native.composerActionProfile = page.composerAction ?? null;
+  native.SidebarGroup = names.sidebarGroup ? primary[names.sidebarGroup] : undefined;
+  if(names.sidebarGroup && typeof native.SidebarGroup!=='function')throw fail('ui_build_drift','The reviewed native sidebar group changed');
+  native.newTaskOptions = page.newTaskOptions ?? {};
   // Same lazy initializer and hook used by the official Create plugin/skill
   // flow. The hook is called inside Native's route and AppScope providers.
   if(typeof initial[names.newTaskInit]!=='function')throw fail('ui_build_drift','The reviewed new-task initializer changed');

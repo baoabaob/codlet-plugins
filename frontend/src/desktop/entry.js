@@ -1,6 +1,7 @@
 import { CLIENT_PROFILES, clientProfile } from '../../../compatibility/client-profiles.js';
 import { createThreadConfiguration } from './thread-configuration.js';
 import { createThreadReconfiguration } from './thread-reconfiguration.js';
+import { reviewedNavigator } from '../native-navigation.js';
 'use strict';
 
 // All Desktop build details stay in this optional directory package. The Core
@@ -192,17 +193,21 @@ function locateNavigator() {
     const root = document.getElementById('root');
     const key = root && Object.keys(root).find(key => key.startsWith('__reactContainer$'));
     const container = key ? root[key] : null;
-    const pending = [container?.stateNode?.current ?? container], seen = new Set(), candidates = new Set();
+    const pending = [container?.stateNode?.current ?? container], seen = new Set(), candidates = new Set(), routerContexts = new Set();
     while (pending.length && seen.size < 4096) {
         const fiber = pending.pop();
         if (!fiber || seen.has(fiber)) continue;
         seen.add(fiber);
-        for (const value of [fiber.memoizedProps, fiber.memoizedProps?.value]) if (value?.navigator) candidates.add(value.navigator);
+        for (const value of [fiber.memoizedProps, fiber.memoizedProps?.value]) if (value?.navigator) {
+            candidates.add(value.navigator);
+            if (value.router) routerContexts.add(value);
+        }
         if (fiber.sibling) pending.push(fiber.sibling);
         if (fiber.child) pending.push(fiber.child);
     }
     if (pending.length || candidates.size !== 1) throw fail('desktop_navigation_unavailable', 'A unique Desktop memory router is required');
-    const navigator = [...candidates][0];
+    const navigator = reviewedNavigator(candidates, routerContexts);
+    if (!navigator) throw fail('desktop_navigation_unavailable', 'The reviewed Desktop router is unavailable');
     if (typeof navigator.location?.pathname !== 'string' || !navigator.location.pathname.startsWith('/') || navigator.location.pathname.startsWith('/avatar-overlay') || typeof navigator.listen !== 'function') throw fail('desktop_navigation_unavailable', 'Task navigation is unavailable in this Desktop window');
     return navigator;
 }
@@ -325,6 +330,13 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
             check();
             if (signal?.aborted) throw fail('outcome_unknown', 'Caller retired after dispatch; inspect the Desktop event stream before retrying a write');
             return result;
+        } catch (error) {
+            // Native JSON-RPC errors use integer codes; Core's public error DTO
+            // requires a symbolic string. Keep the rejection actionable without
+            // turning an ordinary backend refusal into an invalid RPC payload.
+            if (typeof error?.code === 'number') throw fail('desktop_request_failed',
+                `Desktop rejected ${method} (${error.code}): ${optionalText(error.message, 2048) ?? 'Request failed'}`);
+            throw error;
         } finally { if (submissionId) submissions.delete(submissionId); }
     };
     const loadedThread = id => {

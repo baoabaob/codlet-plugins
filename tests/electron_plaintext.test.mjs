@@ -12,7 +12,7 @@ const { installDesktopPlaintext, routedThreadMessage, reviewedSourceProfiles } =
 test('reviewed Owl source hashes are complete SHA-256 values with a mapped class', () => {
   for (const profile of Object.values(reviewedSourceProfiles)) {
     assert.match(profile.hash,/^[a-f0-9]{64}$/u);
-    assert.match(profile.symbol,/^[A-Za-z][A-Za-z0-9]*$/u);
+    assert.match(profile.symbol,/^[A-Za-z_$][A-Za-z0-9_$]*$/u);
   }
 });
 
@@ -36,6 +36,33 @@ const main = `class wEe {
 }; module.exports={wEe};`;
 const hash = code => createHash('sha256').update(code).digest('hex');
 function compile(name, code) { const filename=path.join(process.cwd(),name), module=new Module(filename); module.filename=filename; module.paths=Module._nodeModulePaths(process.cwd()); module._compile(code,filename); return module.exports; }
+
+test('split stdio and connection modules require both hashes and restore their own hooks',async()=>{
+  const stdio='class $s { constructor(proc){this.proc=proc;this.sent=[];} send(message){this.sent.push(JSON.parse(message));} };module.exports={Stdio:$s,original:$s.prototype.send};';
+  const connection='class Yh { constructor(proc){this.connection={proc};} routeIncomingMessage(message){return message;} };module.exports={Connection:Yh,original:Yh.prototype.routeIncomingMessage};';
+  const proc=new EventEmitter(), updates=[];
+  const source={interceptHttp(){},reserveRoute(){return {baseUrl:'http://127.0.0.1:40001/owned',ready:Promise.resolve(),close(){}};}};
+  const hook=installDesktopPlaintext({app:{isReady:()=>false}},{source,deadlineUnixMs:Date.now()+1000,ownsBackendProcess:value=>value===proc,updateAccountMode:(_proc,mode)=>updates.push(mode)},
+    {expectedHashes:{'application-network-startup-CY4ZWOz-.js':hash(stdio),'src-BSSLXJxP.js':hash(connection)}});
+  let transport,manager;
+  try {
+    transport=compile('application-network-startup-CY4ZWOz-.js',stdio);
+    assert.equal(hook.inspect().taskConfigurationAvailable,false);
+    manager=compile('src-BSSLXJxP.js',connection);
+    assert.equal(hook.inspect().taskConfigurationAvailable,true);
+    const native=new transport.Stdio(proc);
+    native.send(JSON.stringify({id:1,method:'thread/start',params:{config:{'model_providers.custom.base_url':'https://provider.example/v1'}}}));
+    await new Promise(resolve=>setImmediate(resolve));
+    assert.equal(native.sent[0].params.config['model_providers.custom.base_url'],'http://127.0.0.1:40001/owned');
+    new manager.Connection(proc).routeIncomingMessage({method:'account/updated',params:{authMode:'apikey'}});
+    new manager.Connection(new EventEmitter()).routeIncomingMessage({method:'account/updated',params:{authMode:'chatgpt'}});
+    assert.deepEqual(updates,['apikey']);
+  } finally {hook.close();}
+  assert.equal(transport.Stdio.prototype.send,transport.original);
+  assert.equal(manager.Connection.prototype.routeIncomingMessage,manager.original);
+  const denied=installDesktopPlaintext({app:{isReady:()=>false}},{source,deadlineUnixMs:Date.now()+1000},{expectedHashes:{'application-network-startup-CY4ZWOz-.js':'0'.repeat(64)}});
+  try{compile('application-network-startup-CY4ZWOz-.js',stdio);assert.equal(denied.inspect().taskConfigurationAvailable,false);assert.equal(denied.inspect().taskConfigurationReason,'unsupported_build');}finally{denied.close();}
+});
 
 test('verified wEe context intercepts final fetch and upload request while preserving official options', async () => {
   globalThis.fixtureRequests=[];

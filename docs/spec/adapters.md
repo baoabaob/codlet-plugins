@@ -8,6 +8,28 @@ The adapters translate reviewed Codex Desktop internals into plugin capabilities
 
 Adapters use the existing local Desktop connection, React scope and native navigation. They must not create another `connect-app-host` connection that replaces the Desktop view. Missing modules, changed object identity or a replaced patch make affected capabilities unavailable and produce diagnostics. Teardown restores only hooks still owned by that instance; conflicting patches can produce `reloadRequired`.
 
+Windows package `26.924.2738.0` reports frontend `26.924.22138`, build `11645`,
+and AppServer `0.158.0-alpha.2.1`. Its scope, connection families, services and
+postbox moved into the shared module; the native sidebar, Header and new-task
+hook are in the initial module. A profile can name `page.initial` independently
+of the connection module. The new data router owns a single wildcard root and
+the existing authenticated JSX route collection. `native-navigation.js` adapts
+its location, navigation and subscriptions without creating a second router or
+changing its private route graph. New-chat placement uses the reviewed native
+SidebarGroup and inserts beside its drag/drop row. Native task drafts include
+the reviewed Codex app mode. Older memory-history and sidebar profiles remain.
+
+The isolated Windows UI acceptance covered Codlet registration, full GUI and
+settings, native back/forward, editable draft creation, and composer action
+registration/click. The API fixture read compatibility, selection, tasks, models,
+providers and events through ordinary plugin RPC. After seeding one persisted
+fixture turn, it opened that task through `threads.open`, confirmed resumed owner
+state, submitted a second turn through `turns.start`, and read its completed
+status and assistant text through `turns.list` and `items.list`. A fresh empty
+task has no persisted rollout to cold-resume; the fixture must seed it first.
+This is separate from MSIX,
+signed-in account and transparent traffic acceptance; see [known issues](../known-issues.md).
+
 These plugins run in the main world and explicitly require `ui.mainWorld`; UI navigation also requires `ui.dom`. Main-world code is high trust. Core-authenticated tickets prevent accidental cross-owner API use but do not turn shared page JavaScript into an OS sandbox. Raw `ui.mainWorld`, `cdp.raw` and `host.process` capability ceilings remain Core policy, independent of these semantic adapters.
 
 ## UI adapter
@@ -51,6 +73,10 @@ The navigation observer ignores ordinary streaming-content mutations. Native nav
 | `codex.ui.preSubmit` | `getApi`, `interceptors.list`; input rewrite/context injection before native `turn/start` |
 
 Read results are bounded DTOs. Provider results omit credentials, URLs, environment mappings and raw config. Writes to a task require its resumed state and owner stream in this Desktop window. Opening a task validates its identity and lets the native route own resume. Cancellation after a dispatched write may yield `outcome_unknown`; callers inspect state/events rather than blindly repeat the write.
+
+Native JSON-RPC integer error codes become `desktop_request_failed` with the
+bounded original rejection message. Ordinary backend refusals must not produce
+malformed Core error DTOs or retire otherwise working adapter capabilities.
 
 Approval responses use instance-owned tokens, revalidate the live request and reject unsupported schemas. Event cursors belong to one adapter instance, report gaps after eviction, and are invalid after retirement. The bounded event history is not a durable audit log.
 

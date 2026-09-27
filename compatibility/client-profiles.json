@@ -108,6 +108,18 @@
         "exports": { "react": "e6", "dom": "P3", "client": "N3", "sidebar": "bC", "headerInit": "p7", "header": "f7", "newTaskInit": "d2", "newTask": "h2" },
         "composerAction": { "rootAttribute": "data-codex-composer-root", "scrollAreaAttribute": "data-composer-utility-bar-scroll-area" }
       }
+    },
+    {
+      "appVersion": "26.924.22138", "buildNumber": "11645", "platform": "windows-x86_64", "appServerVersion": "0.158.0-alpha.2.1", "navigation": true, "runtimeSkill": true, "threadConfiguration": true, "threadReconfiguration": true,
+      "entry": "app://-/assets/index-90c6cda9bd3d.js", "module": "app://-/assets/app-shared-c568b0b98683.js",
+      "exports": { "scope": "tSt", "manager": "_C", "client": "yC", "services": "nC", "postbox": "Z1t" },
+      "page": {
+        "react": "app://-/assets/app-shared-c568b0b98683.js", "dom": "app://-/assets/app-shared-c568b0b98683.js",
+        "client": "app://-/assets/app-shared-c568b0b98683.js", "primary": "app://-/assets/app-initial-ff48311587c5.js", "initial": "app://-/assets/app-initial-ff48311587c5.js",
+        "exports": { "react": "t0t", "dom": "F1t", "client": "P1t", "sidebar": "nkt", "sidebarGroup": "rkt", "headerInit": "rTt", "header": "nTt", "newTaskInit": "Uct", "newTask": "qct" },
+        "composerAction": { "rootAttribute": "data-codex-composer-root", "scrollAreaAttribute": "data-composer-utility-bar-scroll-area" },
+        "newTaskOptions": { "codexAppMode": "codex" }
+      }
     }
   ]
 }

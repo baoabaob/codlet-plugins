@@ -131,9 +131,12 @@ const websocket = new WebSocketServer({ noServer: true });
 server.on('upgrade', (request, socket, head) => {
   activeCase.wsHandshakes++;
   const routeTag = activeCase.sessionRouting ? sessionRoute(request.headers) : null;
-  originLog.push({ protocol: 'websocket-handshake', path: new URL(request.url, 'http://localhost').pathname, expectedAuthentication: request.headers.authorization === expectedAuthorization, sessionHeaderMatches: sessionHeaderMatches(request.headers), ...(activeCase.sessionRouting ? { routeTag, phase: activeCase.phase } : {}) });
+  originLog.push({ protocol: 'websocket-handshake', path: new URL(request.url, 'http://localhost').pathname, expectedAuthentication: request.headers.authorization === expectedAuthorization, sessionHeaderMatches: sessionHeaderMatches(request.headers), ...(activeCase.sessionRouting ? { routeTag, phase: activeCase.phase, threadHeaderPresent: typeof request.headers['x-client-request-id']==='string' } : {}) });
   if (activeCase.sessionRouting && !routeTag) {
-    const counter = ['initializing', 'before_thread_start'].includes(activeCase.phase) ? 'blockedPreThreadProbes' : 'unmatched';
+    // New backends may warm a socket while thread/start RPCs are still pending.
+    // No user turn has been submitted in these phases. Reject the unidentified
+    // handshake; do not invent a thread mapping or forward it to any provider.
+    const counter = ['initializing', 'before_thread_start', 'starting_threads'].includes(activeCase.phase) ? 'blockedPreThreadProbes' : 'unmatched';
     activeCase[counter] = (activeCase[counter] ?? 0) + 1;
     socket.end('HTTP/1.1 409 Conflict\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'); return;
   }

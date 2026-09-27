@@ -9,12 +9,34 @@ const cwd=fileURLToPath(new URL('../frontend',import.meta.url));
 const compile=(path,name)=>buildSync({absWorkingDir:cwd,stdin:{contents:readFileSync(new URL(path,import.meta.url),'utf8'),resolveDir:path.includes('native-shell')?cwd:cwd+'/src/adapter',sourcefile:path},bundle:true,write:false,format:'iife',globalName:name,platform:'browser',loader:{'.svg':'text'},define:{'process.env.NODE_ENV':'"production"'}}).outputFiles[0].text;
 const shellSource=compile('./support/native-shell.js','NativeShell'),adapterSource=compile('../frontend/src/adapter/navigation.js','Adapter');
 function fixture(t,options){const f=uiFixture();const native={...f.window.eval(shellSource+';NativeShell;')},shell=native.mount(options),adapter=f.window.eval(adapterSource+';Adapter;');
+  native.SidebarGroup=shell.SidebarGroup;
   const toolbarOutlet=f.document.createElement('header');toolbarOutlet.dataset.nativeHeaderOutlet='';f.document.body.appendChild(toolbarOutlet);
   native.Header=({children})=>native.DOM.createPortal(children,toolbarOutlet);
   native.HeaderToolbar=({children,inset})=>native.React.createElement('div',{'data-native-header-toolbar':inset?'inset':'flush'},children);
   const drafts=[];native.useStartNewConversation=()=>options=>{drafts.push(options);shell.navigator.push('/',{prefillPrompt:options.prefillPrompt});};
   const navigation=adapter.createNavigation(f.context,native,adapter.locateHost());t.after(()=>{navigation.dispose();shell.dispose();toolbarOutlet.remove();f.dispose();});return {...f,native,shell,adapter,navigation,toolbarOutlet,drafts};}
 function register(f,{id='codlet-gui',generation=1,token='test-owner-token-123456',toolbar}={}){const lease=f.document.createElement('span');Object.assign(lease.dataset,{codletPageLease:token,codletPageOwner:id,codletGeneration:String(generation)});f.document.body.appendChild(lease);const reply=f.navigation.register({label:'Codlet',icon:'Cube',token,...(toolbar===undefined?{}:{toolbar})},{caller:{pluginId:id,generation}});return {lease,reply};}
+
+test('data-router host keeps native page history and removes only the retired plugin route',async t=>{
+  const f=fixture(t,{dataRouter:true,fragmentRouteRoot:true}),original=[...f.shell.routes];
+  const host=f.adapter.locateHost();assert.equal(host.navigator,f.adapter.locateHost().navigator);
+  const {lease,reply}=register(f,{toolbar:true});await tick();f.control('Codlet').click();await tick();
+  assert.equal(f.shell.navigator.location.pathname,reply.path);assert.ok(f.document.querySelector('[data-codlet-page-host]'));
+  f.shell.navigator.go(-1);await tick();assert.ok(f.document.getElementById('native-composer'));
+  f.shell.navigator.go(1);await tick();assert.ok(f.document.querySelector('[data-codlet-page-toolbar]'));
+  lease.remove();await tick();assert.equal(f.shell.navigator.location.pathname,'/local/start');
+  assert.equal(f.shell.routes.length,original.length);original.forEach((route,i)=>assert.equal(f.shell.routes[i],route));
+  assert.equal(f.document.querySelector('[data-codlet-page-toolbar]'),null);
+});
+
+test('the new sidebar group places Codlet beside the native New chat drag row',async t=>{
+  const f=fixture(t,{dataRouter:true,groupedNewChat:true});register(f);await tick();
+  const entry=f.document.querySelector('[data-codlet-native-navigation]');
+  assert.ok(entry);assert.equal(entry.parentElement.dataset.nativeSidebarGroup,'');
+  assert.equal(entry.previousElementSibling.dataset.nativeDragRow,'');
+  assert.equal(f.document.querySelector('[data-native-drag-row]').contains(entry),false);
+  f.control('Codlet').click();await tick();assert.ok(f.document.querySelector('[data-codlet-page-host]'));
+});
 test('build 9771 fragment-wrapped routes retain their native Route and authenticated collection',async t=>{
   const f=fixture(t,{fragmentRouteRoot:true});const host=f.adapter.locateHost();assert.equal(host.Route,f.shell.Route);assert.equal(host.routes,f.shell.routes);
   const {lease,reply}=register(f,{toolbar:true});await tick();f.control('Codlet').click();await tick();
