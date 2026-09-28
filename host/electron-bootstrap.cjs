@@ -2,7 +2,32 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { randomBytes } = require('node:crypto');
+const net = require('node:net');
 const fail = code => Object.assign(new Error(code), { code });
+function sameExecutable(expected, observed) {
+  if (typeof observed !== 'string' || !path.isAbsolute(observed)) return false;
+  try {
+    const left = fs.statSync(expected, { bigint: true }), right = fs.statSync(observed, { bigint: true });
+    // Windows realpath can preserve a verbatim prefix in just one process.
+    // Compare actual file identity, never strip prefixes without validation.
+    return left.isFile() && right.isFile() && left.ino !== 0n && left.dev === right.dev && left.ino === right.ino;
+  } catch { return false; }
+}
+
+async function confirmInspectorClosed(url, deadline) {
+  while (Date.now() < deadline) {
+    const closed = await new Promise(resolve => {
+      const peer = net.createConnection({ host: url.hostname, port: Number(url.port) });
+      const finish = value => { peer.destroy(); resolve(value); };
+      peer.once('connect', () => finish(false));
+      peer.once('error', error => finish(error.code === 'ECONNREFUSED'));
+      peer.setTimeout(Math.min(100, Math.max(1, deadline - Date.now())), () => finish(false));
+    });
+    if (closed) return;
+    await new Promise(resolve => setTimeout(resolve, 25));
+  }
+  throw fail('main_bootstrap_detach_failed');
+}
 function diagnosticSnapshot(value) {
   if (!value || typeof value !== 'object') return null;
   const code = value => typeof value === 'string' && /^[a-z_]{1,80}$/u.test(value) ? value : null;
@@ -20,7 +45,7 @@ function diagnosticSnapshot(value) {
 // Native starts ONE owned client with --inspect-brk=127.0.0.1:0 and supplies
 // the private debugger URL read from that exact child's stderr. No port scan,
 // existing client lookup, saved debugger URL or renderer CDP is accepted.
-async function attachElectronTrafficBeforeEntry({ inspectorUrl, expectedPid, executable, configuration, signal, mainSource, WebSocketClass = WebSocket }) {
+async function attachElectronTrafficBeforeEntry({ inspectorUrl, expectedPid, executable, configuration, signal, mainSource, WebSocketClass = WebSocket, verifyClosed = confirmInspectorClosed }) {
   const url = new URL(inspectorUrl);
   if (url.protocol !== 'ws:' || url.hostname !== '127.0.0.1' || !url.port || url.username || url.password || url.search || url.hash || !/^\/[a-f0-9-]{36}$/u.test(url.pathname)
     || !Number.isSafeInteger(expectedPid) || expectedPid < 1 || !path.isAbsolute(executable)) throw fail('invalid_main_bootstrap');
@@ -60,6 +85,7 @@ async function attachElectronTrafficBeforeEntry({ inspectorUrl, expectedPid, exe
       socket.send(JSON.stringify({ id, method, params }));
     });
   }
+  let activation;
   try {
     await new Promise((resolve, reject) => { socket.addEventListener('open', resolve, { once: true }); socket.addEventListener('error', () => reject(fail('main_bootstrap_connect_failed')), { once: true }); socket.addEventListener('close', () => reject(fail('main_bootstrap_connect_failed')), { once: true }); });
     stage = 'pause'; await request('Debugger.enable'); await request('Runtime.runIfWaitingForDebugger');
@@ -69,7 +95,7 @@ async function attachElectronTrafficBeforeEntry({ inspectorUrl, expectedPid, exe
     stage = 'identity';
     const identity = await request('Debugger.evaluateOnCallFrame', { callFrameId: frame.callFrameId, expression: `({pid:process.pid,executable:require('node:fs').realpathSync(process.execPath),type:process.type,ready:require('electron').app.isReady(),electronVersion:process.versions.electron,chromeVersion:process.versions.chrome,nodeVersion:process.versions.node})`, returnByValue: true });
     const value = identity.result?.value;
-    if (identity.exceptionDetails || value?.pid !== expectedPid || value?.executable !== canonical || value?.type !== 'browser' || value?.ready !== false) throw fail('main_bootstrap_identity_mismatch');
+    if (identity.exceptionDetails || value?.pid !== expectedPid || !sameExecutable(canonical, value?.executable) || value?.type !== 'browser' || value?.ready !== false) throw fail('main_bootstrap_identity_mismatch');
     const expression = `(() => { const module={exports:{}}; ((module,exports,require)=>{${source}\n})(module,module.exports,require); const owned=module.exports.installElectronTraffic(require('electron'),${JSON.stringify({ ...configuration, deadlineUnixMs })}); const key=Symbol.for(${JSON.stringify(`codlet.private.main-traffic.${token}`)}); Object.defineProperty(globalThis,key,{value:{ready:()=>owned.ready(),inspect:()=>owned.inspect(),closeInspector:()=>{setImmediate(()=>require('node:inspector').close());return true}},configurable:true}); return {installed:true,pid:process.pid}; })()`;
     stage = 'install';
     const installed = await request('Debugger.evaluateOnCallFrame', { callFrameId: frame.callFrameId, expression, returnByValue: true });
@@ -103,8 +129,10 @@ async function attachElectronTrafficBeforeEntry({ inspectorUrl, expectedPid, exe
     stage = 'detach';
     const detached = await request('Runtime.evaluate', { expression: `globalThis[Symbol.for(${JSON.stringify(`codlet.private.main-traffic.${token}`)})].closeInspector()`, returnByValue: true });
     if (detached.exceptionDetails || detached.result?.value !== true) throw fail('main_bootstrap_detach_failed');
-    return Object.freeze({ installed: ready.result.value.installed, exactChildVerified: true,
+    activation = Object.freeze({ installed: ready.result.value.installed, exactChildVerified: true,
       activatedSources: ready.result.value.activatedSources, unsupportedSources: ready.result.value.unsupportedSources });
   } finally { clearTimeout(timer); signal?.removeEventListener('abort', stop); stop(); }
+  await verifyClosed(url, Math.min(deadlineUnixMs, Date.now() + 1500));
+  return activation;
 }
-module.exports = { attachElectronTrafficBeforeEntry };
+module.exports = { attachElectronTrafficBeforeEntry, sameExecutable };

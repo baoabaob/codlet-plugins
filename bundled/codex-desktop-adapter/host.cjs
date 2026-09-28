@@ -12,7 +12,34 @@ var require_electron_bootstrap = __commonJS({
     var fs = require("node:fs");
     var path = require("node:path");
     var { randomBytes } = require("node:crypto");
+    var net = require("node:net");
     var fail2 = (code) => Object.assign(new Error(code), { code });
+    function sameExecutable(expected, observed) {
+      if (typeof observed !== "string" || !path.isAbsolute(observed)) return false;
+      try {
+        const left = fs.statSync(expected, { bigint: true }), right = fs.statSync(observed, { bigint: true });
+        return left.isFile() && right.isFile() && left.ino !== 0n && left.dev === right.dev && left.ino === right.ino;
+      } catch {
+        return false;
+      }
+    }
+    async function confirmInspectorClosed(url, deadline) {
+      while (Date.now() < deadline) {
+        const closed = await new Promise((resolve) => {
+          const peer = net.createConnection({ host: url.hostname, port: Number(url.port) });
+          const finish = (value) => {
+            peer.destroy();
+            resolve(value);
+          };
+          peer.once("connect", () => finish(false));
+          peer.once("error", (error) => finish(error.code === "ECONNREFUSED"));
+          peer.setTimeout(Math.min(100, Math.max(1, deadline - Date.now())), () => finish(false));
+        });
+        if (closed) return;
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      throw fail2("main_bootstrap_detach_failed");
+    }
     function diagnosticSnapshot(value) {
       if (!value || typeof value !== "object") return null;
       const code = (value2) => typeof value2 === "string" && /^[a-z_]{1,80}$/u.test(value2) ? value2 : null;
@@ -30,7 +57,7 @@ var require_electron_bootstrap = __commonJS({
         backend: value.backend && { available: value.backend.available === true, reason: code(value.backend.reason) }
       };
     }
-    async function attachElectronTrafficBeforeEntry2({ inspectorUrl, expectedPid, executable, configuration, signal, mainSource, WebSocketClass = WebSocket }) {
+    async function attachElectronTrafficBeforeEntry2({ inspectorUrl, expectedPid, executable, configuration, signal, mainSource, WebSocketClass = WebSocket, verifyClosed = confirmInspectorClosed }) {
       const url = new URL(inspectorUrl);
       if (url.protocol !== "ws:" || url.hostname !== "127.0.0.1" || !url.port || url.username || url.password || url.search || url.hash || !/^\/[a-f0-9-]{36}$/u.test(url.pathname) || !Number.isSafeInteger(expectedPid) || expectedPid < 1 || !path.isAbsolute(executable)) throw fail2("invalid_main_bootstrap");
       if (signal?.aborted) throw fail2("main_bootstrap_cancelled");
@@ -102,6 +129,7 @@ var require_electron_bootstrap = __commonJS({
           socket.send(JSON.stringify({ id, method, params }));
         });
       }
+      let activation;
       try {
         await new Promise((resolve, reject) => {
           socket.addEventListener("open", resolve, { once: true });
@@ -116,7 +144,7 @@ var require_electron_bootstrap = __commonJS({
         stage = "identity";
         const identity = await request("Debugger.evaluateOnCallFrame", { callFrameId: frame.callFrameId, expression: `({pid:process.pid,executable:require('node:fs').realpathSync(process.execPath),type:process.type,ready:require('electron').app.isReady(),electronVersion:process.versions.electron,chromeVersion:process.versions.chrome,nodeVersion:process.versions.node})`, returnByValue: true });
         const value = identity.result?.value;
-        if (identity.exceptionDetails || value?.pid !== expectedPid || value?.executable !== canonical || value?.type !== "browser" || value?.ready !== false) throw fail2("main_bootstrap_identity_mismatch");
+        if (identity.exceptionDetails || value?.pid !== expectedPid || !sameExecutable(canonical, value?.executable) || value?.type !== "browser" || value?.ready !== false) throw fail2("main_bootstrap_identity_mismatch");
         const expression = `(() => { const module={exports:{}}; ((module,exports,require)=>{${source}
 })(module,module.exports,require); const owned=module.exports.installElectronTraffic(require('electron'),${JSON.stringify({ ...configuration, deadlineUnixMs })}); const key=Symbol.for(${JSON.stringify(`codlet.private.main-traffic.${token}`)}); Object.defineProperty(globalThis,key,{value:{ready:()=>owned.ready(),inspect:()=>owned.inspect(),closeInspector:()=>{setImmediate(()=>require('node:inspector').close());return true}},configurable:true}); return {installed:true,pid:process.pid}; })()`;
         stage = "install";
@@ -153,7 +181,7 @@ var require_electron_bootstrap = __commonJS({
         stage = "detach";
         const detached = await request("Runtime.evaluate", { expression: `globalThis[Symbol.for(${JSON.stringify(`codlet.private.main-traffic.${token}`)})].closeInspector()`, returnByValue: true });
         if (detached.exceptionDetails || detached.result?.value !== true) throw fail2("main_bootstrap_detach_failed");
-        return Object.freeze({
+        activation = Object.freeze({
           installed: ready.result.value.installed,
           exactChildVerified: true,
           activatedSources: ready.result.value.activatedSources,
@@ -164,8 +192,71 @@ var require_electron_bootstrap = __commonJS({
         signal?.removeEventListener("abort", stop);
         stop();
       }
+      await verifyClosed(url, Math.min(deadlineUnixMs, Date.now() + 1500));
+      return activation;
     }
-    module2.exports = { attachElectronTrafficBeforeEntry: attachElectronTrafficBeforeEntry2 };
+    module2.exports = { attachElectronTrafficBeforeEntry: attachElectronTrafficBeforeEntry2, sameExecutable };
+  }
+});
+
+// ../host/windows-bootstrap.cjs
+var require_windows_bootstrap = __commonJS({
+  "../host/windows-bootstrap.cjs"(exports2, module2) {
+    "use strict";
+    var fs = require("node:fs");
+    var path = require("node:path");
+    var { createHash } = require("node:crypto");
+    var fail2 = (code) => Object.assign(new Error(code), { code });
+    var sentinel = Buffer.from("dL7pKGdnNz796PbbjQWNKmHXBZaB9tsX");
+    var reviewed = Object.freeze({
+      b6f5c2323c642c3ad3dfdc3501aa94482970f88b4c12db0875ce593aece75c16: {
+        offset: 281415264,
+        wire: "010011001",
+        version: 1
+      }
+    });
+    function planForImage(sha256, matches) {
+      if (matches.length !== 1) throw fail2("client_bootstrap_fuse_ambiguous");
+      const fuse = matches[0];
+      if (fuse.version !== 1 || !/^[01r]{4,64}$/.test(fuse.wire)) throw fail2("client_bootstrap_fuse_unsupported");
+      if (fuse.wire[3] === "1") return { moduleData: null };
+      const profile = reviewed[sha256];
+      if (!profile || profile.offset !== fuse.offset || profile.wire !== fuse.wire || profile.version !== fuse.version) throw fail2("client_bootstrap_version_unsupported");
+      return { moduleData: { module: "chrome.dll", sha256, patches: [
+        { fileOffset: fuse.offset + sentinel.length + 2 + 3, expected: [48], replacement: [49] }
+      ] } };
+    }
+    async function beforeClientResume({ expectedPid, executable, features, signal }) {
+      if (process.platform !== "win32" || features?.moduleDataBootstrap !== 1) throw fail2("client_bootstrap_unsupported");
+      if (!Number.isSafeInteger(expectedPid) || expectedPid <= 0 || !path.isAbsolute(executable)) throw fail2("client_bootstrap_invalid");
+      if (signal?.aborted) throw fail2("host_stopping");
+      const directory = path.dirname(fs.realpathSync(executable));
+      const modulePath = path.join(directory, "chrome.dll");
+      const image = fs.existsSync(modulePath) ? modulePath : executable;
+      const size = fs.statSync(image).size;
+      if (size < 64 || size > 512 * 1024 * 1024) throw fail2("client_bootstrap_image_invalid");
+      const hash = createHash("sha256"), matches = [];
+      let tail = Buffer.alloc(0), consumed = 0;
+      for await (const chunk of fs.createReadStream(image, { highWaterMark: 256 * 1024, signal })) {
+        hash.update(chunk);
+        const bytes = Buffer.concat([tail, chunk]);
+        for (let at = bytes.indexOf(sentinel); at !== -1; at = bytes.indexOf(sentinel, at + 1)) {
+          if (at + sentinel.length + 2 > bytes.length) continue;
+          const count = bytes[at + sentinel.length + 1];
+          const end = at + sentinel.length + 2 + count;
+          if (end > bytes.length) continue;
+          const offset = consumed - tail.length + at;
+          if (matches.some((match) => match.offset === offset)) continue;
+          if (matches.length >= 2) throw fail2("client_bootstrap_fuse_ambiguous");
+          matches.push({ offset, version: bytes[at + sentinel.length], wire: count >= 4 && count <= 64 ? bytes.toString("ascii", at + sentinel.length + 2, end) : "" });
+        }
+        consumed += chunk.length;
+        tail = Buffer.from(bytes.subarray(-100));
+      }
+      if (consumed !== size) throw fail2("client_bootstrap_image_changed");
+      return planForImage(hash.digest("hex"), matches);
+    }
+    module2.exports = { beforeClientResume, planForImage };
   }
 });
 
@@ -328,10 +419,13 @@ function sourceDescriptor(traffic) {
   if (source?.version !== 1 || source.kind !== "plaintext" || !source.endpoint || source.endpoint.host !== "127.0.0.1" || !Number.isSafeInteger(source.endpoint.port) || source.endpoint.port < 1 || source.endpoint.port > 65535 || typeof source.endpoint.token !== "string" || !source.endpoint.token || typeof source.routeBaseUrl !== "string") throw fail("invalid_plaintext_source");
   return source;
 }
-async function prepareClientLaunch({ traffic, signal }) {
+async function prepareClientLaunch({ traffic, signal, features }) {
   if (signal.aborted) throw fail("host_stopping");
   sourceDescriptor(traffic);
-  return { arguments: ["--inspect-brk=127.0.0.1:0"] };
+  return {
+    arguments: ["--inspect-brk=127.0.0.1:0"],
+    ...process.platform === "win32" && features?.moduleDataBootstrap === 1 ? { beforeResume: true } : {}
+  };
 }
 async function attachClientLaunch({ inspectorUrl, expectedPid, executable, traffic, signal }) {
   const source = sourceDescriptor(traffic);
@@ -352,5 +446,6 @@ module.exports = {
   },
   prepareClientLaunch,
   attachClientLaunch,
+  beforeClientResume: require_windows_bootstrap().beforeClientResume,
   ...require_codex_traffic()
 };

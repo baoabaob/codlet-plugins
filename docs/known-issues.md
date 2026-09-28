@@ -22,31 +22,22 @@ The unauthenticated GitHub importer cannot install private repositories or draft
 
 ## Traffic activation boundaries
 
-**Windows `26.924.2738.0` does not currently support the existing transparent
-traffic launch path.** Its signed `chrome.dll` has Electron fuse wire
-`010011001` (v1): `nodeCliInspect` and `nodeOptions` are disabled. An isolated
-launch with the original private `--inspect-brk` flag starts native UI but never
-provides the required inspector; the owned launch fails with
-`client_inspector_unavailable`. Its native main-inspector toggle also explicitly
-reports unavailable. GUI/read APIs and standalone backend fixtures passing do
-not override this limitation. No binary/fuse/ASAR modification, certificate or
-proxy workaround is shipped. Keep a traffic consumer disabled on this build
-until a replacement integration has been verified; silently bypassing an
-enabled interceptor is not an acceptable fallback.
+Windows x64 `26.924.2738.0` disables its private Node inspector by default.
+The new [owned-client startup bootstrap](spec/windows-startup-bootstrap.md)
+restores the existing Desktop and backend sources through the negotiated Core
+before-resume phase. The Adapter requires the exact reviewed DLL hash; Core
+temporarily changes and then restores one mapped data byte. Signed disk files
+remain unchanged. An older Core without this phase still cannot attach traffic
+to this build; the integrated source must be packaged together for acceptance.
 
-A [Windows native startup prototype](spec/windows-startup-bootstrap.md) has now
-restored the existing two sources in controlled HTTP/SSE and WS tests by changing
-and then restoring one byte only in a newly owned process. The original signed
-files remained unchanged. This is research evidence, not a production switch:
-the lifecycle API, failure cases and distribution still need implementation.
-
-The backend `0.158.0-alpha.2.1` separately passed controlled HTTP/SSE and WS
-fixtures for request/response rewrites, error repair, cancellation/continuation
-and two-thread routing/resume. New JS module mappings have source review and
-split-module regression coverage, **not** an activated official main-process
-source acceptance. The new UI profile was exercised against signed unpacked
-files in the existing registered Windows package context; a new-MSIX install,
-real account session, Windows ARM64 and new macOS build remain untested.
+The production lifecycle passed isolated Desktop fetch/upload rewrites and two
+model turns over both HTTP/SSE and WebSocket, including 426 fallback, WS prewarm
+and continuation. Core confirmed restoration/debugger detach and normal child
+exit. The backend `0.158.0-alpha.2.1` also has standalone error repair,
+cancellation and two-thread routing/resume fixtures. These tests used synthetic
+credentials in an existing registered Windows package context and blocked
+unrelated OS sandbox setup. Full new-MSIX installation, real account sessions,
+managed-device protections, Windows ARM64 and the new macOS build remain untested.
 
 Windows package `26.917.8451.0` (frontend 10789, backend `0.155.0-alpha.16.3`) passed isolated exact-child Desktop fetch/upload/redirect and model HTTP/SSE/WS acceptance. Both model protocol runs completed two turns; the HTTP run preserved WebSocket 426 and then fell back to HTTP. The runs used synthetic credentials and loopback endpoints, left the original client identities unchanged and cleaned their owned children. This does not establish live OAuth or arbitrary external provider compatibility.
 

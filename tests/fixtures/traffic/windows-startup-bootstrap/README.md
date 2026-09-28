@@ -1,49 +1,34 @@
-# Windows startup bootstrap experiment
+# Windows startup bootstrap acceptance
 
-Research only, not bundled or installed with an official plugin. Uses one exact
-new suspended x64 process and the reviewed 26.924.2738.0 `chrome.dll` hash. The
-helper rejects wrong process creation time/image, a process older than ten
-seconds, changed DLL bytes or an unexpected mapped fuse byte. It never modifies
-an installed file, attaches to a daily client or adjusts OS security settings.
+This fixture exercises the production Core before-resume phase and the ordinary
+Desktop Adapter. There is no experimental native helper or alternate launch
+provider. The selected Windows image must match the Adapter's reviewed profile.
 
-This proves a replacement **startup entry**, not a new traffic implementation.
-The ordinary launch plugin and consumer use the existing Core source/interceptor
-contracts. Core's opt-in `desktop-acceptance` executable supplies the experimental
-pre-resume hook. Release Core does not implement this hook.
-
-1. Build the matching Core acceptance binary and the official plugin bundles.
+1. Build Core's `codlet-desktop-acceptance` binary with the `desktop-acceptance`
+   feature, and build the official plugin bundles.
 2. Run `node tests/fixtures/traffic/windows-startup-bootstrap/prepare.mjs NEW_ABSOLUTE_OUTPUT`.
-3. Compile `StartupProbe.cs` into `StartupProbe.exe` in that output directory:
+3. Fill the reviewed app directory and Core binary paths in `config.example.json`.
+4. Run Core's `scripts/desktop-acceptance.mjs` with that config. Use a fresh
+   `root` for every run; repeat with `fixtureWebSocket: true`.
 
-   ```powershell
-   $parameters = New-Object System.CodeDom.Compiler.CompilerParameters
-   $parameters.GenerateExecutable = $true
-   $parameters.OutputAssembly = 'ABSOLUTE_OUTPUT/StartupProbe.exe'
-   $parameters.CompilerOptions = '/platform:x64 /optimize+'
-   $parameters.ReferencedAssemblies.Add('System.dll') | Out-Null
-   Add-Type -Path 'ABSOLUTE_OUTPUT/StartupProbe.cs' -CompilerParameters $parameters
-   ```
+The harness uses separate profiles, synthetic credentials, loopback servers and
+an ordinary interceptor plugin. Desktop fetch/upload requests and two model
+turns must observe modified requests and responses. WS must exercise prewarm,
+server frames and continuation. The HTTP fixture rejects the initial WS upgrade
+with 426 and verifies fallback.
 
-4. Fill the absolute reviewed app and Core binary paths in `config.example.json`.
-   The selected app must include its signed backend companions. Use a disposable
-   Windows test environment for native first-run flows: the official client can
-   request Windows sandbox setup independently of this transport experiment.
-   Do not automate elevation or use an existing account/profile as the fixture.
-5. Explicitly run Core's `scripts/desktop-acceptance.mjs` with that config. For a
-   second run use a new `root` and `fixtureWebSocket: true`.
+Only the fixture main bundle adds `guarded-main.cjs`: it blocks the official
+client's unrelated `windowsSandbox/setupStart` RPC before it can install OS
+components. It logs only a blocked marker, never request content. All traffic
+sources and startup phases use production implementations. This guard is absent
+from the released Adapter. Never use a real account or existing profile.
 
-The helper reads/hashes the DLL as a stream, arms an exact-child debugger, changes
-one mapped data byte during DLL load, restores page protection and detaches the
-native debugger. After the ordinary Adapter closes its private inspector, the
-fixture signals restoration of the original byte. The helper verifies the
-restored byte and exits. Missing handshakes/timeouts are failures, not fallback
-authorization. The lab launch wrapper also normalizes the Core resolver's
-verbatim DOS path before the existing Adapter's canonical-image comparison.
+Inspect `probe.json`, `fixture.jsonl`, `core.err.log`, `completed.json` and
+`verdict.json`. Both sources must activate, the probe must report acceptance,
+Core must confirm restoration/debugger detach, and the owned processes must
+exit. Verify the original image hash/signature separately. Native memory tests
+also prove that the child sees the modified data followed by its original
+value, with no debugger attached.
 
-Inspect `native-bootstrap.json`, `adapter-attach.json`, `fixture.jsonl` and the
-last `probe.json` result. The report must show both named sources, modified
-Desktop bodies, two completed modified model turns, the original byte restored,
-and the inspector closed. WS must include prewarm and continuation. Original
-file hash/signature and exact-child shutdown are separate checks. Generic
-`verdict.json.rendered` only observes text in the native window; it is not full
-GUI or sandbox acceptance. See [the research decision](../../../../docs/spec/windows-startup-bootstrap.md).
+This is transport acceptance, not full GUI, installer, native sandbox setup or
+real OAuth acceptance. See [the design and evidence](../../../../docs/spec/windows-startup-bootstrap.md).

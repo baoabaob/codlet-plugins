@@ -22,7 +22,7 @@ class Peer extends EventTarget {
   }
 }
 test('main handshake validates exact new process before disclosing launch settings, installs before resume and closes inspector', async () => {
-  const args = { inspectorUrl: 'ws://127.0.0.1:12345/01234567-0123-0123-0123-0123456789ab', expectedPid: 1234, executable: process.execPath, configuration: { secretMarker: 'private-source-token' }, mainSource:'module.exports.installElectronTraffic=()=>({ready:async()=>({installed:true})})', WebSocketClass: Peer };
+  const args = { inspectorUrl: 'ws://127.0.0.1:12345/01234567-0123-0123-0123-0123456789ab', expectedPid: 1234, executable: process.execPath, configuration: { secretMarker: 'private-source-token' }, mainSource:'module.exports.installElectronTraffic=()=>({ready:async()=>({installed:true})})', WebSocketClass: Peer, verifyClosed: async () => {} };
   Peer.mismatch = true; Peer.commands = [];
   await assert.rejects(attachElectronTrafficBeforeEntry(args), { code: 'main_bootstrap_identity_mismatch' });
   assert.equal(JSON.stringify(Peer.commands).includes('private-source-token'), false);

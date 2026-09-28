@@ -8,10 +8,11 @@ function sourceDescriptor(traffic) {
     || typeof source.endpoint.token !== 'string' || !source.endpoint.token || typeof source.routeBaseUrl !== 'string') throw fail('invalid_plaintext_source');
   return source;
 }
-async function prepareClientLaunch({ traffic, signal }) {
+async function prepareClientLaunch({ traffic, signal, features }) {
   if (signal.aborted) throw fail('host_stopping');
   sourceDescriptor(traffic);
-  return { arguments: ['--inspect-brk=127.0.0.1:0'] };
+  return { arguments: ['--inspect-brk=127.0.0.1:0'],
+    ...(process.platform === 'win32' && features?.moduleDataBootstrap === 1 ? { beforeResume: true } : {}) };
 }
 async function attachClientLaunch({ inspectorUrl, expectedPid, executable, traffic, signal }) {
   const source = sourceDescriptor(traffic);
@@ -20,4 +21,5 @@ async function attachClientLaunch({ inspectorUrl, expectedPid, executable, traff
     configuration: { source, runtimeExecutable: process.execPath } });
 }
 module.exports = { activate() {}, deactivate() {}, prepareClientLaunch, attachClientLaunch,
+  beforeClientResume: require('./windows-bootstrap.cjs').beforeClientResume,
   ...require('./codex-traffic.cjs') };
