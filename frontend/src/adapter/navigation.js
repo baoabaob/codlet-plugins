@@ -101,6 +101,26 @@ function nativePlacement(SidebarItem, SidebarGroup) {
   return candidates[0] ?? null;
 }
 
+function railPlacement(SidebarGroup) {
+  const rails = document.querySelectorAll('nav[data-app-navigation-rail="true"]');
+  if (rails.length !== 1) return null;
+  // The reviewed rail's outer SidebarGroup owns Home, the fixed destinations,
+  // Explore and the nested sortable group. Stay outside the sortable region.
+  const rail = rails[0], home = rail.querySelector('[data-sidebar-destination="builtin:home"]');
+  const key = home && Object.keys(home).find(key => key.startsWith('__reactFiber$'));
+  let fiber = key && home[key];
+  for (let depth = 0; fiber && depth < 24; depth++, fiber = fiber.return) {
+    if (fiber.type !== SidebarGroup || fiber.memoizedProps?.itemSpacing !== 'rail') continue;
+    const parent = fiber.child?.stateNode;
+    if (parent?.nodeType !== 1 || !rail.contains(parent) || !parent.contains(home)) return null;
+    const fixed = parent.querySelector('[data-sidebar-destination="builtin:customize"]') ?? home;
+    let anchor = fixed;
+    while (anchor.parentElement !== parent) anchor = anchor.parentElement;
+    return { parent, anchor };
+  }
+  return null;
+}
+
 function pageOwner(args, invocation) {
   const caller = invocation?.caller;
   if (!caller || typeof caller.pluginId !== 'string' || !Number.isSafeInteger(caller.generation)) throw fail('invalid_owner', 'Page registration requires a Core-authenticated caller');
@@ -136,7 +156,7 @@ export function createNavigation(context, native, host) {
       dispose() { alive = false; actions.dispose(); },
     };
   }
-  const { React, DOM, Client, SidebarItem, Header, HeaderToolbar } = native;
+  const { React, DOM, Client, SidebarItem, Header, HeaderToolbar, RailButton, RailTooltip } = native;
   const { Cube, CodeSquareSlash, PluginPuzzle } = createCodletIcons(React);
   const icons = { Cube, CodeSquareSlash, Codlet: PluginPuzzle };
   const entries = new Map(), h = React.createElement;
@@ -150,11 +170,17 @@ export function createNavigation(context, native, host) {
   };
   const renderNav = () => {
     if (!alive || !navRoot) return;
-    navRoot.render(h(React.Fragment, null, ...[...entries.values()].map(entry =>
-      h(SidebarItem, { key: entry.token, label: entry.label, icon: icons[entry.icon],
-        isActive: entry.active, 'aria-label': entry.label, 'data-codlet-navigation-entry': entry.owner,
-        onClick: () => { try { check(); if (!entry.active) { entry.previous = { ...host.navigator.location }; host.navigator.push(entry.path); } }
-          catch (error) { context.reportDiagnostic?.({ code: error.code, message: error.message }); } } }))));
+    navRoot.render(h(React.Fragment, null, ...[...entries.values()].map(entry => {
+      const onClick = () => { try { check(); if (!entry.active) { entry.previous = { ...host.navigator.location }; host.navigator.push(entry.path); } }
+        catch (error) { context.reportDiagnostic?.({ code: error.code, message: error.message }); } };
+      const props = { 'aria-label': entry.label, 'data-codlet-navigation-entry': entry.owner, onClick };
+      return RailButton ? h(RailTooltip, { key: entry.token, cloneCustomTrigger: true, closeOnTriggerClick: true,
+        side: 'right', tooltipContent: entry.label },
+        h(RailButton, { ...props, 'aria-current': entry.active ? 'page' : undefined,
+          color: 'secondary', variant: 'ghost', pill: false, size: 'xl', iconSize: 'lg', uniform: true, selected: entry.active },
+          h(icons[entry.icon]), h('span', { className: 'sr-only' }, entry.label))) :
+        h(SidebarItem, { ...props, key: entry.token, label: entry.label, icon: icons[entry.icon], isActive: entry.active });
+    })));
   };
   const retire = entry => {
     if (!entries.delete(entry.owner)) return;
@@ -173,11 +199,13 @@ export function createNavigation(context, native, host) {
     if (!alive) return;
     if (!hostLive()) { navContainer?.remove(); return; }
     for (const entry of [...entries.values()]) if (!entry.lease.isConnected) retire(entry);
-    const placement = nativePlacement(SidebarItem, native.SidebarGroup);
+    const placement = RailButton ? railPlacement(native.SidebarGroup) : nativePlacement(SidebarItem, native.SidebarGroup);
     if (!placement || !entries.size) { navContainer?.remove(); return; }
     if (!navContainer) {
       navContainer = document.createElement('div'); navContainer.dataset.codletNativeNavigation = '1';
-      navContainer.className = 'flex flex-col gap-px';
+      // Let the native rail own spacing, scrolling and sizing, including when
+      // several plugins register pages. Legacy sidebars keep their row spacing.
+      navContainer.className = RailButton ? 'contents' : 'flex flex-col gap-px';
       navRoot = Client.createRoot(navContainer); renderNav();
     }
     if (navContainer.parentElement !== placement.parent || navContainer.previousElementSibling !== placement.anchor)
@@ -232,13 +260,13 @@ export function createNavigation(context, native, host) {
     // teardown clears the outlet on navigation; a second toolbar in the page
     // body would duplicate the shell's header height and shift all content.
     const content = h('div', { 'data-codlet-page-host': entry.token,
-      className: 'h-full min-h-0 min-w-0 flex flex-col',
+      className: 'h-full min-h-0 min-w-0 flex flex-col overflow-auto',
       ref: node => { entry.active = !!node; queueMicrotask(renderNav); } });
     entry.route = h(host.Route, { id: 'codlet:' + caller.pluginId, path: entry.path + '/*',
       element: h(React.Fragment,null,
         native.useStartNewConversation?h(DraftBridge,{entry}):null,
         args.toolbar ? h(React.Fragment, null,
-        h(Header, null, h(HeaderToolbar, { inset: true },
+        h(Header, null, h(HeaderToolbar, { inset: native.toolbarInset ?? true },
           h('div', { 'data-codlet-page-toolbar': entry.token, className: 'flex w-full min-w-0 items-center' }))),
         content) : content) });
     host.routes.push(entry.route); entries.set(entry.owner, entry); reconcile(); renderNav();
@@ -287,6 +315,13 @@ async function loadNative() {
   native.composerActionProfile = page.composerAction ?? null;
   native.SidebarGroup = names.sidebarGroup ? primary[names.sidebarGroup] : undefined;
   if(names.sidebarGroup && typeof native.SidebarGroup!=='function')throw fail('ui_build_drift','The reviewed native sidebar group changed');
+  if (page.navigationRail) {
+    native.RailButton = react[page.navigationRail.button];
+    native.RailTooltip = react[page.navigationRail.tooltip];
+    if (typeof native.RailButton !== 'function' || typeof native.RailTooltip !== 'function' || !native.SidebarGroup)
+      throw fail('ui_build_drift', 'The reviewed native navigation rail changed');
+  }
+  native.toolbarInset = page.toolbarInset;
   native.newTaskOptions = page.newTaskOptions ?? {};
   // Same lazy initializer and hook used by the official Create plugin/skill
   // flow. The hook is called inside Native's route and AppScope providers.

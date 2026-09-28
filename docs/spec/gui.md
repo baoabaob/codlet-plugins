@@ -20,6 +20,14 @@ Settings use revision checks so another window's changes are not silently overwr
 
 Use Core UI API 2's React instance, official components and owner-scoped portals. Custom React components, DOM refs, CSS and complete JavaScript remain supported. The native toolbar, menu/dialog portals, IME-aware tag completion, focus restoration, reduced motion, theme and zh/en messages are part of the existing behavior.
 
+The Adapter owns host-version-specific navigation and toolbar placement. GUI
+content reserves scrollbar space symmetrically so its centered column remains
+aligned with the native page toolbar whether or not it scrolls. Tag icons use
+the host's semantic icon accent; hovered/selected tags use the host accent
+surface and a derived accent border. Older themes fall back to Core's existing
+host-synchronized accent control token. No orange palette is fixed in tag CSS,
+and changing the host theme/accent does not require reopening the GUI.
+
 When `context.ui.page` exists, navigation registration remains light until the page is opened; departure disposes the page UI owner. The fallback to `context.ui.create().page()` preserves compatibility with earlier API 2 runtimes. Do not remove it without deliberately changing the supported SDK contract.
 
 Page closure stops GUI timers and invalidates pending view replies. Deactivation also disposes manager listeners and UI ownership. This releases plugin resources but does not guarantee Chromium isolated-world destruction; see [known issues](../known-issues.md).

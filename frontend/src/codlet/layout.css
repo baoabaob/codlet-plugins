@@ -1,6 +1,6 @@
 /* Native SectionedPage geometry; controls and interactions remain Apps SDK UI. */
-[data-codlet-panel] { height:100%; min-height:0; color:var(--color-text); overflow:hidden; -webkit-app-region:no-drag; }
-[data-codlet-panel] .codlet-scroll { height:100%; min-height:0; overflow-x:hidden; overflow-y:auto; scrollbar-gutter:stable; overscroll-behavior:contain; }
+[data-codlet-panel] { --codlet-tag-accent:var(--app-color-icon-accent,var(--switch-track-color-checked,var(--color-text-info))); height:100%; min-height:0; color:var(--color-text); overflow:hidden; -webkit-app-region:no-drag; }
+[data-codlet-panel] .codlet-scroll { height:100%; min-height:0; overflow-x:hidden; overflow-y:auto; scrollbar-gutter:stable both-edges; overscroll-behavior:contain; }
 [data-codlet-panel] .codlet-width { width:100%; max-width:var(--codlet-content-width,48rem); margin-inline:auto; padding-inline:var(--codlet-panel-padding,20px); }
 [data-codlet-panel] .codlet-heading { display:flex; align-items:center; justify-content:space-between; gap:24px; padding-top:var(--codlet-panel-padding,20px); }
 [data-codlet-panel] .codlet-heading-inner { display:flex; flex-direction:column; gap:8px; min-width:0; }
@@ -39,11 +39,11 @@
 [data-codlet-panel] .codlet-plugin-copy { min-width:0; }
 [data-codlet-panel] .codlet-plugin-title { display:flex; align-items:center; flex-wrap:wrap; gap:5px 8px; min-width:0; }
 [data-codlet-panel] .codlet-plugin-tags { display:inline-flex; align-items:center; flex-wrap:wrap; gap:5px; min-width:0; max-width:100%; }
-[data-codlet-panel] .codlet-plugin-tag { display:inline-flex; align-items:center; gap:3px; padding:0 7px; min-height:22px; max-width:100%; border:1px solid light-dark(#dcdfe2,#484b50); border-radius:7px; color:light-dark(#595c61,#c5c7ca); font-size:11px; font-weight:400; line-height:18px; overflow-wrap:anywhere; }
+[data-codlet-panel] .codlet-plugin-tag { display:inline-flex; align-items:center; gap:3px; padding:0 7px; min-height:22px; max-width:100%; border:1px solid var(--color-border); border-radius:7px; color:var(--color-text-secondary); font-size:11px; font-weight:400; line-height:18px; overflow-wrap:anywhere; }
 [data-codlet-panel] button.codlet-plugin-tag { background:transparent; font-family:inherit; cursor:pointer; }
-[data-codlet-panel] button.codlet-plugin-tag:hover, [data-codlet-panel] button.codlet-plugin-tag[aria-pressed=true] { background:light-dark(#fff2e9,#382b25); border-color:light-dark(#e7b99b,#8d6045); }
+[data-codlet-panel] button.codlet-plugin-tag:hover, [data-codlet-panel] button.codlet-plugin-tag[aria-pressed=true] { background:var(--app-color-background-accent,color-mix(in srgb,var(--codlet-tag-accent) 12%,transparent)); border-color:color-mix(in srgb,var(--codlet-tag-accent) 50%,var(--color-border)); }
 [data-codlet-panel] button.codlet-plugin-tag:focus-visible { outline:2px solid var(--color-ring); outline-offset:2px; }
-[data-codlet-panel] .codlet-tag-hash { display:block; flex:0 0 16px; width:16px; height:16px; color:light-dark(#c3572d,#ffad7a); }
+[data-codlet-panel] .codlet-tag-hash { display:block; flex:0 0 16px; width:16px; height:16px; color:var(--codlet-tag-accent); }
 [data-codlet-panel] .codlet-plugin-name { font-size:14px; font-weight:var(--font-weight-medium); overflow-wrap:anywhere; }
 [data-codlet-panel] .codlet-plugin-description { margin-top:4px; font-size:13px; line-height:20px; color:var(--color-text-secondary); overflow-wrap:anywhere; }
 [data-codlet-panel] .codlet-plugin-actions { display:flex; align-items:center; gap:8px; }

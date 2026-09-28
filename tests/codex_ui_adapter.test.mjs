@@ -10,9 +10,11 @@ const compile=(path,name)=>buildSync({absWorkingDir:cwd,stdin:{contents:readFile
 const shellSource=compile('./support/native-shell.js','NativeShell'),adapterSource=compile('../frontend/src/adapter/navigation.js','Adapter');
 function fixture(t,options){const f=uiFixture();const native={...f.window.eval(shellSource+';NativeShell;')},shell=native.mount(options),adapter=f.window.eval(adapterSource+';Adapter;');
   native.SidebarGroup=shell.SidebarGroup;
+  native.RailButton=shell.RailButton;native.RailTooltip=shell.RailTooltip;
+  native.toolbarInset=options?.rail?'page':undefined;
   const toolbarOutlet=f.document.createElement('header');toolbarOutlet.dataset.nativeHeaderOutlet='';f.document.body.appendChild(toolbarOutlet);
   native.Header=({children})=>native.DOM.createPortal(children,toolbarOutlet);
-  native.HeaderToolbar=({children,inset})=>native.React.createElement('div',{'data-native-header-toolbar':inset?'inset':'flush'},children);
+  native.HeaderToolbar=({children,inset})=>native.React.createElement('div',{'data-native-header-toolbar':inset==='page'?'page':inset?'inset':'flush'},children);
   const drafts=[];native.useStartNewConversation=()=>options=>{drafts.push(options);shell.navigator.push('/',{prefillPrompt:options.prefillPrompt});};
   const navigation=adapter.createNavigation(f.context,native,adapter.locateHost());t.after(()=>{navigation.dispose();shell.dispose();toolbarOutlet.remove();f.dispose();});return {...f,native,shell,adapter,navigation,toolbarOutlet,drafts};}
 function register(f,{id='codlet-gui',generation=1,token='test-owner-token-123456',toolbar}={}){const lease=f.document.createElement('span');Object.assign(lease.dataset,{codletPageLease:token,codletPageOwner:id,codletGeneration:String(generation)});f.document.body.appendChild(lease);const reply=f.navigation.register({label:'Codlet',icon:'Cube',token,...(toolbar===undefined?{}:{toolbar})},{caller:{pluginId:id,generation}});return {lease,reply};}
@@ -29,13 +31,53 @@ test('data-router host keeps native page history and removes only the retired pl
   assert.equal(f.document.querySelector('[data-codlet-page-toolbar]'),null);
 });
 
-test('the new sidebar group places Codlet beside the native New chat drag row',async t=>{
+test('a contextual sidebar without a rail keeps pages outside the native New chat drag row',async t=>{
   const f=fixture(t,{dataRouter:true,groupedNewChat:true});register(f);await tick();
   const entry=f.document.querySelector('[data-codlet-native-navigation]');
   assert.ok(entry);assert.equal(entry.parentElement.dataset.nativeSidebarGroup,'');
   assert.equal(entry.previousElementSibling.dataset.nativeDragRow,'');
   assert.equal(f.document.querySelector('[data-native-drag-row]').contains(entry),false);
   f.control('Codlet').click();await tick();assert.ok(f.document.querySelector('[data-codlet-page-host]'));
+});
+
+test('reviewed rail pages use native icon buttons and tooltips outside the contextual and sortable sidebars',async t=>{
+  const f=fixture(t,{dataRouter:true,groupedNewChat:true,rail:true});
+  const {lease,reply}=register(f,{toolbar:true});await tick();
+  const rail=f.document.querySelector('[data-app-navigation-rail]'),entry=f.document.querySelector('[data-codlet-native-navigation]');
+  assert.ok(rail.contains(entry));assert.equal(entry.className,'contents');
+  assert.equal(entry.previousElementSibling.dataset.sidebarDestination,'builtin:customize');
+  assert.equal(entry.nextElementSibling.hasAttribute('data-native-explore'),true);
+  assert.equal(entry.parentElement.parentElement,rail);
+  const button=f.control('Codlet');
+  assert.equal(button.hasAttribute('data-native-rail-button'),true);
+  for(const [key,value] of Object.entries({color:'secondary',variant:'ghost',size:'xl',iconSize:'lg',nativeTooltip:'Codlet',tooltipSide:'right',tooltipClone:'true',tooltipCloseOnClick:'true'}))assert.equal(button.dataset[key],value,key);
+  assert.equal(button.hasAttribute('data-uniform'),true);assert.equal(button.hasAttribute('data-pill'),false);
+  assert.equal(button.querySelector('.sr-only').textContent,'Codlet');
+  assert.equal(button.hasAttribute('aria-current'),false);assert.equal(button.hasAttribute('data-selected'),false);
+  button.click();await tick();assert.equal(f.shell.navigator.location.pathname,reply.path);
+  assert.equal(button.getAttribute('aria-current'),'page');assert.equal(button.hasAttribute('data-selected'),true);
+  const toolbar=f.document.querySelector('[data-codlet-page-toolbar]');assert.equal(toolbar.parentElement.dataset.nativeHeaderToolbar,'page');
+  assert.ok(f.toolbarOutlet.contains(toolbar));
+  f.shell.navigator.go(-1);await tick();assert.equal(button.hasAttribute('aria-current'),false);assert.equal(button.hasAttribute('data-selected'),false);
+  f.shell.navigator.go(1);await tick();assert.equal(button.getAttribute('aria-current'),'page');
+  lease.remove();await tick();assert.equal(f.document.querySelector('[data-codlet-native-navigation]'),null);
+  assert.equal(f.shell.navigator.location.pathname,'/local/start');assert.equal(f.errors.length,0);
+});
+
+test('rail replacement preserves one entry per owner without falling back to the task sidebar or scanning streaming content',async t=>{
+  const f=fixture(t,{dataRouter:true,groupedNewChat:true,rail:true});register(f);register(f,{id:'second-plugin',token:'second-page-token-123456'});await tick();
+  const rail=f.document.querySelector('[data-app-navigation-rail]'),parent=rail.parentElement;
+  assert.equal(rail.querySelectorAll('[data-codlet-navigation-entry]').length,2);
+  const original=f.document.querySelectorAll.bind(f.document);let scans=0;
+  f.document.querySelectorAll=(selector,...args)=>{if(selector.includes('navigation-rail'))scans++;return original(selector,...args);};
+  const stream=f.document.createElement('article');f.document.querySelector('#root main').append(stream);await tick();scans=0;
+  for(let i=0;i<30;i++){stream.textContent=String(i);await Promise.resolve();await Promise.resolve();}assert.equal(scans,0);
+  rail.remove();await tick();assert.equal(f.document.querySelector('[data-codlet-native-navigation]'),null);
+  parent.prepend(rail);await tick();assert.equal(rail.querySelectorAll('[data-codlet-navigation-entry]').length,2);
+  const duplicate=rail.cloneNode(true);parent.prepend(duplicate);await tick();
+  assert.equal(rail.querySelector('[data-codlet-native-navigation]'),null,'ambiguous native landmarks must not receive an entry');
+  duplicate.remove();await tick();assert.equal(rail.querySelectorAll('[data-codlet-navigation-entry]').length,2);
+  f.document.querySelectorAll=original;assert.equal(f.errors.length,0);
 });
 test('build 9771 fragment-wrapped routes retain their native Route and authenticated collection',async t=>{
   const f=fixture(t,{fragmentRouteRoot:true});const host=f.adapter.locateHost();assert.equal(host.Route,f.shell.Route);assert.equal(host.routes,f.shell.routes);

@@ -227,6 +227,8 @@ var client_profiles_default = {
         primary: "app://-/assets/app-initial-ff48311587c5.js",
         initial: "app://-/assets/app-initial-ff48311587c5.js",
         exports: { react: "t0t", dom: "F1t", client: "P1t", sidebar: "nkt", sidebarGroup: "rkt", headerInit: "rTt", header: "nTt", newTaskInit: "Uct", newTask: "qct" },
+        navigationRail: { button: "HQt", tooltip: "sS" },
+        toolbarInset: "page",
         composerAction: { rootAttribute: "data-codex-composer-root", scrollAreaAttribute: "data-composer-utility-bar-scroll-area" },
         newTaskOptions: { codexAppMode: "codex" }
       }

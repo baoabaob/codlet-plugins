@@ -268,6 +268,8 @@ var client_profiles_default = {
         primary: "app://-/assets/app-initial-ff48311587c5.js",
         initial: "app://-/assets/app-initial-ff48311587c5.js",
         exports: { react: "t0t", dom: "F1t", client: "P1t", sidebar: "nkt", sidebarGroup: "rkt", headerInit: "rTt", header: "nTt", newTaskInit: "Uct", newTask: "qct" },
+        navigationRail: { button: "HQt", tooltip: "sS" },
+        toolbarInset: "page",
         composerAction: { rootAttribute: "data-codex-composer-root", scrollAreaAttribute: "data-composer-utility-bar-scroll-area" },
         newTaskOptions: { codexAppMode: "codex" }
       }
@@ -615,6 +617,23 @@ function nativePlacement(SidebarItem, SidebarGroup) {
   candidates.sort((a, b) => a.priority - b.priority);
   return candidates[0] ?? null;
 }
+function railPlacement(SidebarGroup) {
+  const rails = document.querySelectorAll('nav[data-app-navigation-rail="true"]');
+  if (rails.length !== 1) return null;
+  const rail = rails[0], home = rail.querySelector('[data-sidebar-destination="builtin:home"]');
+  const key2 = home && Object.keys(home).find((key3) => key3.startsWith("__reactFiber$"));
+  let fiber = key2 && home[key2];
+  for (let depth = 0; fiber && depth < 24; depth++, fiber = fiber.return) {
+    if (fiber.type !== SidebarGroup || fiber.memoizedProps?.itemSpacing !== "rail") continue;
+    const parent = fiber.child?.stateNode;
+    if (parent?.nodeType !== 1 || !rail.contains(parent) || !parent.contains(home)) return null;
+    const fixed = parent.querySelector('[data-sidebar-destination="builtin:customize"]') ?? home;
+    let anchor = fixed;
+    while (anchor.parentElement !== parent) anchor = anchor.parentElement;
+    return { parent, anchor };
+  }
+  return null;
+}
 function pageOwner(args, invocation) {
   const caller = invocation?.caller;
   if (!caller || typeof caller.pluginId !== "string" || !Number.isSafeInteger(caller.generation)) throw fail2("invalid_owner", "Page registration requires a Core-authenticated caller");
@@ -649,7 +668,7 @@ function createNavigation(context, native, host) {
       }
     };
   }
-  const { React, DOM, Client, SidebarItem, Header, HeaderToolbar } = native;
+  const { React, DOM, Client, SidebarItem, Header, HeaderToolbar, RailButton, RailTooltip } = native;
   const { Cube, CodeSquareSlash, PluginPuzzle } = createCodletIcons(React);
   const icons = { Cube, CodeSquareSlash, Codlet: PluginPuzzle };
   const entries = /* @__PURE__ */ new Map(), h = React.createElement;
@@ -663,14 +682,8 @@ function createNavigation(context, native, host) {
   };
   const renderNav = () => {
     if (!alive || !navRoot) return;
-    navRoot.render(h(React.Fragment, null, ...[...entries.values()].map((entry) => h(SidebarItem, {
-      key: entry.token,
-      label: entry.label,
-      icon: icons[entry.icon],
-      isActive: entry.active,
-      "aria-label": entry.label,
-      "data-codlet-navigation-entry": entry.owner,
-      onClick: () => {
+    navRoot.render(h(React.Fragment, null, ...[...entries.values()].map((entry) => {
+      const onClick = () => {
         try {
           check();
           if (!entry.active) {
@@ -680,8 +693,35 @@ function createNavigation(context, native, host) {
         } catch (error) {
           context.reportDiagnostic?.({ code: error.code, message: error.message });
         }
-      }
-    }))));
+      };
+      const props = { "aria-label": entry.label, "data-codlet-navigation-entry": entry.owner, onClick };
+      return RailButton ? h(
+        RailTooltip,
+        {
+          key: entry.token,
+          cloneCustomTrigger: true,
+          closeOnTriggerClick: true,
+          side: "right",
+          tooltipContent: entry.label
+        },
+        h(
+          RailButton,
+          {
+            ...props,
+            "aria-current": entry.active ? "page" : void 0,
+            color: "secondary",
+            variant: "ghost",
+            pill: false,
+            size: "xl",
+            iconSize: "lg",
+            uniform: true,
+            selected: entry.active
+          },
+          h(icons[entry.icon]),
+          h("span", { className: "sr-only" }, entry.label)
+        )
+      ) : h(SidebarItem, { ...props, key: entry.token, label: entry.label, icon: icons[entry.icon], isActive: entry.active });
+    })));
   };
   const retire = (entry) => {
     if (!entries.delete(entry.owner)) return;
@@ -700,7 +740,7 @@ function createNavigation(context, native, host) {
       return;
     }
     for (const entry of [...entries.values()]) if (!entry.lease.isConnected) retire(entry);
-    const placement = nativePlacement(SidebarItem, native.SidebarGroup);
+    const placement = RailButton ? railPlacement(native.SidebarGroup) : nativePlacement(SidebarItem, native.SidebarGroup);
     if (!placement || !entries.size) {
       navContainer?.remove();
       return;
@@ -708,7 +748,7 @@ function createNavigation(context, native, host) {
     if (!navContainer) {
       navContainer = document.createElement("div");
       navContainer.dataset.codletNativeNavigation = "1";
-      navContainer.className = "flex flex-col gap-px";
+      navContainer.className = RailButton ? "contents" : "flex flex-col gap-px";
       navRoot = Client.createRoot(navContainer);
       renderNav();
     }
@@ -774,7 +814,7 @@ function createNavigation(context, native, host) {
     entry.description = { api: 1, token: entry.token, path: entry.path };
     const content = h("div", {
       "data-codlet-page-host": entry.token,
-      className: "h-full min-h-0 min-w-0 flex flex-col",
+      className: "h-full min-h-0 min-w-0 flex flex-col overflow-auto",
       ref: (node) => {
         entry.active = !!node;
         queueMicrotask(renderNav);
@@ -792,7 +832,7 @@ function createNavigation(context, native, host) {
           null,
           h(Header, null, h(
             HeaderToolbar,
-            { inset: true },
+            { inset: native.toolbarInset ?? true },
             h("div", { "data-codlet-page-toolbar": entry.token, className: "flex w-full min-w-0 items-center" })
           )),
           content
@@ -846,6 +886,13 @@ async function loadNative() {
   native.composerActionProfile = page.composerAction ?? null;
   native.SidebarGroup = names.sidebarGroup ? primary[names.sidebarGroup] : void 0;
   if (names.sidebarGroup && typeof native.SidebarGroup !== "function") throw fail2("ui_build_drift", "The reviewed native sidebar group changed");
+  if (page.navigationRail) {
+    native.RailButton = react[page.navigationRail.button];
+    native.RailTooltip = react[page.navigationRail.tooltip];
+    if (typeof native.RailButton !== "function" || typeof native.RailTooltip !== "function" || !native.SidebarGroup)
+      throw fail2("ui_build_drift", "The reviewed native navigation rail changed");
+  }
+  native.toolbarInset = page.toolbarInset;
   native.newTaskOptions = page.newTaskOptions ?? {};
   if (typeof initial[names.newTaskInit] !== "function") throw fail2("ui_build_drift", "The reviewed new-task initializer changed");
   initial[names.newTaskInit]();

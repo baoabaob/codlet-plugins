@@ -15,9 +15,38 @@ hook are in the initial module. A profile can name `page.initial` independently
 of the connection module. The new data router owns a single wildcard root and
 the existing authenticated JSX route collection. `native-navigation.js` adapts
 its location, navigation and subscriptions without creating a second router or
-changing its private route graph. New-chat placement uses the reviewed native
-SidebarGroup and inserts beside its drag/drop row. Native task drafts include
+changing its private route graph. Its global navigation uses the narrow native
+rail rather than the contextual task/project sidebar. Native task drafts include
 the reviewed Codex app mode. Older memory-history and sidebar profiles remain.
+
+Build 11645's rail is the `data-app-navigation-rail` landmark. Placement verifies
+the native `SidebarGroup` identity and its `itemSpacing="rail"` ancestor of Home;
+page entries sit after the fixed Customize destination, before Explore and
+outside the sortable pins. A `display:contents` owner lets the original group
+control spacing and scrolling. Entries use the reviewed shared Button (`HQt`)
+and Tooltip (`sS`) exports with the same `xl` square button, `lg` icon, ghost
+secondary variant, selected state, right-side tooltip and keyboard behavior as
+the built-in destinations. Labels remain accessible without consuming rail
+width. No official component props or destination preferences are overwritten.
+Ambiguous/missing rail landmarks do not redirect registration to the task list.
+
+The native HeaderToolbar's default inset is explicitly reset to zero inside the
+new page surface. This profile uses the native `inset="page"` mode instead:
+content width and panel padding come from the host theme. Other reviewed builds
+keep their original inset. Route departure retires the toolbar and selection;
+rail replacement reconciles the same owned entry, without duplicating it.
+The page content outlet is a bounded scroll container. Pages that render natural
+document-height content can scroll under the new clipped AppShell; pages with
+their own full-height scroll area, including the GUI, retain that inner scroller.
+
+Isolated build 11645 acceptance measured identical native/plugin rail buttons
+(36 × 36 CSS pixels, 20-pixel icons), native tooltip/focus behavior, selected
+state, back/forward, settings and the Add menu. At 1280 pixels, the page toolbar
+and GUI content share their left/right alignment with 12-pixel native toolbar
+insets. An 840-pixel window retained the controls without horizontal overflow;
+the capability test page scrolled a 3403-pixel document inside a 726-pixel outlet.
+Changing the live accent token between blue, purple and orange updated tag
+icons in place. These are client UI/fixture checks, not installer acceptance.
 
 The isolated Windows UI acceptance covered Codlet registration, full GUI and
 settings, native back/forward, editable draft creation, and composer action
