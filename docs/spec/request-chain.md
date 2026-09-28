@@ -27,6 +27,12 @@ toggle throws `Feature unavailable`. Per [Electron's fuse contract](https://www.
 the disabled inspect fuse suppresses inspect CLI arguments. Do not mark this
 Desktop traffic path accepted or alter the signed binary to claim acceptance.
 
+Subsequent [owned native startup research](windows-startup-bootstrap.md) verified
+both sources after a transient in-memory bootstrap. That prototype restores the
+byte and closes its debuggers, and does not change this production availability
+gate. Its results and pending production work are recorded separately from the
+original inspector-only failure.
+
 The unmodified backend passed the six HTTP/WS provider cases and two-thread
 HTTP routing; a separate WS routing run passed six turns with resume/provider
 reconfiguration. An unidentified WS warm-up can arrive while `thread/start`

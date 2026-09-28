@@ -6,6 +6,7 @@ This repository owns Codex-specific behavior and official plugin UX. Generic plu
 | --- | --- |
 | [Adapters](spec/adapters.md) | Native navigation, Desktop semantic capabilities, trust and compatibility |
 | [Traffic Adapter](spec/traffic.md) | Consumer-owned interception, backend/Electron integration and coverage limits |
+| [Windows startup research](spec/windows-startup-bootstrap.md) | Validated replacement entry prototype, measured cost and work before shipping |
 | [GUI](spec/gui.md) | Production management behavior and UI lifecycle |
 | [Marketplace](spec/marketplace.md) | Production discovery, metadata, installation review and preview tools |
 | [Development](development.md) | Contributions, clean builds, tests and previews |

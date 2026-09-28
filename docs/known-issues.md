@@ -34,6 +34,12 @@ proxy workaround is shipped. Keep a traffic consumer disabled on this build
 until a replacement integration has been verified; silently bypassing an
 enabled interceptor is not an acceptable fallback.
 
+A [Windows native startup prototype](spec/windows-startup-bootstrap.md) has now
+restored the existing two sources in controlled HTTP/SSE and WS tests by changing
+and then restoring one byte only in a newly owned process. The original signed
+files remained unchanged. This is research evidence, not a production switch:
+the lifecycle API, failure cases and distribution still need implementation.
+
 The backend `0.158.0-alpha.2.1` separately passed controlled HTTP/SSE and WS
 fixtures for request/response rewrites, error repair, cancellation/continuation
 and two-thread routing/resume. New JS module mappings have source review and
