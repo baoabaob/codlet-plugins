@@ -6323,7 +6323,26 @@ var current2;
 function fibers() {
   const root = document.getElementById("root");
   const key2 = root && Object.keys(root).find((key3) => key3.startsWith("__reactContainer$"));
-  const container = key2 && root[key2], pending = [container?.stateNode?.current ?? container], seen = /* @__PURE__ */ new Set();
+  const container = key2 && root[key2], current3 = container?.stateNode?.current ?? container;
+  const rails = root ? [...root.querySelectorAll('nav[data-app-navigation-rail="true"]')] : [];
+  const landmarks = rails.length ? rails : root ? [...root.querySelectorAll("nav")].filter((nav) => [...nav.querySelectorAll("button.sidebar-item")].some((button) => !button.closest("[data-codlet-native-navigation]"))) : [];
+  if (landmarks.length > 1) throw fail5("ui_host_drift", "Native navigation ownership is ambiguous");
+  if (landmarks.length === 1) {
+    const landmark = landmarks[0], key3 = Object.keys(landmark).find((key4) => key4.startsWith("__reactFiber$"));
+    const attached = key3 && landmark[key3];
+    for (const start of [attached, attached?.alternate]) {
+      if (!start || start.stateNode !== landmark) continue;
+      const chain = /* @__PURE__ */ new Set();
+      let fiber = start;
+      while (fiber && !chain.has(fiber) && chain.size < 256) {
+        chain.add(fiber);
+        if (fiber === current3) return chain;
+        fiber = fiber.return;
+      }
+    }
+    throw fail5("ui_host_pending", "Waiting for the current native navigation tree");
+  }
+  const pending = [current3], seen = /* @__PURE__ */ new Set();
   while (pending.length && seen.size < 2e4) {
     const fiber = pending.pop();
     if (!fiber || seen.has(fiber)) continue;

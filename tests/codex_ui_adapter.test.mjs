@@ -19,6 +19,28 @@ function fixture(t,options){const f=uiFixture();const native={...f.window.eval(s
   const navigation=adapter.createNavigation(f.context,native,adapter.locateHost());t.after(()=>{navigation.dispose();shell.dispose();toolbarOutlet.remove();f.dispose();});return {...f,native,shell,adapter,navigation,toolbarOutlet,drafts};}
 function register(f,{id='codlet-gui',generation=1,token='test-owner-token-123456',toolbar,icon='Cube'}={}){const lease=f.document.createElement('span');Object.assign(lease.dataset,{codletPageLease:token,codletPageOwner:id,codletGeneration:String(generation)});f.document.body.appendChild(lease);const reply=f.navigation.register({label:'Codlet',icon,token,...(toolbar===undefined?{}:{toolbar})},{caller:{pluginId:id,generation}});return {lease,reply};}
 
+test('large conversations do not block native page navigation or back and forward',async t=>{
+  const f=fixture(t,{dataRouter:true,objectRoutes:true,rail:true,conversationNodes:21000});
+  assert.equal(f.document.querySelector('[data-large-conversation]').childElementCount,21000);
+  assert.ok(f.adapter.fibers().size<256,'inspect the shell ancestry, independent of conversation size');
+  const {reply}=register(f,{toolbar:true});await tick();f.control('Codlet').click();await tick();
+  assert.equal(f.shell.navigator.location.pathname,reply.path);assert.ok(f.document.querySelector('[data-codlet-page-host]'));
+  f.shell.navigator.go(-1);await tick();assert.ok(f.document.querySelector('[data-large-conversation]'));
+  f.control('Codlet').click();await tick();assert.equal(f.shell.navigator.location.pathname,reply.path);
+  assert.equal(f.errors.length,0);
+});
+
+test('native navigation ownership rejects duplicate, detached and cyclic shell ancestry',t=>{
+  const f=fixture(t,{dataRouter:true,objectRoutes:true,rail:true});
+  const rail=f.document.querySelector('[data-app-navigation-rail]'),key=Object.keys(rail).find(key=>key.startsWith('__reactFiber$'));
+  const original=rail[key],duplicate=rail.cloneNode(false);rail.parentElement.append(duplicate);
+  assert.throws(()=>f.adapter.locateHost(),{code:'ui_host_drift'});duplicate.remove();
+  rail[key]={stateNode:rail,return:null};assert.throws(()=>f.adapter.locateHost(),{code:'ui_host_pending'});
+  rail[key].return=rail[key];assert.throws(()=>f.adapter.locateHost(),{code:'ui_host_pending'});
+  rail[key]={stateNode:rail,return:null,alternate:original};assert.equal(f.adapter.locateHost().tree,f.shell.tree);
+  rail[key]=original;
+});
+
 test('data-router host keeps native page history and removes only the retired plugin route',async t=>{
   const f=fixture(t,{dataRouter:true,fragmentRouteRoot:true}),original=[...f.shell.routes];
   const host=f.adapter.locateHost();assert.equal(host.navigator,f.adapter.locateHost().navigator);

@@ -25,7 +25,32 @@ let current;
 export function fibers() {
   const root = document.getElementById('root');
   const key = root && Object.keys(root).find(key => key.startsWith('__reactContainer$'));
-  const container = key && root[key], pending = [container?.stateNode?.current ?? container], seen = new Set();
+  const container = key && root[key], current = container?.stateNode?.current ?? container;
+  // Router providers belong to the native shell's ancestry. A conversation may
+  // contain tens of thousands of fibers and is not part of this contract.
+  const rails = root ? [...root.querySelectorAll('nav[data-app-navigation-rail="true"]')] : [];
+  const landmarks = rails.length ? rails : root ? [...root.querySelectorAll('nav')].filter(nav =>
+    [...nav.querySelectorAll('button.sidebar-item')].some(button => !button.closest('[data-codlet-native-navigation]'))) : [];
+  if (landmarks.length > 1) throw fail('ui_host_drift', 'Native navigation ownership is ambiguous');
+  if (landmarks.length === 1) {
+    const landmark = landmarks[0], key = Object.keys(landmark).find(key => key.startsWith('__reactFiber$'));
+    const attached = key && landmark[key];
+    // React may leave a host node pointing at the alternate after a commit.
+    // Accept only a bounded chain that reaches this root's current tree.
+    for (const start of [attached, attached?.alternate]) {
+      if (!start || start.stateNode !== landmark) continue;
+      const chain = new Set(); let fiber = start;
+      while (fiber && !chain.has(fiber) && chain.size < 256) {
+        chain.add(fiber);
+        if (fiber === current) return chain;
+        fiber = fiber.return;
+      }
+    }
+    throw fail('ui_host_pending', 'Waiting for the current native navigation tree');
+  }
+  // Auxiliary windows and cold startup have no navigation landmark. Keep a
+  // bounded fallback there; an unrelated large document must still fail closed.
+  const pending = [current], seen = new Set();
   while (pending.length && seen.size < 20000) {
     const fiber = pending.pop();
     if (!fiber || seen.has(fiber)) continue;

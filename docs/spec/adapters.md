@@ -8,6 +8,14 @@ The adapters translate reviewed Codex Desktop internals into plugin capabilities
 
 The discovery path reads only local modules already referenced by the native document. An AST parser resolves React CommonJS factories through their export relationships; no source text is evaluated, and arbitrary exports are never called to guess their purpose. Native rail components must also occur in the mounted Home ancestry. The page header and draft hook are checked separately. Composer DOM actions can continue even when page navigation is unavailable.
 
+Page routing inspects the unique native rail's ancestry (or the legacy sidebar),
+bounded to 256 fibers and tied to the current React root. It does not walk the
+conversation on each page click: long conversations can exceed the former
+20,000-fiber limit and otherwise block an already registered page. React's
+alternate is accepted only when its ancestry reaches the current root. Duplicate
+landmarks and detached or cyclic ancestry remain unavailable. Cold startup and
+the auxiliary pet window retain bounded discovery without a sidebar landmark.
+
 Build 12246 preconverts its JSX routes into route objects. The adapter finds the existing root in mounted RouteContext matches and appends/removes only its own route in the authenticated child collection. Legacy JSX collections still use their original path. Both paths preserve the native router, history and providers.
 
 Windows package `26.928.1915.0` (frontend `26.928.20755` / `12246`, AppServer
