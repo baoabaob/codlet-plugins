@@ -29,7 +29,7 @@ test('market discovery filters real repository facts and leaves unreviewed compa
   m.marketSet({onlyDevice:true});assert.equal(m.marketFiltered().length,0);
 });
 
-test('official installer seed adopts only after exact ZIP review, trust, grants and one receipt',async t=>{
+test('official installer seed adopts only after exact ZIP review, explicit consent and one receipt',async t=>{
   const f=await fixture(t),m=f.manager;await m.marketPage();
   const item=m.state.market.items.find(item=>item.fullName==='baoabaob/codlet-gui');
   m.marketDetails(item);await m.reviewMarket(item);
@@ -40,7 +40,7 @@ test('official installer seed adopts only after exact ZIP review, trust, grants 
   assert.equal(m.state.market.selected.preparedReleasePublishedAt,item.latestRelease.publishedAt);
   assert.equal(m.state.market.selected.declarationStatus,'matched');
   assert.equal(m.importReady(),false);
-  m.grant('ui.dom',true);m.set({trusted:true});assert.equal(m.importReady(),true);
+  m.consent(true);assert.equal(m.importReady(),true);
   m.submitImport();assert.ok(m.state.importWarning);
   await m.confirmImport();
   assert.equal(called(f,'prepare').length,1);assert.equal(called(f,'submit').length,1);
@@ -66,7 +66,7 @@ test('explicit Core incompatibility blocks an otherwise trusted market package',
     const reply=await f.demo.request(null,'githubPrepare',args);
     reply.result.deviceCompatibility.status='incompatible';return reply;
   });
-  await m.reviewMarket(item);m.grant('ui.dom',true);m.set({trusted:true});
+  await m.reviewMarket(item);m.consent(true);
   assert.equal(m.importReady(),false);m.submitImport();assert.equal(called(f,'prepare').length,0);
 });
 
@@ -79,7 +79,7 @@ test('a declaration that differs from the prepared ZIP is dropped while actual r
   assert.equal(m.state.market.selected.totalDownloads,null);
   assert.match(m.state.importStatus,/differ from the reviewed ZIP/);
   assert.ok(m.state.preview);
-  m.grant('ui.dom',true);m.set({trusted:true});assert.equal(m.importReady(),true);
+  m.consent(true);assert.equal(m.importReady(),true);
 });
 
 test('an incomplete older-release count stays unknown while the latest declaration supports device filtering',async t=>{
