@@ -55,10 +55,10 @@ var shapes = {
 function createCodletIcons(React, fallback = {}) {
   const icons = { ...fallback };
   for (const [name, elements] of Object.entries(shapes)) {
-    icons[name] = function Icon({ className = "", ...props }) {
+    icons[name] = function Icon({ className = "", filled = false, ...props }) {
       return React.createElement(
         "svg",
-        { width: "1em", height: "1em", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.5, strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": true, focusable: false, ...props, className: ("codlet-line-icon " + className).trim() },
+        { width: "1em", height: "1em", viewBox: "0 0 24 24", fill: filled && name === "PluginPuzzle" ? "currentColor" : "none", stroke: filled && name === "PluginPuzzle" ? "none" : "currentColor", strokeWidth: 1.5, strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": true, focusable: false, ...props, className: ("codlet-line-icon " + className).trim() },
         ...elements.map(([tag, attributes], key2) => React.createElement(tag, { ...attributes, key: key2 }))
       );
     };
@@ -717,7 +717,7 @@ function createNavigation(context, native, host) {
             uniform: true,
             selected: entry.active
           },
-          h(icons[entry.icon]),
+          h(icons[entry.icon], { filled: entry.active }),
           h("span", { className: "sr-only" }, entry.label)
         )
       ) : h(SidebarItem, { ...props, key: entry.token, label: entry.label, icon: icons[entry.icon], isActive: entry.active });

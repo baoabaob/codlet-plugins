@@ -19,7 +19,7 @@ test('verified installer channels join checks and update-all while same-name loc
   assert.equal(f.m.updateCandidates().length,0);assert.match(f.m.pluginCheckMessage(),/Check again/);
 });
 
-test('first remote seed review submits adoption and keeps disabled state and every existing scope',async t=>{
+test('seed review requires fresh consent before replacing old scopes with client access',async t=>{
   const f=await setup(t);f.m.setVisible(false);
   const seed={id:'dev.seed',source:'local',registered:true,ownership:'installer-seed',updateSource:{kind:'github',versionKey:'seed-v1',operation:'adopt'}};
   const policy={readRoots:['C:/Read'],writeRoots:['C:/Write'],watchRoots:['C:/Watch'],networkOrigins:['https://example.com'],executables:['C:/Tool.exe'],cwdRoots:['C:/Work'],envKeys:['SELECTED'],shortcuts:['Ctrl+Shift+K']};
@@ -29,7 +29,7 @@ test('first remote seed review submits adoption and keeps disabled state and eve
   await f.m.reviewPluginUpdate(seed);assert.equal(f.m.state.importOperation,'adopt');assert.equal(f.m.state.preview,p);assert.equal(f.m.state.enableAfter,false);
   p.changes.restartRequired=true;assert.equal(f.m.importReady(),false,'Entry-shape changes must not submit an unsafe hot update');p.changes.restartRequired=false;
   let submitted;f.m.mutate=(id,action,request)=>{submitted={id,action,request};};
-  f.m.submitImport();f.m.confirmImport();assert.equal(submitted.action,'update');assert.equal(submitted.request.local_import.managed,'adopt');assert.equal(submitted.request.local_import.enable,false);assert.deepEqual(submitted.request.local_import.grants,grants);assert.deepEqual(submitted.request.local_import.brokerPolicy,policy);
+  assert.equal(f.m.importReady(),false);f.m.consent(true);f.m.submitImport();f.m.confirmImport();assert.equal(submitted.action,'update');assert.equal(submitted.request.local_import.managed,'adopt');assert.equal(submitted.request.local_import.enable,false);assert.deepEqual(submitted.request.local_import.grants,grants);assert.deepEqual(submitted.request.local_import.brokerPolicy,{clientPermissions:true});
 });
 test('one-click updates use one Core batch without manual release or download steps and survive closing the page',async t=>{
   const f=await setup(t),p=f.m.state.plugins.find(p=>p.id==='managed.notes');let batch={id:1,running:true,items:[{pluginId:p.id,versionKey:p.managedVersionKey??'old',phase:'downloading'}]};
@@ -88,19 +88,19 @@ test('runtime folders use only fixed locations, suppress duplicate clicks and do
   assert.equal(count(f,'openRuntimeFolder'),2);assert.equal(f.m.state.folderError,'');
 });
 const local=async f=>{f.m.importPage();f.m.setPath('C:/Author/plugin');await f.m.inspectLocal();};
-const trust=m=>{for(const p of m.state.preview.manifest.permissions)m.grant(p,true);m.set({trusted:true});};
+const trust=m=>m.consent(true);
 const github=async f=>{f.m.importPage('github');f.m.setUrl('https://github.com/example/codlet-notes');await f.m.readReleases();f.m.selectRelease('20');f.m.selectAsset('200');await f.m.downloadAsset();};
 test('each local import uses a fresh preview, explicit trust and all permissions, then submits once',async t=>{
-  const f=await setup(t);await local(f);assert.equal(f.m.importReady(),false);f.m.set({trusted:true});assert.equal(f.m.importReady(),false);f.m.grant('ui.dom',true);assert.equal(f.m.importReady(),true);
+  const f=await setup(t);await local(f);assert.equal(f.m.importReady(),false);f.m.set({trusted:true});assert.equal(f.m.importReady(),false);f.m.consent(true);assert.equal(f.m.importReady(),true);
   f.m.submitImport();f.m.submitImport();assert.equal(count(f,'prepare'),0);assert.equal(count(f,'submit'),0);
   const one=f.m.confirmImport(),two=f.m.confirmImport();await Promise.all([one,two]);assert.equal(count(f,'prepare'),1);assert.equal(count(f,'submit'),1);
   const request=f.calls.find(c=>c.method==='prepare').args;assert.equal(request.local_import.enable,false);assert.deepEqual(request.local_import.grants,['ui.dom']);assert.equal(request.local_import.trusted,true);assert.equal(f.m.state.error,'');
   await local(f);assert.equal(f.m.state.trusted,false);assert.deepEqual(f.m.state.grants,[]);
 });
 test('changed paths and leaving import reject late previews and discard prior trust/policy',async t=>{
-  const f=await setup(t);await local(f);trust(f.m);f.m.set({policy:{readRoots:'C:/Sensitive'}});const pending=deferred(),preview=f.m.state.preview;
+  const f=await setup(t);await local(f);trust(f.m);const pending=deferred(),preview=f.m.state.preview;
   f.overrides.set('previewLocal',()=>pending.promise);const loading=f.m.inspectLocal();f.m.setPath('C:/Different/plugin');pending.resolve(preview);await loading;
-  assert.equal(f.m.state.preview,null);assert.equal(f.m.state.trusted,false);assert.deepEqual(f.m.state.policy,{});f.m.back();assert.equal(f.m.timers.has('preview'),false);
+  assert.equal(f.m.state.preview,null);assert.equal(f.m.state.trusted,false);f.m.back();assert.equal(f.m.timers.has('preview'),false);
 });
 test('folder picker is polled by selection ID, inspects selection and ignores cancellation and late replies',async t=>{
   const f=await setup(t);f.m.importPage();f.overrides.set('chooseLocalFolder',()=>({selectionId:'pick',status:'selected',path:'C:/Chosen'}));await f.m.chooseFolder();assert.equal(f.m.state.preview.path,'C:/Chosen');assert.equal(f.m.state.trusted,false);

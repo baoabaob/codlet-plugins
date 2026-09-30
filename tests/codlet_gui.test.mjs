@@ -58,7 +58,7 @@ test('search keeps IME drafts until composition ends',async t=>{
   const f=await fixture(t,'zh');await f.open();const input=f.control('搜索插件');input.dispatchEvent(new f.window.CompositionEvent('compositionstart',{bubbles:true}));await f.input('搜索插件','笔记');assert.equal(f.document.querySelectorAll('[data-codlet-plugin]').length,5);input.dispatchEvent(new f.window.CompositionEvent('compositionend',{bubbles:true}));await tick();assert.equal(f.document.querySelectorAll('[data-codlet-plugin]').length,0);
 });
 test('automatic folder preview, official grants and language changes preserve current form state',async t=>{
-  const f=await fixture(t);await f.open();await importPlugins(f);await f.click('Choose plugin folder');assert.equal(f.control('Plugin folder').value,'C:/Projects/Local Notes');assert.equal(f.control('Confirm local import').disabled,true);await f.click('Trust this local plugin');await f.click('Grant ui.dom');assert.equal(f.control('Confirm local import').disabled,false);await f.locale('zh');assert.equal(f.control('插件文件夹').value,'C:/Projects/Local Notes');assert.equal(f.control('确认导入本地插件').disabled,false);assert.equal(f.document.querySelectorAll('a[href="https://github.com/topics/codlet-plugin"]').length,1);
+  const f=await fixture(t);await f.open();await importPlugins(f);await f.click('Choose plugin folder');assert.equal(f.control('Plugin folder').value,'C:/Projects/Local Notes');assert.equal(f.control('Confirm local import').disabled,true);await f.click('Agree and authorize');assert.equal(f.control('Confirm local import').disabled,false);await f.locale('zh');assert.equal(f.control('插件文件夹').value,'C:/Projects/Local Notes');assert.equal(f.control('确认导入本地插件').disabled,false);assert.equal(f.document.querySelectorAll('a[href="https://github.com/topics/codlet-plugin"]').length,1);
 });
 test('Windows picker paths hide only display prefixes and retain the original preview path',async t=>{
   const f=await fixture(t);await f.open();await importPlugins(f);
@@ -71,9 +71,9 @@ test('Windows picker paths hide only display prefixes and retain the original pr
   await f.input('Plugin folder','C:\\Edited\\plugin');await new Promise(resolve=>setTimeout(resolve,450));await tick();
   assert.equal(f.calls.filter(c=>c.method==='previewLocal').at(-1).args.path,'C:\\Edited\\plugin');assert.equal(f.control('Plugin folder').value,'C:\\Edited\\plugin');
 });
-test('normal versions have no extra header info; navigation and actions use the owned native toolbar',async t=>{
+test('normal versions have no extra header info; branding precedes in-page navigation and actions',async t=>{
   const f=await fixture(t);await f.open();assert.equal(f.control('Version and compatibility'),undefined);assert.equal(f.document.querySelector('.codlet-warning-icon'),null);assert.doesNotMatch(f.document.querySelector('.codlet-brand').textContent,/Development/);
-  assert.ok(f.control('Settings').closest('[data-codlet-page-toolbar]'));assert.ok(f.control('Add').closest('[data-codlet-page-toolbar]'));
+  assert.ok(f.control('Settings').closest('.codlet-navigation-row'));assert.ok(f.control('Add').closest('.codlet-heading'));assert.ok(f.document.querySelector('.codlet-heading').compareDocumentPosition(f.document.querySelector('.codlet-navigation-row')) & f.window.Node.DOCUMENT_POSITION_FOLLOWING);
   await f.click('Settings');assert.deepEqual([...f.document.querySelectorAll('.codlet-version-details dt')].map(el=>el.textContent),['Codlet version','Current client version','Codlet adapted version']);assert.deepEqual([...f.document.querySelectorAll('.codlet-version-details dd')].map(el=>el.textContent),['0.1.0','26.908.4834.0','26.908.4834.0']);assert.doesNotMatch(f.document.getElementById('codlet-version-section').textContent,/Update channel|Latest client|Official published client|Check for client updates|Installed client|Next automatic check/);await f.leave();assert.equal(f.document.querySelector('.codlet-top-toolbar'),null);assert.equal(f.document.querySelector('[data-codlet-panel]'),null);
 });
 test('version navigation waits for delayed settings layout before scrolling to the actual section',async t=>{

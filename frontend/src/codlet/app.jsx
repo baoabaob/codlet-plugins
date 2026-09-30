@@ -1,5 +1,5 @@
 import { Manager } from './controller.js';
-import { PERMISSION_COPY, descriptionText } from './messages.js';
+import { descriptionText } from './messages.js';
 import { displayPath } from './paths.js';
 import { versionWarnings } from './versions.js';
 import { createSettingsView } from './settings.jsx';
@@ -11,7 +11,9 @@ import { createMarketplaceView } from './marketplace.jsx';
 import marketplaceStyle from './marketplace.css';
 import { tagCatalog, tagAtCaret, suggestTags, insertTag } from './tag-search.js';
 import { isOfficialPlugin } from './marketplace-model.js';
-let React,h,C,I,ui,manager,Settings,CodletIcon,ProjectLinks,Marketplace,MarketplaceDetails,Compatibility,epoch=0;
+import { pluginDependencies } from './permissions.js';
+import { createPermissionSummary } from './permissions-view.jsx';
+let React,h,C,I,ui,manager,Settings,CodletIcon,ProjectLinks,Marketplace,MarketplaceDetails,Compatibility,PermissionSummary,epoch=0;
 const t = value => manager.messages.t(value);
 const name = plugin => manager.messages.name(plugin);
 const description = plugin => manager.messages.description(plugin);
@@ -115,27 +117,28 @@ function Preview({s}) {
   const p=s.preview,m=p.manifest;
   const marketItem=s.market.reviewReturn?s.market.selected:null,source=p.source;
   const official=!!marketItem&&source?.repositoryId===marketItem.repositoryId&&source?.ownerId===marketItem.ownerId&&isOfficialPlugin({id:m.id,source:{kind:'github',repository:marketItem.fullName,repositoryId:source.repositoryId,ownerId:source.ownerId}});
-  const requirements=[...(m.renderer?(m.requires??[]):[]),...(m.host?(m.renderer?m.host.requires??[]:m.requires??[]):[])];
-  const choices=[['host.fs','readRoots','Allowed read folders — one full path per line'],['host.fs.write','writeRoots','Allowed write folders — one full path per line'],['host.fs.watch','watchRoots','Allowed watch folders — one full path per line'],['host.network','networkOrigins','Allowed network origins — one HTTP(S) origin per line'],[m.permissions.includes('host.process.spawn')?'host.process.spawn':'host.process','executables','Allowed child programs — one full path per line'],['host.process.spawn','cwdRoots','Allowed working folders — one full path per line'],['host.process.spawn','envKeys','Allowed environment keys — one name per line'],['core.shortcuts','shortcuts','Allowed global shortcuts — one combination per line']];
+  const dependencies=pluginDependencies(m,s.plugins,p.dependencyCheck);
   return <div className="codlet-local-preview">
     <h2>{name(m)}{official&&<span className="market-official codlet-review-official">{t('Official')}</span>}</h2><Copy>{m.id} · {m.version}</Copy><PluginTags tags={m.tags} show={s.settings?.effective?.showPluginTags!==false}/>{p.metadata?.author&&<Copy>{t(`Declared author: ${p.metadata.author}`)}</Copy>}
-    {requirements.length>0&&<Copy>{t('Dependencies')}{'\n'}{requirements.map(r=>`${r.name}@${r.api} (${r.scope})`).join('\n')}</Copy>}
-    {(p.dependencyCheck?.requirements??[]).some(r=>r.status==='unavailable')&&<Copy>{t(`Currently unavailable: ${p.dependencyCheck.requirements.filter(r=>r.status==='unavailable').map(r=>`${r.capability.name}@${r.capability.api}`).join(', ')}. You can import the folder while disabled, then enable its providers first.`)}</Copy>}
+    {(dependencies.plugins.length>0||dependencies.missing)&&<section className="codlet-import-section"><h2>{t('Required plugins')}</h2>
+      <ul className="codlet-dependency-plugins">{dependencies.plugins.map(({plugin,available})=><li key={plugin.id}><span>{name(plugin)}</span><span className="codlet-version">{t(available?'Ready':'Not running')}</span></li>)}</ul>
+      {dependencies.missing&&<Copy>{t('Some required plugins are not installed. Install the missing providers before enabling this plugin.')}</Copy>}
+    </section>}
     {s.mode==='github'&&<Source source={p.source} metadata={p.metadata}/>}
     <Compatibility metadata={p.metadata} device={p.deviceCompatibility??s.deviceCompatibility} clientStatus={s.clientStatus}/>
     {p.deviceCompatibility?.status==='unknown'&&<div className="market-review-warning" role="status">{t('The author has not declared compatible systems; suitability for this device is unknown.')}</div>}
     {p.deviceCompatibility?.status==='incompatible'&&<div className="market-review-warning" role="alert">{t('Core reports this package is incompatible with this device. Installation is unavailable.')}</div>}
     {s.importOperation==='adopt'&&s.target&&<Copy>{`${t('Installed version')}: ${s.target.version} → ${m.version}`}</Copy>}
     {p.currentVersion&&<><Copy>{t(`Version: ${p.currentVersion.manifest.version} → ${m.version}\nRepository: ${p.currentVersion.source.repositoryUrl} → ${p.source.repositoryUrl}\nRelease: ${p.currentVersion.source.tag} → ${p.source.tag}`)}</Copy>
-      {[['Permissions added','permissionsAdded'],['Permissions removed','permissionsRemoved'],['Dependencies added','requirementsAdded'],['Dependencies removed','requirementsRemoved']].map(([label,key])=><Copy key={key}>{t(`${label}: ${(p.changes?.[key]??[]).map(v=>typeof v==='string'?v:`${v.name}@${v.api} (${v.scope})`).join(', ')||t('None')}`)}</Copy>)}</>}
-    {p.existingRegistration&&s.mode==='local'&&<Copy>{t(`Already registered at this folder. Confirm all grants again to replace its permission settings.\nCurrent grants: ${p.existingRegistration.grants.join(', ')||'None'}. Stop the package before importing it again.`)}</Copy>}
-    <h2>{t('Requested permissions')}</h2>
+      {(p.changes?.requirementsAdded?.length>0||p.changes?.requirementsRemoved?.length>0)&&<Copy>{t('Plugin dependencies changed. Review the required plugins above.')}</Copy>}</>}
+    {p.existingRegistration&&s.mode==='local'&&<Copy>{t('This plugin is already registered. Confirming replaces its authorization with the permissions shown below.')}</Copy>}
+    <section className="codlet-import-section"><h2>{t('Requested permissions')}</h2>
     {!m.permissions.length&&<Copy>{t('No permissions requested.')}</Copy>}
-    {m.permissions.map(permission=><C.Checkbox key={permission} checked={s.grants.includes(permission)} aria-label={t(`Grant ${permission}`)} label={`${permission} — ${t(PERMISSION_COPY[permission])}`} onCheckedChange={next=>manager.grant(permission,next)}/>)}
-    {choices.filter(([permission])=>m.permissions.includes(permission)).map(([,key,label])=><div className="codlet-field" key={key}><label htmlFor={key}>{t(label)}</label><C.Textarea id={key} aria-label={t(label)} rows={2} value={s.policy[key]??''} onChange={e=>manager.set({policy:{...s.policy,[key]:e.currentTarget.value}})}/></div>)}
-    {choices.some(([permission])=>m.permissions.includes(permission))&&<Copy>{t('Empty lists grant no access through the file, network or child-process broker. Native Host code still runs with your OS user permissions.')}</Copy>}
-    <C.Checkbox checked={s.trusted} aria-label={t(s.mode==='local'?'Trust this local plugin':'Trust this GitHub source')} label={t(s.mode==='local'?'I trust this plugin’s author and this local folder.':`I trust the author and this exact source: ${p.source.repositoryUrl}, release ${p.source.tag}, asset ${p.source.assetName}.`)} onCheckedChange={trusted=>manager.set({trusted})}/>
-    <C.Checkbox checked={s.enableAfter} aria-label={t('Enable after import')} label={t('Enable immediately after importing')} onCheckedChange={enableAfter=>manager.set({enableAfter})}/>
+    <PermissionSummary key={p.contentDigest} permissions={m.permissions}/>
+    </section>
+    <div className="codlet-import-enable"><span>{t('Enable immediately after importing')}</span><C.Switch checked={s.enableAfter} aria-label={t('Enable after import')} onCheckedChange={enableAfter=>manager.set({enableAfter})}/></div>
+    {s.localManagement?.clientPermissions!==true&&<Copy error>{t('Update Codlet to use simplified authorization.')}</Copy>}
+    <C.Checkbox checked={s.trusted} aria-label={t('Agree and authorize')} label={t('I understand the permissions above, trust this plugin and agree to authorize them.')} onCheckedChange={value=>manager.consent(value)}/>
   </div>;
 }
 function ImportPage({s}) {
@@ -194,9 +197,7 @@ function Details({s}){
       {p.updateSource&&p.ownership!=='core-managed-github'&&<Copy>{t('Installer update channel')}{': '}{p.updateSource.repositoryUrl}</Copy>}
       <Compatibility metadata={p.metadata} device={p.deviceCompatibility??s.deviceCompatibility} clientStatus={s.clientStatus}/>
       {p.grants?.length>0&&<h2>{t('Granted permissions')}</h2>}
-      {(p.grants??[]).map(permission=><div className="codlet-permission-line" key={permission}><Copy>{permission}{'\n'}{t(PERMISSION_COPY[permission]||'')}</Copy>
-        {p.source!=='bundled'&&<C.Button color="secondary" variant="ghost" size="sm" data-codlet-focus-key={`revoke:${p.id}:${permission}`} aria-label={t(`Revoke ${permission}`)} onClick={()=>manager.requestRemoval(p,permission)}>{t('Revoke')}</C.Button>}</div>)}
-      {[['readRoots','Allowed read folders'],['writeRoots','Allowed write folders'],['watchRoots','Allowed watch folders'],['networkOrigins','Allowed network origins'],['executables','Allowed child programs'],['cwdRoots','Allowed working folders'],['envKeys','Allowed environment keys'],['shortcuts','Allowed global shortcuts']].filter(([key])=>p.brokerPolicy?.[key]?.length).map(([key,label])=><Copy key={key}>{t(label)}{'\n'}{p.brokerPolicy[key].join('\n')}</Copy>)}
+      <PermissionSummary key={p.id} pluginId={p.id} permissions={p.grants??[]} expandedPermission={s.detailsPermission} onRevoke={p.source!=='bundled'?permission=>{manager.set({detailsPermission:permission});manager.requestRemoval(p,permission);}:null}/>
       {manager.removalRequiresCli(p)?<div className="codlet-removal-notice"><Copy>{t('The GUI plugin cannot uninstall itself or its dependencies')}</Copy><p className="codlet-copy codlet-removal-actions"><span>{t('To uninstall, use the CLI or ')}</span><button type="button" className="codlet-inline-link" disabled={s.createBusy||s.detailsBusy||mutationBusy(s)} onClick={()=>manager.uninstallWithCodex()}>{t('use Codex')}<I.ArrowUpRight aria-hidden="true"/></button></p></div>:p.source!=='bundled'&&<C.Button color="danger" variant="soft" size="md" data-codlet-focus-key={`remove:${p.id}`} aria-label={t(`Remove ${name(p)}`)} onClick={()=>manager.requestRemoval(p)}>{t('Remove plugin')}</C.Button>}
       {(p.updateSource===undefined?p.ownership==='core-managed-github':p.updateSource?.kind==='github')&&<>
         <C.Button color="secondary" variant="soft" size="md" aria-label={t('Check GitHub versions')} onClick={()=>manager.importPage('github',p)}>{t('Check GitHub versions')}</C.Button>
@@ -230,7 +231,7 @@ function SkillHelp({s}){
     </C.Dialog.Content></C.Dialog.Portal>
   </C.Dialog.Root>;
 }
-function Page({s,toolbar}){
+function Page({s}){
   const panel=React.useRef(null),lastFocus=React.useRef(null),focusedRow=React.useRef(null),previous=React.useRef(null),handledJump=React.useRef(0),highlightTimer=React.useRef(null);
   const [versionHighlight,setVersionHighlight]=React.useState(false);
   React.useEffect(()=>()=>clearTimeout(highlightTimer.current),[]);
@@ -261,14 +262,13 @@ function Page({s,toolbar}){
   });
   React.useEffect(()=>{const changed=()=>manager.setVisible(document.visibilityState!=='hidden');changed();document.addEventListener('visibilitychange',changed);return()=>document.removeEventListener('visibilitychange',changed);},[]);
   const settings=s.page==='settings',notices=versionWarnings(s);
-  const navigation=<div className="codlet-top-toolbar"><nav className="codlet-top-navigation" aria-label={t('Codlet pages')}>{[['plugins','Plugin management'],['settings','Settings']].map(([page,label])=><C.Button key={page} color="secondary" variant={(settings?'settings':'plugins')===page?'soft':'ghost'} size="sm" aria-label={t(label)} aria-current={(settings?'settings':'plugins')===page?'page':undefined} disabled={!!s.confirmation} onClick={()=>page==='settings'?manager.settingsPage():manager.pluginsPage()}>{t(label)}</C.Button>)}</nav>
-    {['plugins','market'].includes(s.page)&&!s.confirmation&&<div className="codlet-toolbar-actions"><IconAction icon={I.Regenerate} label={s.page==='market'?'Refresh marketplace':'Refresh plugins'} disabled={s.page==='market'?s.market.loading:s.loading&&!manager.pending} loading={s.page==='market'?s.market.loading:s.loading} onClick={()=>s.page==='market'?manager.marketSearch(true):manager.refresh()}/>
+  const navigation=<div className="codlet-top-toolbar"><nav className="codlet-top-navigation" aria-label={t('Codlet pages')}>{[['plugins','Plugin management'],['settings','Settings']].map(([page,label])=><C.Button key={page} color="secondary" variant={(settings?'settings':'plugins')===page?'soft':'ghost'} size="sm" aria-label={t(label)} aria-current={(settings?'settings':'plugins')===page?'page':undefined} disabled={!!s.confirmation} onClick={()=>page==='settings'?manager.settingsPage():manager.pluginsPage()}>{t(label)}</C.Button>)}</nav></div>;
+  const actions=['plugins','market'].includes(s.page)&&!s.confirmation&&<div className="codlet-toolbar-actions"><IconAction icon={I.Regenerate} label={s.page==='market'?'Refresh marketplace':'Refresh plugins'} disabled={s.page==='market'?s.market.loading:s.loading&&!manager.pending} loading={s.page==='market'?s.market.loading:s.loading} onClick={()=>s.page==='market'?manager.marketSearch(true):manager.refresh()}/>
       {(s.localManagement?.available||s.githubAvailable)&&<C.Menu><C.Menu.Trigger><C.Button color="primary" variant="solid" size="sm" aria-label={t('Add')} disabled={mutationBusy(s)||s.loading||s.listStale}>{t('Add')}<I.ChevronDown/></C.Button></C.Menu.Trigger>
         <C.Menu.Content align="end" minWidth={180}><C.Menu.Item disabled={!s.githubAvailable} onSelect={()=>manager.marketPage()}><I.Globe className="codlet-add-menu-icon"/>{t('Plugin marketplace')}</C.Menu.Item><div className="market-menu-divider" role="separator"/><C.Menu.Item disabled={s.createBusy||!s.localManagement?.available} onSelect={()=>manager.createPlugin()}><I.Cube className="codlet-add-menu-icon"/>{t('Create plugin')}</C.Menu.Item><C.Menu.Item disabled={!s.localManagement?.available} onSelect={()=>manager.importPage()}><I.Plus className="codlet-add-menu-icon"/>{t('Import plugin')}</C.Menu.Item></C.Menu.Content>
       </C.Menu>}
-    </div>}
-  </div>;
-  return <>{toolbar&&ui.createPortal(navigation,toolbar)}<section ref={panel}
+    </div>;
+  return <><section ref={panel}
     onFocusCapture={event=>{if(!s.confirmation)lastFocus.current=event.target.closest('[data-codlet-focus-key]')?.dataset.codletFocusKey??null;focusedRow.current=event.target.closest('[data-codlet-plugin]')?event.target:null;}}
     onBlurCapture={event=>{if(event.relatedTarget||event.target.isConnected&&!event.target.disabled)focusedRow.current=null;}}
     onPointerDownCapture={event=>{if(!event.target.closest('[data-codlet-plugin]'))focusedRow.current=null;}}
@@ -277,16 +277,17 @@ function Page({s,toolbar}){
       <header className="codlet-heading codlet-width"><div className="codlet-heading-inner">
         <div className="codlet-brand">{!settings&&<CodletIcon size={32}/>}<h1 data-codlet-page-heading="" tabIndex={-1}>{settings?t('Settings'):'Codlet'}</h1>{!settings&&<><span className="codlet-version">{s.runtimeVersion}</span>{s.page==='plugins'&&<SkillHelp s={s}/>} {notices.length>0&&<IconAction icon={I.ExclamationMarkCircle} iconClassName="codlet-warning-icon" label={notices.join('\n')+'\n'+t('View version information in settings')} onClick={()=>manager.settingsPage(true)} disabled={!!s.confirmation}/>}</>}</div>
         <p className="codlet-subtitle">{descriptionText(t(settings?'Manage Codlet preferences and version updates.':'Create or manage Codlet plugins'))}</p>
-      </div>{settings&&!s.confirmation&&<ProjectLinks/>}</header>
+      </div>{actions}{settings&&!s.confirmation&&<ProjectLinks/>}</header>
+      <div className="codlet-navigation-row codlet-width">{navigation}</div>
       {s.page==='plugins'&&!s.confirmation?<PluginList s={s}/>:<div className="codlet-body codlet-width">{s.confirmation?<Confirmation s={s}/>:s.page==='market'?<Marketplace s={s}/>:s.page==='marketDetails'?<MarketplaceDetails s={s}/>:s.page==='import'?<ImportPage s={s}/>:s.page==='details'?<Details s={s}/>:<Settings s={s} highlight={versionHighlight}/>}</div>}
     </div>
   </section></>;
 }
-function App({toolbar}){
+function App(){
   const s=React.useSyncExternalStore(manager.subscribe,manager.snapshot);
-  return <><style>{layout+marketplaceStyle}</style><Page s={s} toolbar={toolbar}/></>;
+  return <><style>{layout+marketplaceStyle}</style><Page s={s}/></>;
 }
-function releaseView(){React=h=C=I=ui=Settings=CodletIcon=ProjectLinks=Marketplace=MarketplaceDetails=Compatibility=null;}
+function releaseView(){React=h=C=I=ui=Settings=CodletIcon=ProjectLinks=Marketplace=MarketplaceDetails=Compatibility=PermissionSummary=null;}
 export function deactivate(){epoch++;try{ui?.dispose();}finally{manager?.dispose();manager=null;releaseView();}}
 export async function activate(context){
     deactivate();const current=epoch;context.onDeactivate(deactivate);
@@ -294,11 +295,12 @@ export async function activate(context){
       if(context.ui?.api!==2)throw new Error('Update the renderer runtime for official UI components');
       manager=new Manager(context);
       const owned=manager;
-      const options={label:'Codlet',icon:'Codlet',toolbar:true,render:({ui:activeUI,toolbar})=>{
+      const options={label:'Codlet',icon:'Codlet',toolbar:false,render:({ui:activeUI})=>{
         ui=activeUI??ui;({React,components:C,icons:I}=ui);h=React.createElement;I=createCodletIcons(React,I);
         Settings=createSettingsView({React,C,I,manager,t,Copy,mutationBusy});CodletIcon=createCodletIcon(React);ProjectLinks=createProjectLinks({React,C,I,t});
+        PermissionSummary=createPermissionSummary({React,C,I,t});
         ({Marketplace,MarketplaceDetails,Compatibility}=createMarketplaceView({React,C,I,manager,t,Copy,Back,PluginTags}));
-        return <App toolbar={toolbar}/>;
+        return <App/>;
       },onActivate:()=>owned.open(document.visibilityState!=='hidden'),onDeactivate:()=>{owned.close();if(context.ui.page)releaseView();}};
       if(context.ui.page)await context.ui.page(options);
       else{ui=context.ui.create();await ui.page(options);}

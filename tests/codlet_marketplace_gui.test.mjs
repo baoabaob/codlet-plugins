@@ -21,7 +21,7 @@ test('production Add menu opens the Core-backed marketplace and reviews an exact
   assert.match(f.document.querySelector('.market-compatibility').textContent,/Publisher-declared client versions/);
   assert.ok(f.document.querySelector('.market-compatibility').textContent.includes(reviewedProfiles.builds.at(-1).appVersion));
   assert.equal(f.control('Confirm managed update').disabled,true);
-  await f.click('Grant ui.dom');await f.click('Trust this GitHub source');assert.equal(f.control('Confirm managed update').disabled,false);
+  await f.click('Agree and authorize');assert.equal(f.control('Confirm managed update').disabled,false);
   await f.click('Confirm managed update');assert.ok(f.document.querySelector('[role="dialog"]'));
   await f.click('Cancel');await tick();assert.equal(f.calls.some(call=>call.method==='prepare'),false);
   await f.click('Back');await f.click('Back');await f.click('All');await f.click('Details for GitHub Notes');await f.click('Update');

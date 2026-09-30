@@ -27,8 +27,8 @@ const shapes={
 export function createCodletIcons(React,fallback={}){
   const icons={...fallback};
   for(const [name,elements] of Object.entries(shapes)){
-    icons[name]=function Icon({className='',...props}){
-      return React.createElement('svg',{width:'1em',height:'1em',viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:1.5,strokeLinecap:'round',strokeLinejoin:'round','aria-hidden':true,focusable:false,...props,className:('codlet-line-icon '+className).trim()},
+    icons[name]=function Icon({className='',filled=false,...props}){
+      return React.createElement('svg',{width:'1em',height:'1em',viewBox:'0 0 24 24',fill:filled&&name==='PluginPuzzle'?'currentColor':'none',stroke:filled&&name==='PluginPuzzle'?'none':'currentColor',strokeWidth:1.5,strokeLinecap:'round',strokeLinejoin:'round','aria-hidden':true,focusable:false,...props,className:('codlet-line-icon '+className).trim()},
         ...elements.map(([tag,attributes],key)=>React.createElement(tag,{...attributes,key})));
     };
   }

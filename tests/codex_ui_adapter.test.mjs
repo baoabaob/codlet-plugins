@@ -17,7 +17,7 @@ function fixture(t,options){const f=uiFixture();const native={...f.window.eval(s
   native.HeaderToolbar=({children,inset})=>native.React.createElement('div',{'data-native-header-toolbar':inset==='page'?'page':inset?'inset':'flush'},children);
   const drafts=[];native.useStartNewConversation=()=>options=>{drafts.push(options);shell.navigator.push('/',{prefillPrompt:options.prefillPrompt});};
   const navigation=adapter.createNavigation(f.context,native,adapter.locateHost());t.after(()=>{navigation.dispose();shell.dispose();toolbarOutlet.remove();f.dispose();});return {...f,native,shell,adapter,navigation,toolbarOutlet,drafts};}
-function register(f,{id='codlet-gui',generation=1,token='test-owner-token-123456',toolbar}={}){const lease=f.document.createElement('span');Object.assign(lease.dataset,{codletPageLease:token,codletPageOwner:id,codletGeneration:String(generation)});f.document.body.appendChild(lease);const reply=f.navigation.register({label:'Codlet',icon:'Cube',token,...(toolbar===undefined?{}:{toolbar})},{caller:{pluginId:id,generation}});return {lease,reply};}
+function register(f,{id='codlet-gui',generation=1,token='test-owner-token-123456',toolbar,icon='Cube'}={}){const lease=f.document.createElement('span');Object.assign(lease.dataset,{codletPageLease:token,codletPageOwner:id,codletGeneration:String(generation)});f.document.body.appendChild(lease);const reply=f.navigation.register({label:'Codlet',icon,token,...(toolbar===undefined?{}:{toolbar})},{caller:{pluginId:id,generation}});return {lease,reply};}
 
 test('data-router host keeps native page history and removes only the retired plugin route',async t=>{
   const f=fixture(t,{dataRouter:true,fragmentRouteRoot:true}),original=[...f.shell.routes];

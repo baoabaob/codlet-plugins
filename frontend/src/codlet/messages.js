@@ -4,22 +4,36 @@ export const descriptionText = value => typeof value === 'string' ? value.trimEn
 export const PERMISSION_COPY = Object.freeze({
         'ui.dom': 'Read and change the page interface', 'ui.mainWorld': 'Run in the page’s main JavaScript world',
         'cdp.raw': 'Use raw browser debugging access', 'host.process': 'Run native code with your user account’s OS permissions',
-        'host.fs': 'Read files inside explicitly allowed folders', 'host.network': 'Request explicitly allowed HTTP(S) origins',
-        'traffic.intercept':'Inspect and modify requests and responses for approved origins',
+        'host.fs': 'Read files', 'host.network': 'Access HTTP(S) services',
+        'traffic.intercept':'Inspect and modify requests and responses',
         'traffic.sensitiveHeaders':'Read and modify sensitive headers such as credentials and cookies',
-        'traffic.redirect':'Redirect requests to separately approved origins',
+        'traffic.redirect':'Redirect requests to other services',
         'host.system': 'Read basic system information', 'runtime.manage': 'Manage other plugins and their permissions',
         'core.storage':'Save this plugin’s configuration and data', 'core.credentials':'Manage this plugin’s system credentials',
-        'core.credentials.use':'Use saved credentials for their approved destinations', 'host.fs.write':'Write files inside explicitly allowed folders',
-        'host.fs.watch':'Watch explicitly allowed folders', 'core.files.dialog':'Open native file pickers and access selected files',
+        'core.credentials.use':'Use saved credentials for their approved destinations', 'host.fs.write':'Write files',
+        'host.fs.watch':'Watch file changes', 'core.files.dialog':'Open native file pickers and access selected files',
         'core.events':'Publish and subscribe to declared plugin events', 'core.tasks':'Run and manage this plugin’s background tasks',
-        'host.process.spawn':'Start approved programs with streaming input and output', 'core.network':'Configure plugin proxies and certificate trust',
+        'host.process.spawn':'Start programs with streaming input and output', 'core.network':'Configure plugin proxies and certificate trust',
         'core.notifications':'Show system notifications', 'core.clipboard.read':'Read clipboard text', 'core.clipboard.write':'Write clipboard text',
-        'core.shortcuts':'Register explicitly allowed global shortcuts', 'core.diagnostics':'Read this plugin’s resources and diagnostics'
+        'core.shortcuts':'Register global shortcuts', 'core.diagnostics':'Read this plugin’s resources and diagnostics'
     });
 
 export function createMessages(context) {
     const TRANSLATIONS = {
+        'Read files':'读取文件','Write files':'写入文件','Watch file changes':'监听文件变化',
+        'Access HTTP(S) services':'访问网络服务','Inspect and modify requests and responses':'查看并修改请求与响应',
+        'Redirect requests to other services':'将请求转发到其他服务','Start programs with streaming input and output':'启动程序并读写实时输入输出',
+        'Register global shortcuts':'注册全局快捷键',
+        'Plugin recognized. Review permissions and confirm to import.':'已识别插件，查看权限并确认后即可导入',
+        'Required plugins':'依赖插件','Ready':'已就绪','Not running':'未运行',
+        'Some required plugins are not installed. Install the missing providers before enabling this plugin.':'部分依赖插件尚未安装，请补齐后再启用此插件',
+        'Plugin dependencies changed. Review the required plugins above.':'依赖插件有所变化，请查看上方的依赖列表',
+        'This plugin is already registered. Confirming replaces its authorization with the permissions shown below.':'此插件已注册，确认后将使用下方列出的权限重新授权',
+        'Interface and client':'界面与客户端','Data and files':'数据与文件','Network and traffic':'网络与流量',
+        'System and background tasks':'系统与后台任务','Plugin coordination and management':'插件协作与管理',
+        'Agree and authorize':'知晓并授权',
+        'I understand the permissions above, trust this plugin and agree to authorize them.':'我已知晓以上权限，信任此插件并同意授权',
+        'Update Codlet to use simplified authorization.':'请更新 Codlet 以使用简化授权',
         'Inspect and modify requests and responses for approved origins':'查看并修改已授权来源的请求与响应',
         'Read and modify sensitive headers such as credentials and cookies':'读取并修改凭据、Cookie 等敏感请求头与响应头',
         'Redirect requests to separately approved origins':'将请求转向另行授权的来源',

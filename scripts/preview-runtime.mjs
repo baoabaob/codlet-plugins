@@ -2,6 +2,10 @@
 // They never call GitHub, install packages or alter a real runtime.
 import reviewedProfiles from '../compatibility/client-profiles.json' with {type:'json'};
 export function createPreviewRuntime() {
+  const cap=(name,scope='target')=>({name,api:1,scope});
+  const uiProvides=[cap('codex.ui.navigation.page'),cap('codex.ui.composer.action')];
+  const desktopProvides=[cap('codex.desktop.compatibility'),cap('codex.backend.read'),cap('codex.backend.write')];
+  const testManifest={schema:1,id:'codlet-capability-test',name:'Codlet Capability Lab',i18n:{zh:{name:'Codlet 能力测试台'}},version:'0.1.1',renderer:{entry:'renderer.js',world:'isolated'},host:{entry:'host.cjs',provides:[cap('test.lab.host','runtime')],requires:[cap('codlet.core.services','runtime')]},requires:[...uiProvides,...desktopProvides,cap('codlet.core.services','runtime'),cap('codlet.runtime.ping'),cap('test.lab.host','runtime')],permissions:['ui.dom','ui.mainWorld','host.process','core.storage','core.events','core.tasks','core.diagnostics','host.system','host.fs','host.fs.write','host.fs.watch','host.network','core.network','host.process.spawn','core.notifications','traffic.intercept','core.credentials','core.credentials.use','core.files.dialog','core.clipboard.read','core.clipboard.write','core.shortcuts']};
   const state={long:false,phase:'development',client:'matched',failure:false,versionFailure:false,settingsFailure:false,knownCandidate:false,checkedAt:Date.now(),settingsRevision:0,settings:{automaticUpdateChecks:true,checkPluginUpdatesOnStartup:true,showPluginTags:true,updateCheckIntervalSeconds:null,localSourceAutoReload:null},pluginUpdates:{phase:'idle',checkedAt:null,plugins:{},error:null}};let id=0;
   const updateStatus=()=>({phase:state.phase,currentVersion:'0.1.0',configured:state.phase!=='development',channel:state.phase==='development'?'development':'stable',installAvailable:true,
     candidate:state.knownCandidate||['available','downloading','downloaded','installRequested'].includes(state.phase)?{id:'fixture',version:'0.2.0',releaseUrl:'https://github.com/example/codlet/releases/tag/v0.2.0',size:100}:null,
@@ -26,7 +30,7 @@ export function createPreviewRuntime() {
     metadata:marketMetadata(marketItems[0]),asset:{id:1001,name:'codlet-gui.zip',bytes:12000,sha256:'c'.repeat(64),downloadCount:18},
     deviceCompatibility:{platform:'windows-x86_64',runtimeApi:1,status:'compatible',basis:'author-declaration'}};
   marketItems[1].declarationStatus='missing';marketItems[1].declaredPackage=null;
-  const preview=()=>({schema:1,kind:'codlet.local-import-preview',path:'C:/Projects/Local Notes',contentDigest:'a'.repeat(64),registrationDigest:'b'.repeat(64),manifest,ownership:'development-directory'});
+  const preview=()=>({schema:1,kind:'codlet.local-import-preview',path:'C:/Projects/Local Notes',contentDigest:'a'.repeat(64),registrationDigest:'b'.repeat(64),manifest:state.capabilityPreview?testManifest:manifest,ownership:'development-directory'});
   const plugins=()=>[
     {id:'codlet-gui',name:'Codlet GUI',tags:['UI','Tool'],description:'Manage plugins, imports, permissions, and Codlet updates.',i18n:{zh:{name:'Codlet 管理界面',description:'管理插件、导入、权限和 Codlet 更新。'}},version:'0.1.0',source:'bundled',ownership:'installer-seed',enabled:true},
     {id:'codex.ui.adapter',name:'Codex UI Adapter',tags:['UI','Adapter'],description:'Connect plugin pages to Codex navigation.',i18n:{zh:{name:'Codex 界面适配器',description:'将插件页面接入 Codex 主导航。'}},version:'0.1.0',source:'bundled',enabled:true,disableDependents:['codlet-gui']},
@@ -34,7 +38,7 @@ export function createPreviewRuntime() {
     {...manifest,source:'local',enabled:false,disableDependents:state.dependents?['codex.ui.adapter','codlet-gui']:[]},
     {id:'managed.notes',name:'GitHub Notes',tags:['Tool','Enhancement'],description:'A community note panel for your workspace.',version:'2.0.0',source:'local',ownership:'core-managed-github',managedSource:source,managedVersionKey:'v2',enabled:true},
     ...(state.long?Array.from({length:40},(_,i)=>({id:`local.example-${i}`,name:`Workspace helper ${i+1}`,description:i%3?'A small tool for everyday tasks.':'A long description with a very-long-unbroken-filename-'+ 'x'.repeat(100),version:'1.0.0-preview',source:'local',enabled:i%2===0})):[]),
-  ].filter(p=>!removed.has(p.id)).map(p=>({...p,...(versions.has(p.id)?{version:versions.get(p.id),managedVersionKey:'v3'}:{}),enabled:preferences.get(p.id)??p.enabled,registered:true,loaded:preferences.get(p.id)??p.enabled,active:preferences.get(p.id)??p.enabled,grants:['ui.dom'],validation:{status:'ok'}}));
+  ].filter(p=>!removed.has(p.id)).map(p=>({...p,providedCapabilities:p.id==='codex.ui.adapter'?uiProvides:p.id==='codex.desktop.adapter'?desktopProvides:[],...(versions.has(p.id)?{version:versions.get(p.id),managedVersionKey:'v3'}:{}),enabled:preferences.get(p.id)??p.enabled,registered:true,loaded:preferences.get(p.id)??p.enabled,active:preferences.get(p.id)??p.enabled,grants:['ui.dom'],validation:{status:'ok'}}));
   async function request(_cap,method,args) {
     if(method==='installCombinedUpdate'){state.officialUpdate={...state.officialUpdate,combinedPhase:'installing'};state.phase='installRequested';return structuredClone(state.officialUpdate);}
     if(method==='newTaskDraft'){state.draft=args.prompt;return {opened:true,submitted:false};}
@@ -50,7 +54,7 @@ export function createPreviewRuntime() {
       if(method==='saveSettings'){if(args.expectedRevision!==state.settingsRevision)throw Error('Settings changed in another window. Review the current values before saving again.');state.settings={...args.values};state.settingsRevision++;state.checkedAt=Date.now();}
       return settings();
     }
-    if(method==='list'){if(state.failure)throw Error('Preview: connection unavailable. Refresh to retry.');return {plugins:plugins(),runtimeVersion:'0.1.0',clientStatus:{status:'matched'},deviceCompatibility:{platform:'windows-x86_64',runtimeApi:1,status:'unknown',basis:'unknown'},runtimeSkill:{available:true,name:'codlet',path:'C:/Preview/runtime-skills/codlet/SKILL.md'},localManagement:{available:true,folderPicker:true},githubManagement:{available:true}};}
+    if(method==='list'){if(state.failure)throw Error('Preview: connection unavailable. Refresh to retry.');return {plugins:plugins(),runtimeVersion:'0.1.0',clientStatus:{status:'matched'},deviceCompatibility:{platform:'windows-x86_64',runtimeApi:1,status:'unknown',basis:'unknown'},runtimeSkill:{available:true,name:'codlet',path:'C:/Preview/runtime-skills/codlet/SKILL.md'},localManagement:{available:true,folderPicker:true,clientPermissions:true},githubManagement:{available:true}};}
     if(method==='previewLocal')return {...preview(),path:args.path};
     if(method==='chooseLocalFolder')return {selectionId:'fixture-folder',status:'selected',path:'C:/Projects/Local Notes'};
     if(method==='permissions')return {pluginId:args.pluginId,registration:{path:'C:/Projects/Local Notes',grants:['ui.dom'],brokerPolicy:{}},ownership:args.pluginId==='managed.notes'?'core-managed-github':'development-directory',managedSource:source};

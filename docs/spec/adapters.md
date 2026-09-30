@@ -28,6 +28,8 @@ and Tooltip (`sS`) exports with the same `xl` square button, `lg` icon, ghost
 secondary variant, selected state, right-side tooltip and keyboard behavior as
 the built-in destinations. Labels remain accessible without consuming rail
 width. No official component props or destination preferences are overwritten.
+The Codlet puzzle icon uses a filled silhouette for the selected destination and
+returns to its outline when another destination becomes active.
 Ambiguous/missing rail landmarks do not redirect registration to the task list.
 
 The native HeaderToolbar's default inset is explicitly reset to zero inside the

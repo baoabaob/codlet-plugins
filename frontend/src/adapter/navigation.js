@@ -178,7 +178,7 @@ export function createNavigation(context, native, host) {
         side: 'right', tooltipContent: entry.label },
         h(RailButton, { ...props, 'aria-current': entry.active ? 'page' : undefined,
           color: 'secondary', variant: 'ghost', pill: false, size: 'xl', iconSize: 'lg', uniform: true, selected: entry.active },
-          h(icons[entry.icon]), h('span', { className: 'sr-only' }, entry.label))) :
+          h(icons[entry.icon], {filled:entry.active}), h('span', { className: 'sr-only' }, entry.label))) :
         h(SidebarItem, { ...props, key: entry.token, label: entry.label, icon: icons[entry.icon], isActive: entry.active });
     })));
   };

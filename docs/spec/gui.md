@@ -12,7 +12,17 @@ Create/help/review actions open an editable native task draft containing the Cor
 
 `frontend/src/codlet/controller.js` owns state and RPC sequencing. Mutations prepare a Core-issued receipt, submit it once and query that same receipt to resolve a lost response. A stale list blocks new operations until refreshed. Closing a page cancels work not yet submitted; it does not claim an already submitted operation was undone.
 
-Imports display the prepared package identity, permissions, dependencies, system compatibility and allowed origins before submission. Trust acknowledgment and the installation notice remain separate from package metadata. “Let Codex inspect” opens a draft review task. GitHub/local source identity, removal preview and immutable package checks remain Core responsibilities. Marketplace discovery never grants permission or infers compatibility from a repository topic.
+Imports display the prepared package identity, plugin-level dependencies and system compatibility. Requirements resolve against the current plugin list and collapse by provider; Core and self-provided capabilities are omitted. Missing providers remain explicitly unresolved instead of guessing plugin names from interface prefixes. Removal also uses Core's complete plugin-dependent closure.
+
+Permissions are grouped into five expandable categories. One unchecked consent checkbox
+grants the displayed declarations and confirms trust in that exact package; source changes
+reset it. Enable-after-import is a separate switch. The GUI submits
+`brokerPolicy: {clientPermissions:true}` and has no manual scope fields. It feature-detects
+Core support before enabling import, so an old Core cannot silently accept an ineffective
+authorization. The installation notice remains separate; “Let Codex inspect” opens a draft.
+GitHub/local source identity, removal preview and immutable package checks remain Core
+responsibilities. Marketplace discovery never grants permission or infers compatibility
+from a repository topic.
 
 Settings use revision checks so another window's changes are not silently overwritten. Update candidates are matched to the plugin's managed version identity. Uncertain install/update replies lead to status reconciliation, not a second install. Combined client/runtime updates remain subject to Core's operation state and confirmation.
 
@@ -20,9 +30,10 @@ Settings use revision checks so another window's changes are not silently overwr
 
 Use Core UI API 2's React instance, official components and owner-scoped portals. Custom React components, DOM refs, CSS and complete JavaScript remain supported. The native toolbar, menu/dialog portals, IME-aware tag completion, focus restoration, reduced motion, theme and zh/en messages are part of the existing behavior.
 
-The Adapter owns host-version-specific navigation and toolbar placement. GUI
-content reserves scrollbar space symmetrically so its centered column remains
-aligned with the native page toolbar whether or not it scrolls. Tag icons use
+The Adapter owns host-version-specific navigation. The GUI places its branding and
+description first, with 36 pixels of top spacing and refresh/Add at the upper right,
+followed by page tabs and search in the same centered column; it does not request a separate native toolbar.
+Content reserves scrollbar space symmetrically to maintain alignment. Tag icons use
 the host's semantic icon accent; hovered/selected tags use the host accent
 surface and a derived accent border. Older themes fall back to Core's existing
 host-synchronized accent control token. No orange palette is fixed in tag CSS,

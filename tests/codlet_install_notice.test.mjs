@@ -14,7 +14,7 @@ const count=(f,method)=>f.calls.filter(c=>c.method===method).length;
 async function preview(f,github=false){
   if(github){f.m.importPage('github');f.m.setUrl('https://github.com/example/codlet-notes');await f.m.readReleases();f.m.selectRelease('20');f.m.selectAsset('200');await f.m.downloadAsset();}
   else{f.m.importPage();f.m.setPath('C:/Author/plugin');await f.m.inspectLocal();}
-  for(const permission of f.m.state.preview.manifest.permissions)f.m.grant(permission,true);
+  f.m.consent(true);
   f.m.set({trusted:true});f.m.submitImport();
 }
 test('installation warning cancellation, source changes and stale acknowledgments never submit an import',async t=>{
@@ -22,7 +22,7 @@ test('installation warning cancellation, source changes and stale acknowledgment
   f.m.cancelImportWarning();await f.m.confirmImport();assert.equal(count(f,'submit'),0);
   f.m.submitImport();const old=f.m.state.importWarning;f.m.setPath('C:/Different/plugin');assert.equal(f.m.state.importWarning,null);
   await f.m.inspectLocal();f.m.set({trusted:true,grants:['ui.dom'],importWarning:old});await f.m.confirmImport();assert.equal(count(f,'prepare'),0);
-  f.m.cancelImportWarning();f.m.submitImport();f.m.grant('ui.dom',false);await f.m.confirmImport();assert.equal(count(f,'prepare'),0);
+  f.m.cancelImportWarning();f.m.submitImport();f.m.consent(false);await f.m.confirmImport();assert.equal(count(f,'prepare'),0);
   f.m.back();assert.equal(f.m.state.importWarning,null);
 });
 test('Codex review receives exact GitHub selection, requires evidence and never installs or submits a turn',async t=>{
@@ -72,7 +72,7 @@ test('GUI details explain self/provider removal in both locales and link to a dr
   assert.equal(f.calls.some(c=>['prepare','submit','sourceRemovalPreview'].includes(c.method)),false);
 });
 test('native install modal preserves reviewed text and focus, cancels on Escape, and imports only after acknowledgment',async t=>{
-  const f=await gui(t,'en');const add=f.control('Add');await f.key(add,'ArrowDown');await f.click('Import plugin');await f.click('Choose plugin folder');await f.click('Trust this local plugin');await f.click('Grant ui.dom');
+  const f=await gui(t,'en');const add=f.control('Add');await f.key(add,'ArrowDown');await f.click('Import plugin');await f.click('Choose plugin folder');await f.click('Agree and authorize');
   const trigger=f.control('Confirm local import');await f.click('Confirm local import');
   let modal=f.document.querySelector('[role=dialog]');assert.ok(modal);assert.match(modal.textContent,/does not guarantee/);assert.ok(f.control('Let Codex check'));assert.equal(f.calls.some(c=>c.method==='prepare'),false);
   assert.ok(modal.closest('[data-codlet-page-overlays]'));await f.key(f.document.activeElement,'Escape');assert.equal(f.document.querySelector('[role=dialog]'),null);assert.equal(f.document.activeElement,trigger);
