@@ -1,0 +1,5 @@
+{
+  "schema":1,"id":"compatibility.acceptance","name":"Compatibility acceptance","version":"0.0.1",
+  "renderer":{"entry":"renderer.js","world":"main"},"permissions":["ui.dom","ui.mainWorld"],
+  "requires":[{"name":"codex.desktop.compatibility","api":1,"scope":"target"},{"name":"codex.backend.read","api":1,"scope":"target"},{"name":"codex.ui.navigation.page","api":1,"scope":"target"},{"name":"codex.ui.composer.action","api":1,"scope":"target"}]
+}

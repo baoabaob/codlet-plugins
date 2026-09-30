@@ -45,7 +45,7 @@ const caller = { pluginId: 'test.consumer', generation: 7 };
 const args = { label: 'Provider', token: 'test-action-token-123456' };
 const buttons = f => [...f.document.querySelectorAll('[data-codlet-composer-action-instance] button')];
 
-test('reviewed Windows profile gates the composer capability by exact entry', t => {
+test('legacy Windows profile records the composer landmarks for its entry', t => {
   const f = fixture(t);
   const profile = f.adapter.pageProfile({ appVersion: '26.917.62051', buildNumber: 10789 }, 'app://-/assets/index-897000035213.js');
   assert.deepEqual(JSON.parse(JSON.stringify(profile.page.composerAction)), PROFILE);
@@ -71,6 +71,16 @@ test('Core-authenticated lease yields one native action and a string-only click 
   assert.equal(buttons(f).length, 0);
   assert.equal(f.document.querySelector('[data-codlet-composer-action-style]'), null);
   assert.equal(f.navigation.statusComposer({ token: args.token }, { caller }).registered, false);
+});
+
+test('composer actions remain usable when the page router is absent on an unlisted build',async t=>{
+  const f=fixture(t),root=f.document.getElementById('root');
+  const adapter=f.window.eval('(function(location){'+adapterSource+';return Adapter})({origin:"app://-",pathname:"/index.html"})');
+  delete root[Object.keys(root).find(key=>key.startsWith('__reactContainer$'))];
+  const session=adapter.deferredNavigation(f.context);t.after(()=>session.dispose());lease(f);
+  const result=session.registerComposer(args,{caller});await tick();assert.equal(result.available,true);assert.equal(buttons(f).length,1);
+  assert.equal(session.statusComposer({token:args.token},{caller}).mounted,1);
+  session.dispose();await tick();assert.equal(buttons(f).length,0);
 });
 
 test('one owner action mounts in every reviewed composer and follows native route replacement', async t => {
@@ -142,7 +152,7 @@ test('a recycled owner generation cannot reuse a stale lease or receive late cli
   fresh.remove(); await tick();
 });
 
-test('unreviewed build and auxiliary window do not insert an action', async t => {
+test('missing structural contract and auxiliary window do not insert an action', async t => {
   const f = fixture(t, { unsupported: true }), node = lease(f);
   const result = f.navigation.registerComposer(args, { caller });
   assert.equal(result.available, false);

@@ -2,6 +2,10 @@
 
 Scope: installed Windows package `OpenAI.Codex_26.917.8451.0_x64`, whose reviewed Renderer entry is `app://-/assets/index-897000035213.js` and Desktop profile reports app version `26.917.62051`, build `10789`. This is a source/fixture review, not a live-client acceptance record.
 
+This is the historical initial review. Current runtime discovery checks these
+structural landmarks independently of version numbers and page navigation;
+see [the current adapter contract](adapters.md).
+
 The installed ASAR was read directly with `.artifacts/current-client-check/check.mjs` and `composer-scan.mjs`; no source map or translated label was used. Its `webview/index.html` loads the exact entry above. `app-initial-8f0e46979798.js` names `app-primary-b25c952dc388.js` in its dependency map. In that primary module:
 
 - `zht` begins around byte 2,067,753. Its rendered composer root at byte 2,127,304 carries `data-codex-composer-root` and `data-composer-placement` around the complete composer tree. A home composer root at byte 867,213 uses the same marker.

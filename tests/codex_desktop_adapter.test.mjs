@@ -224,11 +224,11 @@ test('public page API exposes only callbacks and requires one-use tickets from t
     owner.stop(); assert.equal(f.api.status().hooks, 0); f.dispose();
 });
 
-test('unknown builds and uninitialized Desktop state fail before a connection can be created', async () => {
+test('unknown builds without mounted services fail without creating a connection', async () => {
     const scope = vm.createContext({ module: { exports: {} }, location: { origin: 'app://-', pathname: '/index.html' }, document: { scripts: [], getElementById: () => null }, electronBridge: { getSentryInitOptions: () => ({ appVersion: 'unknown', buildNumber: '0' }) } });
     const probe = vm.runInContext(source + '\nprobeDesktop', scope);
     let imports = 0;
-    await assert.rejects(probe(async () => { imports++; }), { code: 'desktop_build_drift' });
+    await assert.rejects(probe(async () => { imports++; }, 0), { code: 'desktop_connection_not_ready' });
     assert.equal(imports, 0);
     scope.electronBridge.getSentryInitOptions = () => ({ appVersion: '26.903.61454', buildNumber: '8378' });
     scope.electronBridge.sendMessageFromView = () => assert.fail('probing must not send preload messages');
@@ -520,11 +520,15 @@ test('8881 uses the audited split postbox export and detects replacement without
     assert.equal(f.imports.length, 2);
 });
 
-test('8881 rejects unmatched entry, backend schema, manager ABI, and immutable transport before interception', async () => {
+test('mapped resources accept a changed backend version after checking its existing interfaces',async()=>{
+    const f=latestProbeFixture();f.native.client.getAppServerVersion=()=> '0.999.0';
+    const connection=await f.probe();connection.check();assert.equal(connection.build.appServerVersion,'0.999.0');
+    assert.equal(connection.manager,f.native.manager);assert.equal(connection.postbox,f.native.actualPostbox);
+});
+test('incomplete discovery, manager ABI and immutable transport fail before interception', async () => {
     for (const [change, code] of [
-        [f => { f.scope.document.scripts[0].src = 'app://-/assets/index-5232d4cce9a2.js'; f.scope.document.readyState = 'complete'; }, 'desktop_build_drift'],
-        [f => { f.scope.electronBridge.getSentryInitOptions = () => ({ appVersion: '26.908.40834', buildNumber: '8882' }); }, 'desktop_build_drift'],
-        [f => { f.native.client.getAppServerVersion = () => '0.153.4'; }, 'desktop_connection_drift'],
+        [f => { f.scope.document.scripts[0].src = 'app://-/assets/index-5232d4cce9a2.js'; f.scope.document.readyState = 'complete'; }, 'desktop_connection_not_ready'],
+        [f => { f.scope.electronBridge.getSentryInitOptions = () => ({ appVersion: '26.908.40834', buildNumber: '8882' }); }, 'desktop_connection_not_ready'],
         [f => { f.native.manager.sendRequest = undefined; }, 'desktop_manager_drift'],
         [f => { Object.defineProperty(f.native.actualPostbox, 'postMessage', { writable: false }); }, 'desktop_transport_drift'],
         [f => { delete f.native.transportModule.i; }, 'desktop_connection_not_ready'],

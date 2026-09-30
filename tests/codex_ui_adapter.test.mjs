@@ -22,6 +22,7 @@ function register(f,{id='codlet-gui',generation=1,token='test-owner-token-123456
 test('data-router host keeps native page history and removes only the retired plugin route',async t=>{
   const f=fixture(t,{dataRouter:true,fragmentRouteRoot:true}),original=[...f.shell.routes];
   const host=f.adapter.locateHost();assert.equal(host.navigator,f.adapter.locateHost().navigator);
+  assert.equal(host.tree,f.shell.tree,'retained JSX takes precedence over its derived match objects');
   const {lease,reply}=register(f,{toolbar:true});await tick();f.control('Codlet').click();await tick();
   assert.equal(f.shell.navigator.location.pathname,reply.path);assert.ok(f.document.querySelector('[data-codlet-page-host]'));
   f.shell.navigator.go(-1);await tick();assert.ok(f.document.getElementById('native-composer'));
@@ -29,6 +30,17 @@ test('data-router host keeps native page history and removes only the retired pl
   lease.remove();await tick();assert.equal(f.shell.navigator.location.pathname,'/local/start');
   assert.equal(f.shell.routes.length,original.length);original.forEach((route,i)=>assert.equal(f.shell.routes[i],route));
   assert.equal(f.document.querySelector('[data-codlet-page-toolbar]'),null);
+});
+
+test('preconverted route objects retain native history, toolbar and exact removal ownership',async t=>{
+  const f=fixture(t,{dataRouter:true,objectRoutes:true,rail:true}),original=[...f.shell.routes];
+  assert.equal(f.adapter.locateHost().objects,true);
+  const {lease,reply}=register(f,{toolbar:true});await tick();f.control('Codlet').click();await tick();
+  assert.equal(f.shell.navigator.location.pathname,reply.path);assert.ok(f.document.querySelector('[data-codlet-page-toolbar]'));
+  f.shell.navigator.go(-1);await tick();assert.ok(f.document.getElementById('native-composer'));
+  f.shell.navigator.go(1);await tick();assert.ok(f.document.querySelector('[data-codlet-page-host]'));
+  lease.remove();await tick();assert.equal(f.shell.navigator.location.pathname,'/local/start');
+  assert.equal(f.shell.routes.length,original.length);original.forEach((route,i)=>assert.equal(f.shell.routes[i],route));assert.equal(f.document.querySelector('[data-codlet-page-host]'),null);
 });
 
 test('a contextual sidebar without a rail keeps pages outside the native New chat drag row',async t=>{
@@ -188,9 +200,9 @@ test('duplicate registrations are idempotent; other plugin generations cannot cl
   f.navigation.register({label:'Codlet',icon:'Cube',token:'test-owner-token-123456'},{caller:{pluginId:'codlet-gui',generation:1}});assert.equal(f.shell.routes.length,length);
   for(const caller of [null,{pluginId:'other',generation:1},{pluginId:'codlet-gui',generation:2}])assert.throws(()=>f.navigation.register({label:'Codlet',icon:'Cube',token:'test-owner-token-123456'},{caller}),{code:'invalid_owner'});
 });
-test('host ambiguity and unreviewed builds fail before changing native routes',async t=>{
+test('host ambiguity and non Desktop documents fail before changing native routes',async t=>{
   const f=fixture(t),original=[...f.shell.routes];f.document.getElementById('root').id='changed';assert.throws(()=>f.adapter.locateHost(),{code:'ui_host_pending'});assert.equal(f.shell.routes.length,original.length);original.forEach((route,i)=>assert.equal(f.shell.routes[i],route));
-  const provided=[];await f.adapter.activate({...f.context,rpc:{provide:(...args)=>provided.push(args)}});await tick();await assert.rejects(provided[0][2]({},{}),{code:'ui_build_drift'});f.adapter.deactivate();
+  const provided=[];await f.adapter.activate({...f.context,rpc:{provide:(...args)=>provided.push(args)}});await tick();await assert.rejects(provided[0][2]({},{}),{code:'desktop_document_unsupported'});f.adapter.deactivate();
 });
 test('provider teardown removes native navigation roots without leaving a top-bar control or appearance styles',async t=>{
   const f=fixture(t),original=[...f.shell.routes];register(f);await tick();f.navigation.dispose();await tick();

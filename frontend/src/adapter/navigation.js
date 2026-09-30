@@ -2,9 +2,11 @@ import { createCodletIcons } from '../icons.js';
 import { CLIENT_PROFILES, clientProfile } from '../../../compatibility/client-profiles.js';
 import { COMPOSER_CAPABILITY, createComposerActions, composerLease } from './composer-action.js';
 import { reviewedNavigator } from '../native-navigation.js';
+import { COMPOSER_PROFILE, discoverNative } from './discovery.js';
+import { desktopDocument } from '../host-discovery.js';
 
-// Host internals belong only to this optional adapter. Never run these imports
-// outside the reviewed Desktop build, or create another app-host connection.
+// Reviewed mappings are the fast path. Structural discovery handles unlisted
+// builds; all private host details remain in this optional adapter.
 export function pageProfile(build, entries = Array.from(document.scripts, script => script.src), readyState = document.readyState) {
   const profile = clientProfile(build, entries);
   if (!profile?.page) {
@@ -36,7 +38,7 @@ export function fibers() {
 }
 
 export function locateHost() {
-  const navigators = new Set(), routerContexts = new Set(), trees = new Set();
+  const navigators = new Set(), routerContexts = new Set(), trees = new Set(), objectTrees = new Set();
   for (const fiber of fibers()) {
     for (const value of [fiber.memoizedProps, fiber.memoizedProps?.value]) if (value?.navigator) {
       navigators.add(value.navigator);
@@ -49,26 +51,37 @@ export function locateHost() {
     const routes = children?.type === Symbol.for('react.fragment') ? children.props?.children : children;
     if (child?.props?.element === undefined && child?.type !== Symbol.for('react.fragment') && Array.isArray(routes) &&
         routes.some(route => route?.props?.path === '/avatar-overlay')) trees.add(child);
+    // Newer hosts preconvert JSX with createRoutesFromElements. Their existing
+    // RouteContext exposes the same live collection through matched route objects.
+    const matches = fiber.memoizedProps?.value?.matches;
+    if (Array.isArray(matches)) for (const { route } of matches) {
+      if (route?.element === undefined && Array.isArray(route?.children) && route.children.some(child => child?.path === '/avatar-overlay')) objectTrees.add(route);
+    }
   }
+  // Legacy <Routes> retains its JSX input as well as derived match objects.
+  // Mutate the retained input there; only use objects when JSX is absent.
+  if (!trees.size) for (const tree of objectTrees) trees.add(tree);
   if (navigators.size !== 1 || trees.size !== 1) throw fail('ui_host_pending', 'A unique Desktop router and route tree are required');
   const navigator = reviewedNavigator(navigators, routerContexts), tree = [...trees][0];
   if (!navigator)
     throw fail('ui_host_drift', 'The Desktop memory router is unavailable in this window');
   if(navigator.location.pathname==='/avatar-overlay'||navigator.location.pathname.startsWith('/avatar-overlay/'))
     return {navigator,tree,rootNode:document.getElementById('root'),auxiliary:true};
-  const candidates = [];
+  const candidates = [], objects = !tree.props;
   const visit = element => {
-    if (!element?.props) return;
-    const children = element.props.children;
+    const props = objects ? element : element?.props;
+    if (!props) return;
+    const children = props.children;
     if (Array.isArray(children)) {
-      if (children.some(child => child?.props?.path === '/inbox') && children.some(child => child?.props?.path === '/connector/oauth_callback')) candidates.push(children);
+      const path = child => objects ? child?.path : child?.props?.path;
+      if (children.some(child => path(child) === '/inbox') && children.some(child => path(child) === '/connector/oauth_callback')) candidates.push(children);
       children.forEach(visit);
     } else visit(children);
   };
   visit(tree);
   if (candidates.length !== 1 || Object.isFrozen(candidates[0]) || !Object.isExtensible(candidates[0]))
     throw fail('ui_host_drift', 'The reviewed authenticated route collection is unavailable');
-  return { navigator, routes: candidates[0], Route: tree.type, tree, rootNode: document.getElementById('root') };
+  return { navigator, routes: candidates[0], Route: tree.type, objects, tree, rootNode: document.getElementById('root') };
 }
 
 function nativePlacement(SidebarItem, SidebarGroup) {
@@ -134,7 +147,7 @@ function pageOwner(args, invocation) {
   return { caller, lease };
 }
 
-export function createNavigation(context, native, host) {
+export function createNavigation(context, native, host, withComposer = true) {
   // The pet window mounts a router, but never mounts the main AppShell. Its
   // lazy header/composer modules must not be initialized by this adapter.
   if (host.auxiliary) {
@@ -160,7 +173,7 @@ export function createNavigation(context, native, host) {
   const { Cube, CodeSquareSlash, PluginPuzzle } = createCodletIcons(React);
   const icons = { Cube, CodeSquareSlash, Codlet: PluginPuzzle };
   const entries = new Map(), h = React.createElement;
-  const composerActions = createComposerActions(context, host, native.composerActionProfile);
+  const composerActions = createComposerActions(context, host, withComposer ? native.composerActionProfile : null);
   let alive = true, navContainer, navRoot, pending = false;
   const hostLive = () => document.getElementById('root') === host.rootNode && host.rootNode.isConnected;
   const check = () => {
@@ -262,13 +275,14 @@ export function createNavigation(context, native, host) {
     const content = h('div', { 'data-codlet-page-host': entry.token,
       className: 'h-full min-h-0 min-w-0 flex flex-col overflow-auto',
       ref: node => { entry.active = !!node; queueMicrotask(renderNav); } });
-    entry.route = h(host.Route, { id: 'codlet:' + caller.pluginId, path: entry.path + '/*',
+    const routeProps = { id: 'codlet:' + caller.pluginId, path: entry.path + '/*',
       element: h(React.Fragment,null,
         native.useStartNewConversation?h(DraftBridge,{entry}):null,
         args.toolbar ? h(React.Fragment, null,
         h(Header, null, h(HeaderToolbar, { inset: native.toolbarInset ?? true },
           h('div', { 'data-codlet-page-toolbar': entry.token, className: 'flex w-full min-w-0 items-center' }))),
-        content) : content) });
+        content) : content) };
+    entry.route = host.objects ? routeProps : h(host.Route, routeProps);
     host.routes.push(entry.route); entries.set(entry.owner, entry); reconcile(); renderNav();
     return entry.description;
   }
@@ -309,6 +323,13 @@ function nativeProfile() {
 }
 
 async function loadNative() {
+  desktopDocument();
+  const detected = globalThis.electronBridge?.getSentryInitOptions?.();
+  const entries = Array.from(document.scripts, script => script.src);
+  const reviewed = clientProfile(detected, entries);
+  // Profiles are a fast path for known resources. New version numbers and new
+  // asset hashes are reasons to probe the actual contract, not to reject it.
+  if (!reviewed?.page || !entries.includes(reviewed.entry)) return discoverNative();
   const profile = nativeProfile(), page = profile.page, names = page.exports;
   const [react, dom, client, primary, initial] = await Promise.all([import(page.react), import(page.dom), import(page.client), import(page.primary), import(page.initial ?? profile.module)]);
   const native = { React: react[names.react??'t'](), DOM: dom[names.dom??'t'](), Client: client[names.client??'t'](), SidebarItem: primary[names.sidebar], ...reviewedHeader(initial, names) };
@@ -335,13 +356,30 @@ async function loadNative() {
 }
 
 export function deferredNavigation(context, load = loadNative) {
-  let alive = true, navigation, failure, cancelWait;
+  let alive = true, navigation, failure, cancelWait, independentActions;
   const pending = new Map(), pendingComposer = new Map();
+  const composer = () => {
+    if (load !== loadNative) return null;
+    if (independentActions) return independentActions;
+    desktopDocument();
+    const rootNode = document.getElementById('root');
+    if (!rootNode?.isConnected) return null;
+    let host = { rootNode, auxiliary: false };
+    try { host = locateHost(); } catch { /* DOM outlets do not require a router. */ }
+    independentActions = createComposerActions(context, host, COMPOSER_PROFILE);
+    return independentActions;
+  };
   const ready = (async () => {
     let native, delay = 50;
     while (alive) {
       try {
-        if (load === loadNative) nativeProfile();
+        if (load === loadNative) desktopDocument();
+        const actions = composer();
+        if (actions) for (const [id, entry] of pendingComposer) {
+          pendingComposer.delete(id);
+          if (entry.lease.isConnected) try { actions.register(entry.args, { caller: entry.caller }); }
+          catch (error) { entry.lease.remove(); context.reportDiagnostic?.({ code: error.code || 'ui_unavailable', message: error.message }); }
+        }
         // Importing Native's lazy modules and invoking their initializers before
         // its own router commits can mutate partially initialized registries.
         // Observe the existing tree first; never bootstrap the host for it.
@@ -353,7 +391,7 @@ export function deferredNavigation(context, load = loadNative) {
         native ??= await load();
         if (!alive) break;
         // The document/tree may have changed while the imports were pending.
-        navigation = createNavigation(context, native, locateHost());
+        navigation = createNavigation(context, native, locateHost(), load !== loadNative);
         break;
       } catch (error) {
         if (error.code !== 'ui_host_pending') throw error;
@@ -418,6 +456,8 @@ export function deferredNavigation(context, load = loadNative) {
     },
     registerComposer(args, invocation) {
       if (!alive || invocation?.signal?.aborted) throw fail('ui_retired', 'The composer provider retired');
+      const actions = composer();
+      if (actions) return actions.register(args, invocation);
       if (failure) throw failure;
       if (navigation) return navigation.registerComposer(args, invocation);
       const { caller, lease } = composerLease(args, invocation);
@@ -431,6 +471,8 @@ export function deferredNavigation(context, load = loadNative) {
     },
     unregisterComposer(args, invocation) {
       if (!alive) throw fail('ui_retired', 'The composer provider retired');
+      const actions = composer();
+      if (actions) return actions.unregister(args, invocation);
       if (navigation) return navigation.unregisterComposer(args, invocation);
       const caller = invocation?.caller;
       if (!caller || typeof caller.pluginId !== 'string' || !Number.isSafeInteger(caller.generation) ||
@@ -441,6 +483,8 @@ export function deferredNavigation(context, load = loadNative) {
     },
     statusComposer(args, invocation) {
       if (!alive) throw fail('ui_retired', 'The composer provider retired');
+      const actions = composer();
+      if (actions) return actions.status(args, invocation);
       if (navigation) return navigation.statusComposer(args, invocation);
       const caller = invocation?.caller;
       if (!caller || typeof caller.pluginId !== 'string' || !Number.isSafeInteger(caller.generation) ||
@@ -452,7 +496,7 @@ export function deferredNavigation(context, load = loadNative) {
       if (!alive) return;
       alive = false; cancelWait?.();
       for (const entry of pending.values()) entry.lease.remove();
-      pending.clear(); navigation?.dispose();
+      pending.clear(); navigation?.dispose(); independentActions?.dispose();
       for (const entry of pendingComposer.values()) entry.lease.remove();
       pendingComposer.clear();
     },

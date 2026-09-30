@@ -2,11 +2,13 @@ import { CLIENT_PROFILES, clientProfile } from '../../../compatibility/client-pr
 import { createThreadConfiguration } from './thread-configuration.js';
 import { createThreadReconfiguration } from './thread-reconfiguration.js';
 import { reviewedNavigator } from '../native-navigation.js';
+import { desktopDocument, loadedAsset, localConnection, uniqueExport } from '../host-discovery.js';
 'use strict';
 
 // All Desktop build details stay in this optional directory package. The Core
 // knows only its declared capabilities, principal and renderer lifecycle.
 const BUILDS = CLIENT_PROFILES;
+const discoveredBuilds = new WeakSet();
 const publicBuild = build => ({ appVersion: build.appVersion, buildNumber: build.buildNumber, appServerVersion: build.appServerVersion });
 const API_SYMBOL = 'codlet.codex.desktop.v1';
 const cap = name => Object.freeze({ name, api: 1, scope: 'target' });
@@ -86,7 +88,13 @@ function probeTick(signal, delay) {
     });
 }
 
-async function probeDesktop(loadModule = source => import(source), readyTimeoutMs = 3000, signal) {
+async function probeDesktop(loadModule = source => import(source), readyTimeoutMs = 10000, signal) {
+    desktopDocument();
+    const entries = Array.from(document.scripts, script => script.src);
+    const detected = globalThis.electronBridge?.getSentryInitOptions?.();
+    const mapped = clientProfile(detected, entries);
+    const knownBuild = BUILDS.some(profile => profile.appVersion === detected?.appVersion && profile.buildNumber === String(detected?.buildNumber));
+    if (!knownBuild || document.readyState === 'complete' && (!mapped || !entries.includes(mapped.entry))) return probeDiscoveredDesktop(loadModule, readyTimeoutMs, signal);
     const readyDeadline = Date.now() + readyTimeoutMs;
     let build;
     for (;;) {
@@ -131,19 +139,58 @@ async function probeDesktop(loadModule = source => import(source), readyTimeoutM
             await probeTick(signal, Math.min(50, readyDeadline - Date.now()));
         }
     }
-    if (manager.requestClient !== client || manager.getHostId?.() !== 'local' || client.getAppServerVersion() !== build.appServerVersion) throw fail('desktop_connection_drift', 'Existing Desktop connection identity or App Server schema does not match this adapter');
+    if (manager.requestClient !== client || manager.getHostId?.() !== 'local') throw fail('desktop_connection_drift', 'Existing Desktop connection identity does not match this adapter');
     for (const method of ['sendRequest', 'getConversation', 'getStreamRole', 'addNotificationCallback', 'addConversationStateCallback', 'replyWithCommandExecutionApprovalDecision', 'replyWithFileChangeApprovalDecision', 'replyWithPermissionsRequestApprovalResponse', 'replyWithUserInputResponse']) {
         if (typeof manager[method] !== 'function') throw fail('desktop_manager_drift', `Desktop manager lacks ${method}`);
     }
     if (typeof client.onError !== 'function' || !(client.requestPromises instanceof Map) || Object.getOwnPropertyDescriptor(postbox ?? {}, 'postMessage')?.writable !== true) throw fail('desktop_transport_drift', 'Desktop request transport cannot be safely intercepted');
+    const observedVersion = client.getAppServerVersion();
+    const verifiedBuild = observedVersion === build.appServerVersion ? build : { ...build, appServerVersion: observedVersion, compatibility: 'profile-contract' };
+    if (verifiedBuild !== build) discoveredBuilds.add(verifiedBuild);
     return {
-        manager, client, postbox, build,
+        manager, client, postbox, build: verifiedBuild,
         check() {
             if (validateDesktopBuild() !== build) throw fail('desktop_build_drift', 'Desktop build changed after adapter initialization');
             const current = locateScope(token);
-            if (current.node !== scope.node || scopeModule[build.exports.scope] !== token || module[build.exports.manager] !== managerFamily || module[build.exports.client] !== clientFamily || module[build.exports.services] !== services || transportModule[build.exports.postbox] !== postbox || !current.node.familyBindings.get(managerFamily)?.has('local') || !current.node.familyBindings.get(clientFamily)?.has('local') || managerFamily.read(current.node, current.chain, 'local') !== manager || clientFamily.read(current.node, current.chain, 'local') !== client || manager.requestClient !== client || client.getAppServerVersion() !== build.appServerVersion) throw fail('desktop_connection_replaced', 'Desktop connection changed; reload the adapter');
+            if (current.node !== scope.node || scopeModule[build.exports.scope] !== token || module[build.exports.manager] !== managerFamily || module[build.exports.client] !== clientFamily || module[build.exports.services] !== services || transportModule[build.exports.postbox] !== postbox || !current.node.familyBindings.get(managerFamily)?.has('local') || !current.node.familyBindings.get(clientFamily)?.has('local') || managerFamily.read(current.node, current.chain, 'local') !== manager || clientFamily.read(current.node, current.chain, 'local') !== client || manager.requestClient !== client || client.getAppServerVersion() !== observedVersion) throw fail('desktop_connection_replaced', 'Desktop connection changed; reload the adapter');
         }
     };
+}
+
+async function probeDiscoveredDesktop(loadModule, readyTimeoutMs, signal) {
+    const deadline = Date.now() + readyTimeoutMs;
+    let connection, sharedUrl;
+    for (;;) {
+        try { connection = localConnection(); sharedUrl = loadedAsset('shared'); if (!connection.client.getAppServerVersion()) throw fail('desktop_connection_not_ready', 'Waiting for the local App Server'); break; }
+        catch (error) {
+            if (!['desktop_connection_not_ready', 'ui_host_pending'].includes(error.code) || Date.now() >= deadline) throw error;
+            await probeTick(signal, 100);
+        }
+    }
+    const module = await loadModule(sharedUrl);
+    if (signal?.aborted) throw fail('adapter_deactivated', 'Desktop adapter retired during discovery');
+    const postbox = uniqueExport(module, value => value && typeof value.postMessage === 'function' &&
+        typeof value.getState === 'function' && typeof value.setState === 'function' &&
+        Object.getOwnPropertyDescriptor(value, 'postMessage')?.writable === true, 'message transport');
+    const { manager, client } = connection;
+    for (const method of ['sendRequest', 'getConversation', 'getStreamRole', 'addNotificationCallback', 'addConversationStateCallback', 'replyWithCommandExecutionApprovalDecision', 'replyWithFileChangeApprovalDecision', 'replyWithPermissionsRequestApprovalResponse', 'replyWithUserInputResponse'])
+        if (typeof manager[method] !== 'function') throw fail('desktop_manager_drift', `Desktop manager lacks ${method}`);
+    if (typeof client.onError !== 'function') throw fail('desktop_transport_drift', 'Native request error handling is unavailable');
+    const detected = globalThis.electronBridge?.getSentryInitOptions?.();
+    const build = { appVersion: detected?.appVersion, buildNumber: String(detected?.buildNumber), appServerVersion: client.getAppServerVersion(),
+        navigation: true, threadConfiguration: true, threadReconfiguration: true, compatibility: 'structural' };
+    discoveredBuilds.add(build);
+    return { manager, client, postbox, build, check() {
+        // Discovery scans candidates once. Steady-state callbacks verify the
+        // captured owner and bindings without rereading unrelated host services.
+        const current = locateScope(connection.node.token);
+        if (current.node !== connection.node || !current.node.familyBindings.get(connection.managerFamily)?.has('local') ||
+            !current.node.familyBindings.get(connection.clientFamily)?.has('local') ||
+            connection.managerFamily.read(current.node, current.chain, 'local') !== manager ||
+            connection.clientFamily.read(current.node, current.chain, 'local') !== client || manager.requestClient !== client || loadedAsset('shared') !== sharedUrl ||
+            !Object.values(module).includes(postbox) || client.getAppServerVersion() !== build.appServerVersion)
+            throw fail('desktop_connection_replaced', 'Desktop connection changed; reload the adapter');
+    } };
 }
 
 function itemDto(item) {
@@ -282,7 +329,7 @@ function createNavigation(manager, changed, locate = locateNavigator) {
 
 function createAdapter(connection, context, { compatibilityProvided = false } = {}) {
     const { manager, client, postbox, build } = connection;
-    if (!BUILDS.includes(build)) throw fail('desktop_build_drift', 'Connection has no verified Desktop build profile');
+    if (!BUILDS.includes(build) && !discoveredBuilds.has(build)) throw fail('desktop_build_drift', 'Connection has not passed Desktop contract probes');
     const originalPost = postbox.postMessage;
     const symbol = Symbol.for(API_SYMBOL);
     if (globalThis[symbol] !== undefined) throw fail('desktop_adapter_conflict', 'Another Desktop adapter already owns this API');
@@ -839,7 +886,7 @@ function startAdapter(context, probe = signal => probeDesktop(undefined, 30000, 
     Promise.resolve().then(() => probe(controller.signal)).then(connection => {
         if (!alive) return;
         inner = createAdapter(connection, context, { compatibilityProvided: true });
-        try { context.reportDiagnostic({ code: 'desktop_adapter_ready', message: 'Existing Desktop services passed build and connection identity probes', level: 'info' }); } catch {}
+        try { context.reportDiagnostic({ code: 'desktop_adapter_ready', message: 'Existing Desktop services passed interface and connection identity checks', level: 'info' }); } catch {}
     }).catch(error => {
         if (!alive) return;
         failure = { code: error.code ?? 'desktop_initialization_failed', message: optionalText(error.message) ?? 'Desktop adapter initialization failed' };
@@ -853,7 +900,7 @@ let active;
 export function activate(context) {
         if (context.world !== 'main') throw fail('main_world_required', 'Codex Desktop Adapter requires the managed main-world ABI');
         if (typeof context.rpc.unavailable !== 'function' || typeof context.reportDiagnostic !== 'function') throw fail('renderer_abi_update_required', 'Update the Codlet managed renderer runtime before loading this adapter');
-        validateDesktopBuild(false);
+        desktopDocument();
         active = startAdapter(context);
 }
 export function deactivate() { const current = active; active = undefined; return current?.dispose(); }
