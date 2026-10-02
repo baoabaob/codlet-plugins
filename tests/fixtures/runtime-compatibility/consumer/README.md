@@ -1,10 +1,12 @@
-# Codlet 功能测试 0.0.2
+# Codlet 功能测试 0.0.3
 
 在原来的 `compatibility.acceptance` 0.0.1 上扩展；沿用界面、工具栏、输入框按钮和未发送草稿的检查。
 
 ## 使用
 
-需要 Core API 1、Desktop Adapter 和 UI Adapter。使用 Codlet 的“添加 → 导入插件 → 本地 ZIP”，选择 `compatibility.acceptance-0.0.2.zip`，核对权限并启用。左侧“功能测试”打开报告页，点击“运行功能测试”；可重复运行和导出 JSON 报告。
+需要 Core API 1、Desktop Adapter 和 UI Adapter。本地插件直接使用包含 `codlet.json`、`host.cjs` 和 `renderer.js` 的完整文件夹，通过 Codlet 的本地目录导入注册并启用，不需要 ZIP。左侧“功能测试”打开报告页，点击“运行功能测试”；可重复运行和导出 JSON 报告。
+
+0.0.3 沿用现有检查，仅修正页面切换时等待 `ui_host_pending` 的时序；其他错误和不确定回执不重试。统计分别显示通过、失败和未执行，模型检查的 `manual` 不进入已执行总数。每次运行结束，完整报告自动保存到插件目录的 `functional-report.json`，后台明细另存为 `host-report.json`。
 
 文件、进程、网络等测试需要给这个测试插件授予相应类别的客户端权限（`brokerPolicy.clientPermissions: true`）。采用精细范围授权时，也可只允许插件目录读写/监听、Core 使用的 Node 可执行文件和测试的回环地址；缺少范围授权的检查会显示具体错误。依赖、权限或能力不可用时不能把启动成功当作通过。
 

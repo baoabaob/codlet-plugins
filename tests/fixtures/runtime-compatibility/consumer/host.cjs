@@ -82,6 +82,12 @@ exports.activate=async context=>{
   const authorize=invocation=>assert(invocation.caller.pluginId===context.plugin.id,'Only the test plugin may invoke its Host');
   context.rpc.provide(capability,'native.begin',async(_args,invocation)=>{authorize(invocation);return beginNative();});
   context.rpc.provide(capability,'inspect',(_args,invocation)=>{authorize(invocation);return {fixture:ownership,report,native};});
+  context.rpc.provide(capability,'save-report',(args,invocation)=>{
+    authorize(invocation);const result=args?.report;
+    assert(result?.schema===1&&result.version===context.plugin.version&&result.generation===context.plugin.generation&&['complete','failed'].includes(result.phase),'Only this generation may save a completed report');
+    const text=JSON.stringify(result,null,2);assert(Buffer.byteLength(text)<=65536,'Functional report exceeds its size limit');
+    fs.writeFileSync(path.join(context.root,'functional-report.json'),text+'\n');return {saved:true};
+  });
   context.rpc.provide(capability,'echo',(args,invocation)=>{authorize(invocation);return {value:args.value,hostGeneration:context.plugin.generation};});
   context.rpc.provide(capability,'events',async(_args,invocation)=>{
     authorize(invocation);if(!owned.topic)owned.topic=await s.events.createTopic({name:'cross-world',maxEvents:8});

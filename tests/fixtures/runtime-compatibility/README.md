@@ -1,4 +1,4 @@
-# Functional acceptance consumer 0.0.2
+# Functional acceptance consumer 0.0.3
 
 Extends the original 0.0.1 UI acceptance plugin. The unchanged original passed
 Windows 26.930's basic UI checks; broader coverage required these additions.

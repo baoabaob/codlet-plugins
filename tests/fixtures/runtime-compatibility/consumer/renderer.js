@@ -4,6 +4,20 @@ let cleanup;
 const SYMBOL=Symbol.for('codlet.functional.acceptance');
 const cap=(name,scope='target')=>({name,api:1,scope});
 const assert=(condition,message)=>{if(!condition)throw Error(message);};
+async function openDraftWhenReady(ask,isAlive,params,timeoutMs=12000){
+  const deadline=Date.now()+timeoutMs;let pending;
+  while(isAlive()){
+    const remaining=deadline-Date.now();if(remaining<=0)throw pending??Error('Timed out waiting for draft navigation');
+    try{return await ask('codex.ui.navigation.page','newTaskDraft',params,{timeoutMs:Math.min(10000,remaining)});}
+    catch(error){
+      // The adapter reports this before invoking the native draft action.
+      // An uncertain timeout or another error must never replay the action.
+      if(error.code!=='ui_host_pending'&&!/^ui_host_pending:/.test(error.message??''))throw error;
+      pending=error;await new Promise(resolve=>setTimeout(resolve,Math.min(80,Math.max(0,deadline-Date.now()))));
+    }
+  }
+  throw Error('Test retired');
+}
 module.exports.deactivate=()=>{cleanup?.();cleanup=null;};
 module.exports.activate=async context=>{
   cleanup?.();if(innerWidth<480||innerHeight<400)return;
@@ -21,12 +35,14 @@ module.exports.activate=async context=>{
   function Panel({ui}){
     const React=ui.React,h=React.createElement,C=ui.components;
     const [,refresh]=React.useState(0);React.useEffect(()=>{const update=()=>refresh(value=>value+1);listeners.add(update);return()=>listeners.delete(update);},[]);
-    const all=[...state.checks,...(state.host?.checks??[])],passed=all.filter(item=>item.status==='passed').length;
+    const all=[...state.checks,...(state.host?.checks??[])],passed=all.filter(item=>item.status==='passed').length,failed=all.filter(item=>item.status==='failed').length,manual=all.filter(item=>item.status==='manual').length,executed=all.length-manual;
+    const phase=zh?({idle:'未运行',running:'正在运行',waitingForFixtureThread:'等待独立测试任务',failed:'失败',complete:'完成'}[state.phase]??state.phase):state.phase;
+    const summary=zh?`${phase} · 通过 ${passed}/${executed} · 失败 ${failed} · 未执行 ${manual}`:`${phase} · passed ${passed}/${executed} · failed ${failed} · not run ${manual}`;
     return h('section',{'data-functional-test-panel':'',style:{padding:24,display:'flex',flexDirection:'column',gap:16,maxWidth:1000,margin:'0 auto',width:'100%'}},
       h('h1',{style:{fontSize:24,fontWeight:600}},zh?'Codlet 功能测试':'Codlet functional tests'),
       h('p',null,zh?'复用原版兼容测试，并验证 Core 服务、后台通信和资源清理':'Extends compatibility checks with Core services, Host RPC and cleanup'),
       h('p',null,zh?'会创建一条未发送的测试草稿；模型调用检查仅在独立本地测试环境运行':'Creates an unsent test draft; model checks require an isolated local fixture'),
-      h('div',{style:{display:'flex',gap:12,alignItems:'center'}},h(C.Button,{onClick:()=>void run(),disabled:running},zh?'运行功能测试':'Run functional tests'),h('span',{'data-functional-phase':state.phase,role:'status'},`${state.phase} · ${passed}/${all.length}`)),
+      h('div',{style:{display:'flex',gap:12,alignItems:'center'}},h(C.Button,{onClick:()=>void run(),disabled:running},zh?'运行功能测试':'Run functional tests'),h('span',{'data-functional-phase':state.phase,role:'status'},summary)),
       h('table',{style:{width:'100%',textAlign:'left',fontSize:13,borderCollapse:'collapse'}},h('thead',null,h('tr',null,h('th',{style:{padding:12}},zh?'检查':'Check'),h('th',{style:{padding:12,width:100}},zh?'结果':'Result'),h('th',{style:{padding:12}},zh?'详情':'Details'))),
         h('tbody',null,...all.map(item=>h('tr',{key:item.id,style:{borderBottom:'1px solid rgba(128,128,128,.2)'}},h('td',{style:{padding:12}},item.id),h('td',{style:{padding:12,color:item.status==='passed'?'#258045':item.status==='failed'?'#b64237':'inherit'}},item.status),h('td',{style:{padding:12,overflowWrap:'anywhere'}},item.error?.message??h('details',null,h('summary',null,zh?'查看详情':'View details'),h('pre',{style:{whiteSpace:'pre-wrap',fontSize:12,marginTop:8}},JSON.stringify(item.detail??{},null,2)))))))),
       h(C.Button,{variant:'soft',color:'secondary',onClick:()=>{const url=URL.createObjectURL(new Blob([JSON.stringify(state,null,2)],{type:'application/json'})),link=document.createElement('a');link.href=url;link.download='codlet-functional-test.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}},zh?'导出报告':'Export report'));
@@ -81,7 +97,7 @@ module.exports.activate=async context=>{
     }finally{if(typeof hook==='function')hook();else hook.dispose?.();releaseEvents();}
   }
   async function run(){
-    if(running||!alive)return;running=true;state.phase='running';state.checks=[];state.error=null;save();
+    if(running||!alive)return;running=true;state.phase='running';state.checks=[];state.host=null;state.error=null;delete state.reportSaveError;save();
     try{
       const inspection=await ask('compatibility.acceptance.host','inspect');state.fixture=inspection.fixture;
       await check('renderer-host-rpc',async()=>{const value=await ask('compatibility.acceptance.host','echo',{value:{marker:'renderer'}});assert(value.value.marker==='renderer','RPC result changed');return {hostGeneration:value.hostGeneration};});
@@ -97,7 +113,7 @@ module.exports.activate=async context=>{
         const reply=await ask('codex.backend.read',method,method==='threads.list'||method==='models.list'?{limit:10}:{});return {fields:Object.keys(reply),count:(reply.threads??reply.models??reply.directories??reply.providers??[]).length};
       });
       await check('composer.action-click-and-cleanup',async()=>{
-        if(!state.fixture.autorun)await ask('codex.ui.navigation.page','newTaskDraft',{prompt:'Codlet functional draft; do not submit'});
+        if(!state.fixture.autorun)await openDraftWhenReady(ask,()=>alive,{prompt:'Codlet functional draft; do not submit'});
         const token=crypto.randomUUID(),lease=document.createElement('span');Object.assign(lease.dataset,{codletComposerActionLease:token,codletComposerActionOwner:context.pluginId,codletGeneration:String(context.generation)});document.body.append(lease);nodes.push(lease);
         try{await ask('codex.ui.composer.action','register',{token,label:'Functional check'});const button=await wait(()=>document.querySelector('[data-codlet-composer-action-instance="'+token+'"] button'));let clicked=false;lease.addEventListener('codlet:composer-action',()=>clicked=true,{once:true});button.click();assert(clicked,'Composer click did not reach the lease');}
         finally{await ask('codex.ui.composer.action','unregister',{token});lease.remove();}
@@ -107,12 +123,17 @@ module.exports.activate=async context=>{
         const entry=await wait(()=>document.querySelector('[data-codlet-navigation-entry="'+context.pluginId+'"]'));entry.click();
         await wait(()=>document.querySelector('[data-functional-test-panel]'));assert(document.querySelector('[data-codlet-page-toolbar]'),'Native toolbar missing');return {page:true,toolbar:true,controls:true};
       });
-      await check('native.editable-draft',async()=>{const result=await ask('codex.ui.navigation.page','newTaskDraft',{prompt:'Codlet functional draft; do not submit'});assert(result.opened&&result.submitted===false,'Draft unexpectedly submitted');return result;});
+      await check('native.editable-draft',async()=>{const result=await openDraftWhenReady(ask,()=>alive,{prompt:'Codlet functional draft; do not submit'});assert(result.opened&&result.submitted===false,'Draft unexpectedly submitted');return result;});
       await backendChecks();
       await wait(async()=>{const value=await ask('compatibility.acceptance.host','inspect');state.host=value.report;save();return ['complete','failed'].includes(value.report.phase);},35000);
       state.phase=[...state.checks,...state.host.checks].some(item=>item.status==='failed')?'failed':'complete';
     }catch(error){state.error={code:error.code??'test_failed',message:error.message};state.phase='failed';}
-    finally{running=false;save();}
+    finally{
+      save();
+      if(alive)try{await ask('compatibility.acceptance.host','save-report',{report:state});}
+      catch(error){state.reportSaveError={code:error.code??'report_save_failed',message:error.message};}
+      running=false;save();
+    }
   }
   const initial=await ask('compatibility.acceptance.host','inspect');state.fixture=initial.fixture;save();
   if(initial.fixture.autorun)void run();
