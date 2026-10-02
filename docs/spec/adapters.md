@@ -41,6 +41,8 @@ Desktop Adapter 0.2.8 separates the bounded metadata scan from the 512 local
 service-read budget. Thousands of already cached task families in an auxiliary
 window no longer reject the existing local connection families. Unbound families
 remain unread; excessive local candidates and ambiguous owners still fail closed.
+The live update reached ready state in both the primary and auxiliary daily
+windows, with the original Core/client PIDs and permissions retained.
 
 Windows package `26.924.2738.0` reports frontend `26.924.22138`, build `11645`,
 and AppServer `0.158.0-alpha.2.1`. Its scope, connection families, services and
