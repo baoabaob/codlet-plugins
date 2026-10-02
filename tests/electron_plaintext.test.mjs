@@ -37,6 +37,37 @@ const main = `class wEe {
 const hash = code => createHash('sha256').update(code).digest('hex');
 function compile(name, code) { const filename=path.join(process.cwd(),name), module=new Module(filename); module.filename=filename; module.paths=Module._nodeModulePaths(process.cwd()); module._compile(code,filename); return module.exports; }
 
+test('a bootstrap module can own both network policy and backend connection hooks',async()=>{
+  const combined=bootstrap.replaceAll('Pt','yY').replace('module.exports={yY};',`class ON { constructor(proc){this.connection={proc};} routeIncomingMessage(message){return message;} };module.exports={yY,ON,originalFetch:yY.prototype.fetch,originalConnection:ON.prototype.routeIncomingMessage};`);
+  const fetchWrapper=main.replaceAll('wEe','Dce');
+  const stdio='class Hs { constructor(proc){this.proc=proc;} send(value){return value;} };module.exports={Hs,original:Hs.prototype.send};';
+  const proc=new EventEmitter(),updates=[],source={interceptHttp(){},reserveRoute(){return {baseUrl:'http://127.0.0.1:40001/fixture',ready:Promise.resolve(),close(){}};}};
+  const hook=installDesktopPlaintext({app:{isReady:()=>false}},{source,deadlineUnixMs:Date.now()+1000,ownsBackendProcess:child=>child===proc,updateAccountMode:(_proc,mode)=>updates.push(mode)},
+    {expectedHashes:{'bootstrap-CYu4H4X5.js':hash(combined),'main-Dn18kdv3.js':hash(fetchWrapper),'application-network-startup-DN7Ktmlk.js':hash(stdio)}});
+  let network,connection,transport;
+  try{
+    network=compile('bootstrap-CYu4H4X5.js',combined);compile('main-Dn18kdv3.js',fetchWrapper);transport=compile('application-network-startup-DN7Ktmlk.js',stdio);
+    const status=await hook.ready();assert.equal(status.available,true);assert.equal(status.taskConfigurationAvailable,true);
+    connection=new network.ON(proc);connection.routeIncomingMessage({method:'account/updated',params:{authMode:'apiKey'}});assert.deepEqual(updates,['apiKey']);
+    new network.ON(new EventEmitter()).routeIncomingMessage({method:'account/updated',params:{authMode:'chatgpt'}});assert.deepEqual(updates,['apiKey']);
+  }finally{hook.close();}
+  assert.equal(network.yY.prototype.fetch,network.originalFetch);assert.equal(network.ON.prototype.routeIncomingMessage,network.originalConnection);assert.equal(transport.Hs.prototype.send,transport.original);
+});
+
+test('native lazy initializers run once before live class bindings are hooked',async()=>{
+  const lazyBootstrap='let yY,ON;module.exports={calls:0,initialize(){this.calls++;yY=class {fetch(){} request(){} };ON=class {routeIncomingMessage(message){return message;} };}};';
+  const lazyStdio='let Hs;module.exports={calls:0,initialize(){this.calls++;Hs=class {send(message){return message;} };}};';
+  const fetchWrapper=main.replaceAll('wEe','Dce'),source={interceptHttp(){}};
+  const hook=installDesktopPlaintext({app:{isReady:()=>false}},{source,deadlineUnixMs:Date.now()+1000},
+    {expectedHashes:{'bootstrap-CYu4H4X5.js':hash(lazyBootstrap),'main-Dn18kdv3.js':hash(fetchWrapper),'application-network-startup-DN7Ktmlk.js':hash(lazyStdio)}});
+  try{
+    const boot=compile('bootstrap-CYu4H4X5.js',lazyBootstrap),stdio=compile('application-network-startup-DN7Ktmlk.js',lazyStdio);compile('main-Dn18kdv3.js',fetchWrapper);
+    assert.equal(boot.calls,0);assert.equal(stdio.calls,0);assert.equal(hook.inspect().taskConfigurationAvailable,false);
+    boot.initialize();stdio.initialize();const ready=await hook.ready();assert.equal(ready.available,true);assert.equal(ready.taskConfigurationAvailable,true);
+    assert.equal(boot.calls,1);assert.equal(stdio.calls,1);
+  }finally{hook.close();}
+});
+
 test('split stdio and connection modules require both hashes and restore their own hooks',async()=>{
   const stdio='class $s { constructor(proc){this.proc=proc;this.sent=[];} send(message){this.sent.push(JSON.parse(message));} };module.exports={Stdio:$s,original:$s.prototype.send};';
   const connection='class Yh { constructor(proc){this.connection={proc};} routeIncomingMessage(message){return message;} };module.exports={Connection:Yh,original:Yh.prototype.routeIncomingMessage};';

@@ -77,3 +77,27 @@ Application control on managed Windows devices may still reject process debuggin
 do not treat local acceptance as a guarantee on every device.
 
 [Reproduce the integrated fixture](../../tests/fixtures/traffic/windows-startup-bootstrap/README.md).
+
+## Windows 26.930
+
+Package `26.930.2377.0` retains fuse v1 / `010011001` in signed `chrome.dll`
+SHA-256 `fc42df77197b9357672cc80baa1e6c9894b207756636a2ff6e44e666d4ba9a94`.
+Its sentinel moved to 281458144 and its temporary data edit to 281458181.
+Desktop Adapter 0.2.7 also pins the new main/bootstrap/Stdio module hashes and
+backend `0.159.0-alpha.12.1`; the connection class now shares the bootstrap
+module with ApplicationNetwork. Deferred captures read Native's initialized
+bindings without invoking its factories.
+
+The bootstrap consumes only its own `--inspect-brk=127.0.0.1:0` argument after
+identity verification and before native entry. Node Worker and Electron utility
+fork defaults receive the remaining native arguments when the caller omitted
+an explicit `execArgv`; explicit native choices are retained. Leaving the
+startup break in C++ worker defaults paused the worktree environment reader
+after the main inspector closed, even though model traffic and UI readiness
+already looked healthy. Ordinary startup has no such hook.
+
+The expanded functional fixture passed 24 checks on this package over both
+HTTP/SSE and Responses WebSocket, including cold task loading, actual model
+transforms, submit hooks, history, steer/interrupt and scoped plugin retirement.
+Restoration/detach and normal exit were confirmed. These controlled results
+retain the real-account, installer and platform boundaries above.

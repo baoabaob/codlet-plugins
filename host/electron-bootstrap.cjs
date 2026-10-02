@@ -4,6 +4,32 @@ const path = require('node:path');
 const { randomBytes } = require('node:crypto');
 const net = require('node:net');
 const fail = code => Object.assign(new Error(code), { code });
+function consumeOwnedStartupInspector(process, electron) {
+  // This one argument belongs to the Adapter's startup transaction. Leaving
+  // it in Native's defaults can pause later worker/fork children after our
+  // inspector has closed. Keep every unrelated native/user argument intact.
+  const flag = '--inspect-brk=127.0.0.1:0';
+  const app=electron.app;
+  const index = process.execArgv.indexOf(flag);
+  const owned=index!==-1||app.commandLine?.getSwitchValue('inspect-brk')==='127.0.0.1:0';
+  if (index !== -1) process.execArgv.splice(index, 1);
+  if (app.commandLine?.getSwitchValue('inspect-brk') === '127.0.0.1:0') app.commandLine.removeSwitch('inspect-brk');
+  if(!owned)return;
+  // Worker/utility defaults can retain the startup C++ argv even after the JS
+  // array changes. Supply Native's filtered defaults only when it omitted them.
+  const threads=require('node:worker_threads'),Worker=threads.Worker;
+  let wrapper;
+  wrapper=new Proxy(Worker,{construct(target,args,newTarget){
+    const options=args[1];
+    if((options===undefined||options&&typeof options==='object')&&options?.execArgv===undefined)args=[args[0],{...options,execArgv:[...process.execArgv]}];
+    return Reflect.construct(target,args,newTarget===wrapper?target:newTarget);
+  }});
+  threads.Worker=wrapper;
+  if(electron.utilityProcess?.fork){const fork=electron.utilityProcess.fork;electron.utilityProcess.fork=function(modulePath,args,options){
+    if(options===undefined||options&&typeof options==='object'&&options.execArgv===undefined)options={...options,execArgv:[...process.execArgv]};
+    return fork.call(this,modulePath,args,options);
+  };}
+}
 function sameExecutable(expected, observed) {
   if (typeof observed !== 'string' || !path.isAbsolute(observed)) return false;
   try {
@@ -96,7 +122,7 @@ async function attachElectronTrafficBeforeEntry({ inspectorUrl, expectedPid, exe
     const identity = await request('Debugger.evaluateOnCallFrame', { callFrameId: frame.callFrameId, expression: `({pid:process.pid,executable:require('node:fs').realpathSync(process.execPath),type:process.type,ready:require('electron').app.isReady(),electronVersion:process.versions.electron,chromeVersion:process.versions.chrome,nodeVersion:process.versions.node})`, returnByValue: true });
     const value = identity.result?.value;
     if (identity.exceptionDetails || value?.pid !== expectedPid || !sameExecutable(canonical, value?.executable) || value?.type !== 'browser' || value?.ready !== false) throw fail('main_bootstrap_identity_mismatch');
-    const expression = `(() => { const module={exports:{}}; ((module,exports,require)=>{${source}\n})(module,module.exports,require); const owned=module.exports.installElectronTraffic(require('electron'),${JSON.stringify({ ...configuration, deadlineUnixMs })}); const key=Symbol.for(${JSON.stringify(`codlet.private.main-traffic.${token}`)}); Object.defineProperty(globalThis,key,{value:{ready:()=>owned.ready(),inspect:()=>owned.inspect(),closeInspector:()=>{setImmediate(()=>require('node:inspector').close());return true}},configurable:true}); return {installed:true,pid:process.pid}; })()`;
+    const expression = `(() => { const electron=require('electron'); (${consumeOwnedStartupInspector.toString()})(process,electron); const module={exports:{}}; ((module,exports,require)=>{${source}\n})(module,module.exports,require); const owned=module.exports.installElectronTraffic(electron,${JSON.stringify({ ...configuration, deadlineUnixMs })}); const key=Symbol.for(${JSON.stringify(`codlet.private.main-traffic.${token}`)}); Object.defineProperty(globalThis,key,{value:{ready:()=>owned.ready(),inspect:()=>owned.inspect(),closeInspector:()=>{setImmediate(()=>require('node:inspector').close());return true}},configurable:true}); return {installed:true,pid:process.pid}; })()`;
     stage = 'install';
     const installed = await request('Debugger.evaluateOnCallFrame', { callFrameId: frame.callFrameId, expression, returnByValue: true });
     if (installed.exceptionDetails || installed.result?.value?.installed !== true || installed.result.value.pid !== expectedPid) throw fail('main_bootstrap_install_failed');

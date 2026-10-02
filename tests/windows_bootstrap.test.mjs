@@ -23,3 +23,10 @@ test('executable comparison accepts equivalent file names without accepting anot
   assert.equal(sameExecutable(process.execPath, 'relative.exe'), false);
   if (process.platform === 'win32') assert.equal(sameExecutable(process.execPath, `\\\\?\\${process.execPath}`), true);
 });
+
+test('Windows 26.930 retains exact-image and fuse-identity checks at its new offset',()=>{
+  const image='fc42df77197b9357672cc80baa1e6c9894b207756636a2ff6e44e666d4ba9a94',current={...fuse,offset:281458144};
+  assert.deepEqual(planForImage(image,[current]),{moduleData:{module:'chrome.dll',sha256:image,patches:[{fileOffset:281458181,expected:[48],replacement:[49]}]}});
+  assert.throws(()=>planForImage(image,[fuse]),{code:'client_bootstrap_version_unsupported'});
+  assert.throws(()=>planForImage(image,[{...current,wire:'000011001'}]),{code:'client_bootstrap_version_unsupported'});
+});

@@ -10,6 +10,10 @@ const reviewed = Object.freeze({
   b6f5c2323c642c3ad3dfdc3501aa94482970f88b4c12db0875ce593aece75c16: {
     offset: 281415264, wire: '010011001', version: 1,
   },
+  // Signed Windows package 26.930.2377.0 retains the same single fuse wire.
+  fc42df77197b9357672cc80baa1e6c9894b207756636a2ff6e44e666d4ba9a94: {
+    offset: 281458144, wire: '010011001', version: 1,
+  },
 });
 
 function planForImage(sha256, matches) {

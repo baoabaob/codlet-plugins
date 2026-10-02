@@ -24,6 +24,9 @@ const PROFILES = Object.freeze({
   'bootstrap-C4dRql4x.js': { hash: '0757af0981f4552ca79ed1a364eafa6a73e71a92e65ea4fce747c7b6c715ed4a', kind: 'bootstrap', symbol: 'Nt' },
   'main-C-Mhak1n.js': { hash: '457c79be69620d4489e94c14ac665f81731d869635606dcf175b7b4cc2e8b467', kind: 'main', symbol: 'ZTe' },
   'src-DldfpmrL.js': { hash: '88ec69722b5d87a7081edf2e2d6a2e21c3f25300cee587363d74b8b87969a412', kind: 'src', symbol: 'WQ', managerExport: 'un' },
+  'bootstrap-CYu4H4X5.js': { hash: '9b9d3c9e8312dba970daf31fd3950b3f2bd760a89e1d7bf480c4efefb3d2b102', kind: 'bootstrap', symbol: 'yY', connectionSymbol: 'ON' },
+  'main-Dn18kdv3.js': { hash: '447e4900075d8cb41f5c55f1728c20147ea23ab761bb4377348eea8c8f3d4a48', kind: 'main', symbol: 'Dce' },
+  'application-network-startup-DN7Ktmlk.js': { hash: '3c2ebf430f24e55975f81e95b33e0f71470d04886f229b935939a7e32c587cf0', kind: 'stdio', symbol: 'Hs' },
 });
 const HASHES = Object.freeze(Object.fromEntries(Object.entries(PROFILES).map(([name, profile]) => [name, profile.hash])));
 const fail = code => Object.assign(new Error(code), { code });
@@ -115,6 +118,7 @@ function installDesktopPlaintext({ app }, { source, deadlineUnixMs, ownsBackendP
   const scope = new AsyncLocalStorage();
   const symbol = Symbol('codlet.private.plaintext');
   const originalCompile = Module.prototype._compile;
+  const deferredModules = new Set();
   let bootstrapVerified = false, mainVerified = false, srcVerified = false, fetchInstalled = false, requestInstalled = false,
     stdioVerified = false, connectionVerified = false, stdioInstalled = false, connectionInstalled = false, desktopReason = null, taskReason = null, mismatch = null, closed = false;
   const restores = [];
@@ -274,14 +278,27 @@ function installDesktopPlaintext({ app }, { source, deadlineUnixMs, ownsBackendP
       if (['src', 'stdio', 'connection'].includes(profile.kind)) taskReason = 'unsupported_build'; else desktopReason = 'unsupported_build';
       mismatch = { name, observedSha256 }; return originalCompile.call(this, code, filename);
     }
-    const result = originalCompile.call(this, `${code}\n;Object.defineProperty(module.exports,Symbol.for(${JSON.stringify(String(symbol))}),{value:${profile.symbol},configurable:true});`, filename);
-    const captured = this.exports[Symbol.for(String(symbol))]; delete this.exports[Symbol.for(String(symbol))];
-    if (profile.kind === 'bootstrap') { bootstrapVerified = true; hookNetwork(captured); }
-    else if (profile.kind === 'main') { mainVerified = true; hookFetchWrapper(captured); }
-    else if (profile.kind === 'stdio') { stdioVerified = true; hookStdio(captured); }
-    else if (profile.kind === 'connection') { connectionVerified = true; hookConnection(captured); }
-    else { stdioVerified = true; connectionVerified = true; hookStdio(captured); hookConnection(this.exports[profile.managerExport ?? 'un']); }
-    srcVerified = stdioVerified && connectionVerified;
+    const expression = profile.connectionSymbol ? `({primary:${profile.symbol},connection:${profile.connectionSymbol}})` : profile.symbol;
+    const result = originalCompile.call(this, `${code}\n;Object.defineProperty(module.exports,Symbol.for(${JSON.stringify(String(symbol))}),{value:()=>${expression},configurable:true});`, filename);
+    const read = this.exports[Symbol.for(String(symbol))], exported = this.exports; delete this.exports[Symbol.for(String(symbol))];
+    // Some reviewed bundles declare classes in lazy native initializers. Capture
+    // their live bindings and wait for Native to initialize them; do not invoke
+    // a native factory or turn an uninitialized class into a permanent failure.
+    const apply = () => {
+      const captured = read(); let pending = false;
+      if (profile.kind === 'bootstrap') {
+        const primary = profile.connectionSymbol ? captured.primary : captured;
+        if (!bootstrapVerified) { if (primary == null) pending = true; else { bootstrapVerified = true; hookNetwork(primary); } }
+        if (profile.connectionSymbol && !connectionVerified) { if (captured.connection == null) pending = true; else { connectionVerified = true; hookConnection(captured.connection); } }
+      }
+      else if (profile.kind === 'main') { if (!mainVerified) { if (captured == null) pending = true; else { mainVerified = true; hookFetchWrapper(captured); } } }
+      else if (profile.kind === 'stdio') { if (!stdioVerified) { if (captured == null) pending = true; else { stdioVerified = true; hookStdio(captured); } } }
+      else if (profile.kind === 'connection') { if (!connectionVerified) { if (captured == null) pending = true; else { connectionVerified = true; hookConnection(captured); } } }
+      else { stdioVerified = true; connectionVerified = true; hookStdio(captured); hookConnection(exported[profile.managerExport ?? 'un']); }
+      srcVerified = stdioVerified && connectionVerified;
+      return !pending;
+    };
+    if (!apply()) deferredModules.add(apply);
     return result;
   };
   restores.push(() => { if (Module.prototype._compile === wrappedCompile) Module.prototype._compile = originalCompile; });
@@ -291,7 +308,10 @@ function installDesktopPlaintext({ app }, { source, deadlineUnixMs, ownsBackendP
   const taskDone = () => taskReason || !needsTaskSources || srcVerified && stdioInstalled && connectionInstalled;
   return Object.freeze({
     async ready() {
-      while (!closed && !(desktopDone() && taskDone()) && Date.now() < deadlineUnixMs - 500) await new Promise(resolve => setTimeout(resolve, 20));
+      while (!closed && !(desktopDone() && taskDone()) && Date.now() < deadlineUnixMs - 500) {
+        for (const apply of deferredModules) if (apply()) deferredModules.delete(apply);
+        await new Promise(resolve => setTimeout(resolve, 20));
+      }
       return this.inspect();
     },
     inspect: () => ({ installed: !closed, available: !desktopReason && bootstrapVerified && mainVerified && fetchInstalled && requestInstalled,
@@ -300,7 +320,7 @@ function installDesktopPlaintext({ app }, { source, deadlineUnixMs, ownsBackendP
       mismatch,
       reason: desktopReason ?? (bootstrapVerified && mainVerified ? null : 'hook_unavailable'),
       taskConfigurationReason: taskReason ?? (srcVerified && stdioInstalled && connectionInstalled ? null : 'hook_unavailable') }),
-    close() { if (closed) return; closed = true; for (const restore of restores.reverse()) restore(); for (const route of taskRoutes) closeRoute(route); taskRoutes.clear(); scope.disable(); },
+    close() { if (closed) return; closed = true; deferredModules.clear(); for (const restore of restores.reverse()) restore(); for (const route of taskRoutes) closeRoute(route); taskRoutes.clear(); scope.disable(); },
   });
 }
 module.exports = { installDesktopPlaintext, routedThreadMessage, reviewedSourceProfiles: PROFILES };

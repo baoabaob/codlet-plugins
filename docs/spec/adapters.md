@@ -28,6 +28,15 @@ loopback API fixture, not the user's credentials or a new MSIX installation.
 
 Adapters use the existing local Desktop connection, React scope and native navigation. They must not create another `connect-app-host` connection that replaces the Desktop view. Missing modules, changed object identity or a replaced patch make affected capabilities unavailable and produce diagnostics. Teardown restores only hooks still owned by that instance; conflicting patches can produce `reloadRequired`.
 
+Windows package `26.930.2377.0` (frontend `26.930.21537` / `12776`, AppServer
+`0.159.0-alpha.12.1`) passed the expanded 0.0.2 consumer with Desktop Adapter
+0.2.7 and UI Adapter 0.1.10. The original UI checks were retained; 24 checks
+passed in each HTTP/SSE and WebSocket fixture, covering Core services, native
+task open/configuration, submit rewrite/context injection, events/history,
+model request/response transforms and steer/interrupt. External scoped CLI
+reload/disable/enable retired the old generations. These were owned profiles
+and synthetic loopback model endpoints, with zero plugin errors and normal exit.
+
 Windows package `26.924.2738.0` reports frontend `26.924.22138`, build `11645`,
 and AppServer `0.158.0-alpha.2.1`. Its scope, connection families, services and
 postbox moved into the shared module; the native sidebar, Header and new-task

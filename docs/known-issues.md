@@ -22,6 +22,15 @@ The unauthenticated GitHub importer cannot install private repositories or draft
 
 ## Traffic activation boundaries
 
+Windows x64 `26.930.2377.0` requires Desktop Adapter 0.2.7 for granted traffic
+consumers. Its Chromium image and main/Stdio module identities changed. The
+Adapter also prevents its startup-only inspector break from propagating into
+native worker defaults; otherwise worktree environment reads and task resumes
+could wait indefinitely. Both source activations and 24 functional checks passed
+over HTTP/SSE and WebSocket with owned profiles and synthetic credentials.
+Scoped reload/disable/enable confirmed generation cleanup. This establishes the
+named local paths, not real OAuth, arbitrary providers or a new MSIX install.
+
 Windows x64 `26.924.2738.0` disables its private Node inspector by default.
 The new [owned-client startup bootstrap](spec/windows-startup-bootstrap.md)
 restores the existing Desktop and backend sources through the negotiated Core
