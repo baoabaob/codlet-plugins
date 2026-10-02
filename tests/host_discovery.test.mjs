@@ -39,6 +39,14 @@ test('partial, remote, unbound and ambiguous connections cannot acquire a transp
   const f=fixture();f.native.urls.push({href:'app://-/assets/app-shared-second.js'});
   await assert.rejects(f.probe(),{code:'desktop_asset_ambiguous'});assert.equal(f.imports.length,0);
 });
+test('cached task families do not consume local service reads; eligible reads remain bounded',async()=>{
+  const f=fixture();f.context.fixtureNative=f.native;
+  vm.runInContext(`for(let i=0;i<3000;i++)fixtureNative.node.familyBindings.set({scope:fixtureNative.token,read(){throw Error('must not read task bindings')}},new Map([['task-'+i,{}]]));`,f.context);
+  const connection=await f.probe();assert.equal(connection.manager,f.native.manager);connection.check();
+  const saturated=fixture();saturated.context.fixtureNative=saturated.native;
+  vm.runInContext(`for(let i=0;i<600;i++)fixtureNative.node.familyBindings.set({scope:fixtureNative.token,read:()=>({})},new Map([['local',{}]]));`,saturated.context);
+  await assert.rejects(saturated.probe(),{code:'desktop_scope_drift'});assert.equal(saturated.imports.length,0);
+});
 test('missing manager methods and ambiguous or immutable transports do not install an interceptor',async()=>{
   for(const mutate of [f=>{f.native.manager.sendRequest=undefined;},f=>{f.module.decoy={...f.native.postbox};},f=>{Object.defineProperty(f.native.postbox,'postMessage',{writable:false});}]){
     const f=fixture(),original=f.native.postbox.postMessage;mutate(f);await assert.rejects(f.probe());assert.equal(f.native.postbox.postMessage,original);

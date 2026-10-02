@@ -589,16 +589,18 @@ function loadedAsset(role) {
 function localConnection() {
   desktopDocument();
   const nodes = /* @__PURE__ */ new Set(), matches = /* @__PURE__ */ new Map();
+  let metadataEntries = 0, localReads = 0;
   for (const fiber of hostFibers()) {
     const chain = fiber.memoizedProps?.value;
     if (!(chain instanceof Map)) continue;
     for (const node of chain.values()) {
       if (!node?.token || chain.get(node.token.id) !== node || !(node.familyBindings instanceof Map) || nodes.has(node)) continue;
       nodes.add(node);
-      if (nodes.size > 256 || node.familyBindings.size > 512) throw fail3("desktop_scope_drift", "Desktop scope exceeds the discovery limit");
+      if (nodes.size > 256 || (metadataEntries += node.familyBindings.size) > 32768) throw fail3("desktop_scope_drift", "Desktop scope exceeds the discovery limit");
       const bound = [];
       for (const [family, bindings] of node.familyBindings) {
         if (family?.scope !== node.token || typeof family.read !== "function" || !(bindings instanceof Map) || !bindings.has("local")) continue;
+        if (++localReads > 512) throw fail3("desktop_scope_drift", "Desktop local bindings exceed the discovery limit");
         const value = family.read(node, chain, "local");
         bound.push({ family, value });
       }

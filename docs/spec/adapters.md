@@ -37,6 +37,11 @@ model request/response transforms and steer/interrupt. External scoped CLI
 reload/disable/enable retired the old generations. These were owned profiles
 and synthetic loopback model endpoints, with zero plugin errors and normal exit.
 
+Desktop Adapter 0.2.8 separates the bounded metadata scan from the 512 local
+service-read budget. Thousands of already cached task families in an auxiliary
+window no longer reject the existing local connection families. Unbound families
+remain unread; excessive local candidates and ambiguous owners still fail closed.
+
 Windows package `26.924.2738.0` reports frontend `26.924.22138`, build `11645`,
 and AppServer `0.158.0-alpha.2.1`. Its scope, connection families, services and
 postbox moved into the shared module; the native sidebar, Header and new-task
