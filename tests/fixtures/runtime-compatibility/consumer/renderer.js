@@ -23,12 +23,12 @@ module.exports.activate=async context=>{
     const [,refresh]=React.useState(0);React.useEffect(()=>{const update=()=>refresh(value=>value+1);listeners.add(update);return()=>listeners.delete(update);},[]);
     const all=[...state.checks,...(state.host?.checks??[])],passed=all.filter(item=>item.status==='passed').length;
     return h('section',{'data-functional-test-panel':'',style:{padding:24,display:'flex',flexDirection:'column',gap:16,maxWidth:1000,margin:'0 auto',width:'100%'}},
-      h('h1',null,zh?'Codlet 功能测试':'Codlet functional tests'),
+      h('h1',{style:{fontSize:24,fontWeight:600}},zh?'Codlet 功能测试':'Codlet functional tests'),
       h('p',null,zh?'复用原版兼容测试，并验证 Core 服务、后台通信和资源清理':'Extends compatibility checks with Core services, Host RPC and cleanup'),
       h('p',null,zh?'会创建一条未发送的测试草稿；模型调用检查仅在独立本地测试环境运行':'Creates an unsent test draft; model checks require an isolated local fixture'),
       h('div',{style:{display:'flex',gap:12,alignItems:'center'}},h(C.Button,{onClick:()=>void run(),disabled:running},zh?'运行功能测试':'Run functional tests'),h('span',{'data-functional-phase':state.phase,role:'status'},`${state.phase} · ${passed}/${all.length}`)),
-      h('table',{style:{width:'100%',textAlign:'left',fontSize:13}},h('thead',null,h('tr',null,h('th',null,zh?'检查':'Check'),h('th',null,zh?'结果':'Result'),h('th',null,zh?'详情':'Details'))),
-        h('tbody',null,...all.map(item=>h('tr',{key:item.id},h('td',{style:{padding:'8px 4px'}},item.id),h('td',null,item.status),h('td',{style:{overflowWrap:'anywhere'}},item.error?.message??JSON.stringify(item.detail??{})))))),
+      h('table',{style:{width:'100%',textAlign:'left',fontSize:13,borderCollapse:'collapse'}},h('thead',null,h('tr',null,h('th',{style:{padding:12}},zh?'检查':'Check'),h('th',{style:{padding:12,width:100}},zh?'结果':'Result'),h('th',{style:{padding:12}},zh?'详情':'Details'))),
+        h('tbody',null,...all.map(item=>h('tr',{key:item.id,style:{borderBottom:'1px solid rgba(128,128,128,.2)'}},h('td',{style:{padding:12}},item.id),h('td',{style:{padding:12,color:item.status==='passed'?'#258045':item.status==='failed'?'#b64237':'inherit'}},item.status),h('td',{style:{padding:12,overflowWrap:'anywhere'}},item.error?.message??h('details',null,h('summary',null,zh?'查看详情':'View details'),h('pre',{style:{whiteSpace:'pre-wrap',fontSize:12,marginTop:8}},JSON.stringify(item.detail??{},null,2)))))))),
       h(C.Button,{variant:'soft',color:'secondary',onClick:()=>{const url=URL.createObjectURL(new Blob([JSON.stringify(state,null,2)],{type:'application/json'})),link=document.createElement('a');link.href=url;link.download='codlet-functional-test.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}},zh?'导出报告':'Export report'));
   }
   let ownedUi;
