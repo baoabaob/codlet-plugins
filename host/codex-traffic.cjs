@@ -6,6 +6,7 @@ const zlib = require('node:zlib');
 const failure = code => Object.assign(new Error(code), { code });
 const VERIFIED_BACKENDS = Object.freeze({
   win32: Object.freeze([
+    Object.freeze({ sha256: '37762753b554982eef1c109303d1be652b6397f1479e844794353a85650199c6', version: '0.160.0', evidence: 'controlled-custom-builtin-chatgpt-http-sse-ws-two-thread-routing' }),
     Object.freeze({ sha256: '1722907aa64401bcc9b34467ef5c2af43f6aef9a5045ef04d11d19dfae4589fb', version: '0.159.0-alpha.12.1', evidence: 'controlled-functional-http-sse-ws-local-fixture' }),
     Object.freeze({ sha256: '8f0554ede25bbc5450921897c468b2e84635aa513c5017457997af0954581f49', version: '0.158.0-alpha.2.1', evidence: 'controlled-custom-provider-two-thread-http-ws-reconfiguration' }),
     Object.freeze({ sha256: 'a19f8f6c3c9dd5b71b6b1e3eb1ec55d75aafb2fdfb686d9e1f7a5f47db07d0d2', version: '0.155.0-alpha.16.3', evidence: 'controlled-custom-provider-two-thread-http-ws-reconfiguration' }),

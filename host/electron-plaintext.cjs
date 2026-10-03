@@ -27,6 +27,9 @@ const PROFILES = Object.freeze({
   'bootstrap-CYu4H4X5.js': { hash: '9b9d3c9e8312dba970daf31fd3950b3f2bd760a89e1d7bf480c4efefb3d2b102', kind: 'bootstrap', symbol: 'yY', connectionSymbol: 'ON' },
   'main-Dn18kdv3.js': { hash: '447e4900075d8cb41f5c55f1728c20147ea23ab761bb4377348eea8c8f3d4a48', kind: 'main', symbol: 'Dce' },
   'application-network-startup-DN7Ktmlk.js': { hash: '3c2ebf430f24e55975f81e95b33e0f71470d04886f229b935939a7e32c587cf0', kind: 'stdio', symbol: 'Hs' },
+  'bootstrap-CZlEGA2m.js': { hash: '343072f02e604fe06f7864a72b1cbcc6004a8a318c66982995a188ee97430a3b', kind: 'bootstrap', symbol: 'vY', connectionSymbol: 'DN' },
+  'main-C_jM0dPl.js': { hash: 'd940b7ba89557a640cf23967c60555fa2a2344d6899807478c69ffc304314302', kind: 'main', symbol: 'kce' },
+  'application-network-startup-ouXbhtc5.js': { hash: 'e92e5333cc38b06c6e94242d5bb680321f044bc9355013739d059a2d3e2f5b8d', kind: 'stdio', symbol: 'Hs' },
 });
 const HASHES = Object.freeze(Object.fromEntries(Object.entries(PROFILES).map(([name, profile]) => [name, profile.hash])));
 const fail = code => Object.assign(new Error(code), { code });

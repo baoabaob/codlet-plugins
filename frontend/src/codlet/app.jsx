@@ -39,7 +39,7 @@ function PluginTags({tags,show=true,query,onSelect}) {
 }
 function PluginRow({plugin,s,showTags,onSelectTag}) {
   const busy=mutationBusy(s)||s.loading||s.listStale, enabled=plugin.enabled===true, registered=plugin.registered!==false;
-  const error=plugin.execution?.error || plugin.validation?.error?.message,update=manager.pluginUpdate(plugin),install=manager.installState(plugin);
+  const error=plugin.temporarilyDisabled?'Temporarily disabled for this launch. Update the adapter and restart Codlet to retry. Enabled preferences and grants are preserved.':plugin.execution?.error || plugin.validation?.error?.message,update=manager.pluginUpdate(plugin),install=manager.installState(plugin);
   return <div className="codlet-plugin-row" data-codlet-plugin={plugin.id} aria-busy={manager.pending?.pluginId===plugin.id}>
     <div className="codlet-plugin-copy">
       <div className="codlet-plugin-title"><span className="codlet-plugin-name">{name(plugin)}</span><span className="codlet-version">{plugin.version}</span><PluginTags tags={plugin.tags} show={showTags} query={s.query} onSelect={onSelectTag}/>{registered&&update?.status==='available'&&<C.Button color="info" variant="soft" size="xs" disabled={busy||manager.checkingPlugins()} aria-label={t(`Update ${name(plugin)}`)} onClick={()=>manager.updatePlugins([plugin])}><I.Download/>{t('Update')}</C.Button>}</div>
@@ -54,7 +54,7 @@ function PluginRow({plugin,s,showTags,onSelectTag}) {
     <div className="codlet-plugin-actions">
       {registered&&<C.Button color="secondary" variant="ghost" size="sm" aria-label={t(`Details for ${name(plugin)}`)} disabled={busy} onClick={()=>manager.details(plugin)}>{t('Details')}</C.Button>}
       {!registered ? plugin.loaded&&<C.Button color="secondary" variant="ghost" size="sm" data-codlet-focus-key={`stop:${plugin.id}`} aria-label={t(`Stop ${name(plugin)}`)} disabled={busy} onClick={()=>manager.disable(plugin)}>{t('Stop')}</C.Button> :
-        <>{enabled?<IconAction icon={I.Regenerate} label={`Reload ${name(plugin)}`} loading={manager.pending?.pluginId===plugin.id} disabled={busy} onClick={()=>manager.mutate(plugin.id,plugin.loaded||Number.isSafeInteger(plugin.generation)?'reload':'enable')}/>:<span className="codlet-action-space" aria-hidden="true"/>}
+        <>{enabled?<IconAction icon={I.Regenerate} label={`Reload ${name(plugin)}`} loading={manager.pending?.pluginId===plugin.id} disabled={busy||plugin.temporarilyDisabled===true} onClick={()=>manager.mutate(plugin.id,plugin.loaded||Number.isSafeInteger(plugin.generation)?'reload':'enable')}/>:<span className="codlet-action-space" aria-hidden="true"/>}
         <C.Switch checked={enabled} disabled={busy} data-codlet-focus-key={`disable:${plugin.id}`} aria-label={t(plugin.id===manager.context.pluginId?'Enable Codlet GUI':`Enable ${name(plugin)}`)} onCheckedChange={next=>next?manager.mutate(plugin.id,'enable'):manager.disable(plugin)}/></>}
     </div>
   </div>;

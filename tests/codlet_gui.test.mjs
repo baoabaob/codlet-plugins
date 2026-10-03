@@ -35,6 +35,19 @@ test('older API 2 runtimes retain a working create().page() fallback',async t=>{
 test('rows show names, adjacent versions and descriptions without normal state labels or row tooltips',async t=>{
   const f=await fixture(t,'zh');await f.open();const row=f.document.querySelector('[data-codlet-plugin="codex.ui.adapter"]');assert.match(row.textContent,/Codex 界面适配器0\.1\.0/);assert.match(row.textContent,/将插件页面接入 Codex 主导航/);assert.equal(row.hasAttribute('title'),false);assert.doesNotMatch(row.textContent,/running|运行正常|not active/i);
 });
+
+test('startup suspension keeps the enabled preference visible while preventing an ineffective reload',async t=>{
+  const f=await fixture(t,'zh'),list=await f.demo.request(null,'list',null);
+  const plugin=list.plugins.find(p=>p.id==='codex.ui.adapter');
+  Object.assign(plugin,{enabled:true,active:false,temporarilyDisabled:true,temporaryDisableReason:'client_bootstrap_version_unsupported',validation:{status:'failed',basis:'startup_compatibility',error:{code:'startup_plugin_suspended',message:'startup detail'}}});
+  f.overrides.set('list',()=>list);
+  await f.open();
+  const row=f.document.querySelector('[data-codlet-plugin="codex.ui.adapter"]');
+  assert.match(row.textContent,/本次启动临时停用/);assert.match(row.textContent,/启用设置和权限已保留/);
+  assert.equal(row.querySelector('[role="switch"]').getAttribute('aria-checked'),'true');
+  assert.equal(row.querySelector('button[aria-label^="重新加载"]').disabled,true);
+  assert.equal(f.calls.some(c=>c.method==='submit'),false);
+});
 test('search matches ID/name/description, Escape clears only search, and refresh preserves focus',async t=>{
   const f=await fixture(t);await f.open();await f.input('Search plugins','navigation');assert.equal(f.document.querySelectorAll('[data-codlet-plugin]').length,1);assert.equal(f.document.querySelector('[data-codlet-plugin]').dataset.codletPlugin,'codex.ui.adapter');
   assert.equal(f.control('Search plugins').type,'text');assert.equal(f.control('Search plugins').getAttribute('role'),'combobox');

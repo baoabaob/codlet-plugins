@@ -14,6 +14,10 @@ const reviewed = Object.freeze({
   fc42df77197b9357672cc80baa1e6c9894b207756636a2ff6e44e666d4ba9a94: {
     offset: 281458144, wire: '010011001', version: 1,
   },
+  // Signed Windows package 26.930.3930.0, Chromium 154.0.8037.98.
+  '9ccf68d0580105bdb99b3ef5119829ca637d0d10251c58c984adbba59f37e7e0': {
+    offset: 281113728, wire: '010011001', version: 1,
+  },
 });
 
 function planForImage(sha256, matches) {

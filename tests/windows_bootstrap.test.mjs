@@ -30,3 +30,11 @@ test('Windows 26.930 retains exact-image and fuse-identity checks at its new off
   assert.throws(()=>planForImage(image,[fuse]),{code:'client_bootstrap_version_unsupported'});
   assert.throws(()=>planForImage(image,[{...current,wire:'000011001'}]),{code:'client_bootstrap_version_unsupported'});
 });
+
+test('Windows 26.930.3930 accepts only its reviewed signed image and exact fuse data',()=>{
+  const image='9ccf68d0580105bdb99b3ef5119829ca637d0d10251c58c984adbba59f37e7e0',current={...fuse,offset:281113728};
+  assert.deepEqual(planForImage(image,[current]),{moduleData:{module:'chrome.dll',sha256:image,patches:[{fileOffset:281113765,expected:[48],replacement:[49]}]}});
+  assert.throws(()=>planForImage(image,[{...current,offset:current.offset+1}]),{code:'client_bootstrap_version_unsupported'});
+  assert.throws(()=>planForImage(image,[{...current,wire:'000011001'}]),{code:'client_bootstrap_version_unsupported'});
+  assert.throws(()=>planForImage('0'.repeat(64),[current]),{code:'client_bootstrap_version_unsupported'});
+});

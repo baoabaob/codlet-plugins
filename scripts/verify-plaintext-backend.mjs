@@ -20,6 +20,9 @@ if (process.argv.includes('--help')) {
 }
 const options = Object.fromEntries(process.argv.slice(2).reduce((pairs, value, i, all) => i % 2 ? pairs : [...pairs, [value, all[i + 1]]], []));
 const macCandidate = process.platform === 'darwin' && process.arch === 'arm64';
+// These fixtures emit synthetic text only and test transports, not shell tools.
+// Windows sandbox provisioning owns global users/firewall rules across profiles.
+const sandboxMode = process.platform === 'win32' ? 'danger-full-access' : 'read-only';
 if (!(process.platform === 'win32' || macCandidate) || options['--run-owned'] !== 'yes' || !path.isAbsolute(options['--backend'] ?? '')
   || macCandidate && typeof options['--expected-sha256'] !== 'string') throw Error('explicit_supported_backend_required');
 if (options['--routing-ws-only'] !== undefined && options['--routing-ws-only'] !== 'yes') throw Error('invalid_case_selector');
@@ -29,7 +32,7 @@ const expectedHash = options['--expected-sha256'] ?? reviewedHash;
 if (!/^[a-f0-9]{64}$/u.test(expectedHash)) throw Error('invalid_expected_backend_sha256');
 const actualHash = createHash('sha256').update(await fs.readFile(executable)).digest('hex');
 assert.equal(actualHash, expectedHash, 'backend hash does not match the explicit fixture candidate');
-const report = { schema: 1, platform: process.platform, arch: process.arch, backendSha256: actualHash,
+const report = { schema: 1, platform: process.platform, arch: process.arch, backendSha256: actualHash, sandboxMode,
   ...(!probeCodexTraffic({ platform: process.platform, binarySha256: actualHash }).fixtureVerified ? { candidateUnreviewed: true } : {}),
   ...(options['--routing-ws-only'] === 'yes' ? { caseSelector: 'routing-ws-only' } : {}), transport: 'provider-endpoint', proxyConfigured: false, certificateConfigured: false, cases: [] };
 const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'codlet-plaintext-'));
@@ -208,7 +211,7 @@ async function run(kind, websockets, sessionRouting = false) {
   activeCase = state; report.cases.push(state); notifications.length = 0;
   const home = path.join(directory, `${kind}-${websockets}${sessionRouting ? '-sessions' : ''}`); await fs.mkdir(home);
   const config = [
-    'cli_auth_credentials_store="file"', 'sandbox_mode="read-only"', 'approval_policy="never"', 'model="gpt-5.4"',
+    'cli_auth_credentials_store="file"', `sandbox_mode=${JSON.stringify(sandboxMode)}`, 'approval_policy="never"', 'model="gpt-5.4"',
     `chatgpt_base_url=${JSON.stringify(endpoint + '/backend-api/')}`, `openai_base_url=${JSON.stringify(endpoint + '/v1')}`,
     'model_provider="' + (kind === 'custom' ? 'codlet_fixture' : 'openai') + '"',
     '[analytics]', 'enabled=false', '[features]', 'plugins=false', 'code_mode_host=false', 'remote_models=false', 'remote_plugin=false',
@@ -248,7 +251,7 @@ async function run(kind, websockets, sessionRouting = false) {
       const observedStart = originLog.length;
       const tags = ['a', 'b'];
       state.phase = 'starting_threads';
-      const started = await Promise.all(tags.map(() => rpc('thread/start', { cwd: home, approvalPolicy: 'never', sandbox: 'read-only', baseInstructions: 'This is a local synthetic session routing fixture.', ephemeral: false })));
+      const started = await Promise.all(tags.map(() => rpc('thread/start', { cwd: home, approvalPolicy: 'never', sandbox: sandboxMode, baseInstructions: 'This is a local synthetic session routing fixture.', ephemeral: false })));
       assert.notEqual(started[0].thread.id, started[1].thread.id);
       const ids = new Map(tags.map((tag, index) => [tag, started[index].thread.id]));
       threadIdsByCase.set(state, new Map([...ids].map(([tag, id]) => [id, tag])));
@@ -271,7 +274,7 @@ async function run(kind, websockets, sessionRouting = false) {
       state.phase = 'reinitializing';
       await startNative();
       state.phase = 'resuming_threads';
-      const resumed = await Promise.all(tags.map(tag => rpc('thread/resume', { threadId: ids.get(tag), cwd: home, approvalPolicy: 'never', sandbox: 'read-only' })));
+      const resumed = await Promise.all(tags.map(tag => rpc('thread/resume', { threadId: ids.get(tag), cwd: home, approvalPolicy: 'never', sandbox: sandboxMode })));
       assert(resumed.every((value, index) => value.thread.id === ids.get(tags[index])));
       state.phase = 'active_threads';
       state.coldResumed = true;
@@ -301,7 +304,7 @@ async function run(kind, websockets, sessionRouting = false) {
       state.passed = true;
       return;
     }
-    const started = await rpc('thread/start', { cwd: home, approvalPolicy: 'never', sandbox: 'read-only', baseInstructions: 'This is a local synthetic transport fixture.', ephemeral: true });
+    const started = await rpc('thread/start', { cwd: home, approvalPolicy: 'never', sandbox: sandboxMode, baseInstructions: 'This is a local synthetic transport fixture.', ephemeral: true });
     threadIdsByCase.set(state, started.thread.id);
     state.threadProvider = started.modelProvider;
     for (let index = 0; index < 2; index++) {

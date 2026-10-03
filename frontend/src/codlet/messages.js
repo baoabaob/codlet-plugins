@@ -198,6 +198,7 @@ export function createMessages(context) {
         'Plugin updates are already running.':'插件正在更新',
         'Plugin list timed out. Refresh to try again.': '插件列表请求超时，请刷新重试。', 'Plugin list unavailable': '无法获取插件列表', 'Plugin list contains duplicate IDs': '插件列表包含重复的 ID',
         'Registration removed; still loaded': '已取消注册，仍在运行', 'Registered, not loaded': '已注册，尚未加载', 'Plugin validation failed': '插件校验失败', 'Host process failed': 'Host 进程失败',
+        'Temporarily disabled for this launch. Update the adapter and restart Codlet to retry. Enabled preferences and grants are preserved.':'本次启动临时停用。更新适配器后重启 Codlet 即可重试；启用设置和权限已保留。',
         'Disable {name}?': '停用 {name}？', 'Remove {name}?': '移除 {name}？', 'Revoke permission for {name}?': '撤销 {name} 的权限？', '{name} disabled': '{name} 已停用', 'Codlet is disabled.': 'Codlet 已停用。',
         'This will also disable: {names}.': '同时停用：{names}。', 'Also disable: {names}.': '同时停用：{names}。', 'Dependents: {names}.': '依赖此插件：{names}。',
         'The Codlet GUI will close in all open windows. Re-enable the plugins from the launcher to restore it.': '所有窗口中的 Codlet 界面都会关闭。可通过启动器重新启用插件来恢复。',
