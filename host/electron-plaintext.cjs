@@ -116,8 +116,8 @@ function routedThreadMessage(message, reserve, isProviderSupported = () => true)
 // classes, after their auth, workspace policy and cancellation decisions.
 function installDesktopPlaintext({ app }, { source, deadlineUnixMs, ownsBackendProcess = () => false, isProviderSupported = () => true,
   providerTrustForProcess = () => undefined,
-  pendingAccountUpdate = () => null, updateAccountMode = () => {} }, { expectedHashes = HASHES } = {}) {
-  if (app.isReady() || !source?.interceptHttp) throw fail('desktop_bootstrap_too_late');
+  pendingAccountUpdate = () => null, updateAccountMode = () => {}, moduleRegistry }, { expectedHashes = HASHES } = {}) {
+  if ((!moduleRegistry && app.isReady()) || !source?.interceptHttp) throw fail('desktop_bootstrap_too_late');
   const scope = new AsyncLocalStorage();
   const symbol = Symbol('codlet.private.plaintext');
   const originalCompile = Module.prototype._compile;
@@ -271,19 +271,20 @@ function installDesktopPlaintext({ app }, { source, deadlineUnixMs, ownsBackendP
     FetchWrapper.prototype.performDesktopFetch = function(...args) { return scope.run(true, () => original.apply(this, args)); };
     restores.push(() => { FetchWrapper.prototype.performDesktopFetch = original; });
   }
-  Module.prototype._compile = function(code, filename) {
-    const name = path.basename(filename);
-    if (!Object.hasOwn(expectedHashes, name)) return originalCompile.call(this, code, filename);
+  function applyRecord(record) {
+    const {name, hash: observedSha256, exported}=record;
+    if (!Object.hasOwn(expectedHashes, name)) {
+      if (moduleRegistry && /^(bootstrap-|main-|application-network-startup-)/.test(name)) { if(name.startsWith('application-network-startup-'))taskReason='unsupported_build';else desktopReason='unsupported_build'; mismatch={name,observedSha256}; }
+      return;
+    }
     const profile = PROFILES[name] ?? { kind: name.startsWith('bootstrap-') ? 'bootstrap' : name.startsWith('main-') ? 'main' : 'src',
       symbol: name.startsWith('bootstrap-') ? 'Pt' : name.startsWith('main-') ? 'wEe' : 'mQ' };
-    const observedSha256 = createHash('sha256').update(code).digest('hex');
     if (observedSha256 !== expectedHashes[name]) {
       if (['src', 'stdio', 'connection'].includes(profile.kind)) taskReason = 'unsupported_build'; else desktopReason = 'unsupported_build';
-      mismatch = { name, observedSha256 }; return originalCompile.call(this, code, filename);
+      mismatch = { name, observedSha256 }; return;
     }
     const expression = profile.connectionSymbol ? `({primary:${profile.symbol},connection:${profile.connectionSymbol}})` : profile.symbol;
-    const result = originalCompile.call(this, `${code}\n;Object.defineProperty(module.exports,Symbol.for(${JSON.stringify(String(symbol))}),{value:()=>${expression},configurable:true});`, filename);
-    const read = this.exports[Symbol.for(String(symbol))], exported = this.exports; delete this.exports[Symbol.for(String(symbol))];
+    const read = () => record.evaluate(expression);
     // Some reviewed bundles declare classes in lazy native initializers. Capture
     // their live bindings and wait for Native to initialize them; do not invoke
     // a native factory or turn an uninitialized class into a permanent failure.
@@ -302,10 +303,26 @@ function installDesktopPlaintext({ app }, { source, deadlineUnixMs, ownsBackendP
       return !pending;
     };
     if (!apply()) deferredModules.add(apply);
+  }
+  Module.prototype._compile = function(code, filename) {
+    const name=path.basename(filename);
+    if (!Object.hasOwn(expectedHashes,name)) return originalCompile.call(this,code,filename);
+    const profile=PROFILES[name]??{symbol:name.startsWith('bootstrap-')?'Pt':name.startsWith('main-')?'wEe':'mQ'};
+    const expression=profile.connectionSymbol?`({primary:${profile.symbol},connection:${profile.connectionSymbol}})`:profile.symbol;
+    const hash=createHash('sha256').update(code).digest('hex');
+    if(hash!==expectedHashes[name]) {applyRecord({name,hash});return originalCompile.call(this,code,filename);}
+    const result=originalCompile.call(this,`${code}\n;Object.defineProperty(module.exports,Symbol.for(${JSON.stringify(String(symbol))}),{value:()=>${expression},configurable:true});`,filename);
+    const read=this.exports[Symbol.for(String(symbol))],exported=this.exports;delete this.exports[Symbol.for(String(symbol))];
+    applyRecord({name,hash,exported,evaluate:()=>read()});
     return result;
   };
   restores.push(() => { if (Module.prototype._compile === wrappedCompile) Module.prototype._compile = originalCompile; });
   const wrappedCompile = Module.prototype._compile;
+  if(moduleRegistry) {
+    Module.prototype._compile=originalCompile;
+    const unsubscribe=moduleRegistry.subscribe(applyRecord);
+    restores.push(unsubscribe);
+  }
   const desktopDone = () => desktopReason || bootstrapVerified && mainVerified && fetchInstalled && requestInstalled;
   const needsTaskSources = Object.keys(expectedHashes).some(name => ['src', 'stdio', 'connection'].includes(PROFILES[name]?.kind) || name.startsWith('src-'));
   const taskDone = () => taskReason || !needsTaskSources || srcVerified && stdioInstalled && connectionInstalled;

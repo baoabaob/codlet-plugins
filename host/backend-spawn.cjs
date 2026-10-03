@@ -83,7 +83,10 @@ function installBackendSpawn(configuration, dependencies = {}) {
   });
   if (!configuration?.source?.reserveRoute || !Number.isSafeInteger(configuration.deadlineUnixMs)) throw fail('invalid_launch_configuration');
   let closed = false, prepared = 0, declined = 0, reason = null;
-  const active = new Set(), pending = new Set(), owned = new WeakSet(), trustByProcess = new WeakMap(), accountByProcess = new WeakMap(), providersByProcess = new WeakMap();
+  const state=dependencies.state??{owned:new WeakSet(),trust:new WeakMap(),accounts:new WeakMap(),providers:new WeakMap(),records:new Set(),pending:new Set(),prepared:0};
+  const shared=!!dependencies.state;
+  const active = new Set(), pending = state.pending, owned = state.owned, trustByProcess = state.trust, accountByProcess = state.accounts, providersByProcess = state.providers;
+  prepared=state.prepared;
   function wrapped(options) {
     const args = options?.args, file = options?.file;
     if (closed || !Array.isArray(args) || !args.includes('app-server') || typeof file !== 'string' || !path.isAbsolute(file) || !/^codex(?:\.exe)?$/iu.test(path.basename(file))) return originalSpawn.call(this, options);
@@ -111,11 +114,13 @@ function installBackendSpawn(configuration, dependencies = {}) {
       providersByProcess.set(this, new Set(['openai', ...Object.keys(policy.providerBaseUrls ?? {})]));
       accountByProcess.set(this, { route: reservations[0], explicit: policy.openaiBaseUrl != null,
         current: effectiveProviders(policy).get('openai_base_url'), pending: null });
-      prepared++;
+      prepared++;state.prepared=prepared;
       const ready = Promise.all(reservations.map(item => item.ready));
       ready.catch(() => { reason = 'route_unavailable'; }); pending.add(ready); ready.finally(() => pending.delete(ready)).catch(() => {});
-      const release = () => { for (const item of reservations) closeRoute(item); active.delete(release); };
-      active.add(release); this.once('exit', release); this.once('error', release);
+      const record={child:this,reservations};state.records.add(record);
+      if(shared&&dependencies.trackBackend) dependencies.trackBackend(record,{methodKey:'method',method:'account/updated',paramsKey:'params',modeKey:'authMode',targets:{chatgpt:DEFAULT_CHATGPT,apiKey:DEFAULT_OPENAI}});
+      else {const release = () => { for (const item of reservations) closeRoute(item); active.delete(release);state.records.delete(record); };
+        active.add(release); this.once('exit', release); this.once('error', release);}
       return result;
     } catch (error) {
       for (const item of reservations) closeRoute(item);
@@ -137,7 +142,7 @@ function installBackendSpawn(configuration, dependencies = {}) {
       }
       return this.inspect();
     },
-    close() { if (closed) return; closed = true; if (prototype.spawn === wrapped) prototype.spawn = originalSpawn; for (const release of active) release(); },
+    close() { if (closed) return; closed = true; if (prototype.spawn === wrapped) prototype.spawn = originalSpawn; if(!shared)for (const release of active) release(); },
     ownsProcess: child => !closed && !!child && owned.has(child),
     providerTrustForProcess: child => owned.has(child) ? trustByProcess.get(child) : undefined,
     isProviderSupported: (child, provider) => owned.has(child) && providersByProcess.get(child)?.has(provider) === true,
@@ -156,7 +161,7 @@ function installBackendSpawn(configuration, dependencies = {}) {
       update.finally(() => { if (state.pending === update) state.pending = null; }).catch(() => {});
     },
     inspect: () => ({ installed: !closed, backendRootsPrepared: prepared, backendRootsDeclined: declined,
-      available: prepared > 0 && !reason, reason: reason ?? (prepared ? null : 'child_unavailable') }),
+      available: state.records.size > 0 && !reason, reason: reason ?? (state.records.size ? null : 'child_unavailable') }),
   });
 }
 module.exports = { installBackendSpawn, effectiveProviders, configArguments, lastStringOverride, environmentFromPairs, providerTrust };

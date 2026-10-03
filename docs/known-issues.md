@@ -22,6 +22,16 @@ The unauthenticated GitHub importer cannot install private repositories or draft
 
 ## Traffic activation boundaries
 
+Desktop Adapter 0.2.10 and GUI 0.1.9 support Core Preview 27's client-source
+lifecycle. Source-specific startup suspension is recoverable by update/reload
+in the same client, including its enabled dependent closure. Core Preview 26
+needs one upgrade and new client launch to establish that bridge. First late
+recovery may reconnect an idle verified local backend; active turns and pending
+requests reject that operation. Owned Node/Host fixtures cover replacement,
+rollback, disable, permission revocation and cleanup. Final signed-client/native
+acceptance of this integrated release remains pending; the older dated evidence
+below does not certify the new bridge.
+
 Windows x64 `26.930.2377.0` requires Desktop Adapter 0.2.7 for granted traffic
 consumers. Its Chromium image and main/Stdio module identities changed. The
 Adapter also prevents its startup-only inspector break from propagating into
@@ -58,10 +68,10 @@ Electron's native manual redirect mode cancels a 302 before returning a response
 
 | Launch state | Result |
 | --- | --- |
-| No enabled, granted traffic consumer | Ordinary client launch; no source hook |
+| No enabled source provider on Preview 27 | Generic Core bridge; no application-specific source hook |
 | Verified Desktop JS and local backend | Separate Desktop and model source activation |
 | Verified Desktop JS, unsupported backend | Desktop source only; model source reported unavailable |
-| All requested sources unavailable | Requested traffic launch fails closed |
+| All requested private sources unavailable on Preview 27 | Affected closure temporarily suspended; generic bridge retained for update/reload |
 | Reviewed Apple Silicon `26.917.62051` local Desktop and app-server | HTTP/SSE and Responses WebSocket paths passed controlled native acceptance |
 | Remote/cloud backend, browser networking, attachments, Realtime/WebRTC | Coverage not established |
 

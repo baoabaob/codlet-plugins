@@ -6,7 +6,20 @@ backend 0.158.0-alpha.2.1) disables the Node CLI inspector in its signed
 the argument is ignored and the toggle reports unavailable. The existing
 plaintext sources still work once installed before main entry.
 
-## Implementation
+## Current client bridge
+
+Core Preview 27 establishes the generic bridge before entry independently of
+adapters, including an initially unavailable or disabled source. It reads
+Electron's public versioned fuse schema; Native still verifies the exact owned
+package/image, whole-file digest, mapped non-executable data and restoration.
+The temporary inspector closes after the bridge handshake. Desktop Adapter
+0.2.10 then supplies its ordinary `clientSource` entry, with private application
+and backend hashes retained in the plugin. Source replacement/revocation joins
+the normal package receipt and can recover the same client after an unsupported
+private-source startup. The signed-client acceptance of this integrated bridge
+remains separate from the older evidence below.
+
+## Legacy implementation
 
 Core offers a negotiated before-resume phase on the existing
 `codlet.client.launch@1/runtime` Host lifecycle. An enabled provider still needs

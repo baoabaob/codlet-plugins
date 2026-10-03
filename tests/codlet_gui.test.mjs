@@ -48,6 +48,19 @@ test('startup suspension keeps the enabled preference visible while preventing a
   assert.equal(row.querySelector('button[aria-label^="重新加载"]').disabled,true);
   assert.equal(f.calls.some(c=>c.method==='submit'),false);
 });
+test('a recoverable source suspension offers a real reload without toggling enabled preferences',async t=>{
+  const f=await fixture(t,'zh'),list=await f.demo.request(null,'list',null);
+  const plugin=list.plugins.find(p=>p.id==='codex.ui.adapter');
+  Object.assign(plugin,{enabled:true,active:false,loaded:false,execution:null,reloadAvailable:true,temporarilyDisabled:true,temporaryDisableReason:'client_source_build_unverified'});
+  f.overrides.set('list',()=>list);
+  await f.open();
+  const row=f.document.querySelector('[data-codlet-plugin="codex.ui.adapter"]');
+  assert.match(row.textContent,/更新或重载依赖的插件后即可重试/);assert.doesNotMatch(row.textContent,/重启 Codlet/);
+  const reload=row.querySelector('button[aria-label^="重新加载"]');assert.equal(reload.disabled,false);
+  reload.click();await tick();
+  const prepare=f.calls.find(call=>call.method==='prepare');assert.equal(prepare.args.action,'reload');assert.equal(prepare.args.plugin_id,plugin.id);
+  assert.equal(f.calls.some(call=>call.method==='submit'),true);assert.equal(plugin.enabled,true);
+});
 test('search matches ID/name/description, Escape clears only search, and refresh preserves focus',async t=>{
   const f=await fixture(t);await f.open();await f.input('Search plugins','navigation');assert.equal(f.document.querySelectorAll('[data-codlet-plugin]').length,1);assert.equal(f.document.querySelector('[data-codlet-plugin]').dataset.codletPlugin,'codex.ui.adapter');
   assert.equal(f.control('Search plugins').type,'text');assert.equal(f.control('Search plugins').getAttribute('role'),'combobox');

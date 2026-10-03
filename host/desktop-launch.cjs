@@ -21,5 +21,6 @@ async function attachClientLaunch({ inspectorUrl, expectedPid, executable, traff
     configuration: { source, runtimeExecutable: process.execPath } });
 }
 module.exports = { activate() {}, deactivate() {}, prepareClientLaunch, attachClientLaunch,
+  clientSource() { return {code:CODEX_TRAFFIC_MAIN_SOURCE}; },
   beforeClientResume: require('./windows-bootstrap.cjs').beforeClientResume,
   ...require('./codex-traffic.cjs') };

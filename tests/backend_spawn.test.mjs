@@ -65,3 +65,16 @@ test('unverified backend uses its original launch and reports only backend sourc
     assert.equal((await hook.ready()).reason,'backend_build_unverified');
   } finally {hook.close();}
 });
+
+test('client-owned backend routes and process identity survive source replacement and close only with the child',async()=>{
+  const routes=[],state={owned:new WeakSet(),trust:new WeakMap(),accounts:new WeakMap(),providers:new WeakMap(),records:new Set(),pending:new Set(),prepared:0};
+  const source={reserveRoute(){const route={baseUrl:'http://127.0.0.1:43210/owned/',ready:Promise.resolve(),closed:false,close(){route.closed=true;}};routes.push(route);return route;}};
+  const prototype={spawn(){return 'started';}},original=prototype.spawn;
+  const dependencies={prototype,state,verify(){},probe(){return {accountType:'apiKey'};},prepare(plan){return {arguments:plan.arguments};}};
+  const configuration={source,runtimeExecutable:process.execPath,deadlineUnixMs:Date.now()+1000};
+  const first=installBackendSpawn(configuration,dependencies),child=new EventEmitter(),file=path.resolve('codex.exe');
+  prototype.spawn.call(child,{file,args:[file,'app-server'],envPairs:[]});
+  assert.equal((await first.ready()).available,true);first.close();assert.equal(prototype.spawn,original);assert.equal(routes[0].closed,false);
+  const next=installBackendSpawn(configuration,dependencies);assert.equal(next.ownsProcess(child),true);assert.equal((await next.ready()).available,true);
+  next.close();assert.equal(routes[0].closed,false);child.emit('exit');assert.equal(routes[0].closed,true);assert.equal(state.records.size,0);
+});
