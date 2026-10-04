@@ -22,6 +22,13 @@ The unauthenticated GitHub importer cannot install private repositories or draft
 
 ## Traffic activation boundaries
 
+Desktop Adapter 0.2.13 retries temporarily unavailable reviewed lexical bindings
+and performs one final probe after a busy event loop exhausts the wait budget.
+It records a bounded readiness snapshot in the system temporary directory
+(`codlet-client-source-<pid>-<startedUnixMs>.json`), excluding requests, URLs,
+credentials and conversation content. Logging failure cannot reject activation.
+Cold startup in the installed client still requires separate verification.
+
 Desktop Adapter 0.2.12 arms the bounded startup readiness budget after the
 paused entry frame resumes. An already settled backend route is not rejected
 because that budget expired, and a backend route timeout leaves an independently

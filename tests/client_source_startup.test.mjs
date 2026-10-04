@@ -11,10 +11,10 @@ import {fileURLToPath} from 'node:url';
 const require=createRequire(import.meta.url);
 const hash=code=>createHash('sha256').update(code).digest('hex');
 
-function status(endpoint) {
+function status(endpoint,command={op:'status'}) {
   return new Promise((resolve,reject)=>{
     const socket=net.createConnection({host:endpoint.host,port:endpoint.port});let data='';
-    socket.on('connect',()=>socket.write(JSON.stringify({op:'status',token:endpoint.token})+'\n'));
+    socket.on('connect',()=>socket.write(JSON.stringify({...command,token:endpoint.token})+'\n'));
     socket.on('data',bytes=>data+=bytes);socket.on('error',reject);
     socket.on('end',()=>{try{resolve(JSON.parse(data));}catch(error){reject(error);}});
   });
@@ -38,7 +38,7 @@ test('the packaged source activates on repeated cold boots after the pre-entry b
     await writeFile(path.join(root,'preload.cjs'),'process.type="browser";');
     await writeFile(path.join(root,'bootstrap-CZlEGA2m.js'),bootstrap);
     await writeFile(path.join(root,'main-C_jM0dPl.js'),main);
-    await writeFile(path.join(root,'entry.cjs'),`const bootstrap=require('./bootstrap-CZlEGA2m.js'),main=require('./main-C_jM0dPl.js');setTimeout(()=>{bootstrap.initialize();main.initialize();globalThis.nativeReady=true;},100);setInterval(()=>{},1000);`);
+    await writeFile(path.join(root,'entry.cjs'),`const bootstrap=require('./bootstrap-CZlEGA2m.js'),main=require('./main-C_jM0dPl.js');const initialization=setInterval(()=>{if(!require('node:inspector').url()){clearInterval(initialization);bootstrap.initialize();main.initialize();globalThis.nativeReady=true;}},10);setInterval(()=>{},1000);`);
     const child=spawn(process.execPath,['--inspect-brk=127.0.0.1:0','--require',path.join(root,'preload.cjs'),path.join(root,'entry.cjs')],{cwd:root,windowsHide:true,stdio:['ignore','pipe','pipe']});
     child.stdout.on('error',()=>{});child.stderr.on('error',()=>{});
     let cleaned=false;
@@ -63,8 +63,10 @@ test('the packaged source activates on repeated cold boots after the pre-entry b
         });
       }};`;
       const result=await attach({inspectorUrl,expectedPid:child.pid,executable:process.execPath,traffic:{},selection:{owner:'codex.desktop.adapter',generation:1,code,configuration:{source:{}}}},bridge);
-      assert.equal(result.exactChildVerified,true);assert.equal(result.activation.installed,true);
-      assert.deepEqual(result.activation.activatedSources.map(source=>source.id),['desktop-main-http']);
+      assert.equal(result.exactChildVerified,true);assert.equal(result.activation.installed,false);
+      const completed=(await status(result.bridge,{op:'ready',operationId:'startup-ready',expectedEpoch:0})).result;
+      assert.equal(completed.outcome,'applied');assert.equal(completed.activation.installed,true);
+      assert.deepEqual(completed.activation.activatedSources.map(source=>source.id),['desktop-main-http']);
       const observed=(await status(result.bridge)).result;
       assert.equal(observed.owner,'codex.desktop.adapter');assert.equal(observed.generation,1);assert.equal(observed.pid,child.pid);
       assert.equal(observed.activation.installed,true);assert.ok(observed.moduleObserver.modules>=2);

@@ -2,6 +2,7 @@
 const { connectPlaintextSource } = require('./vendor/plaintext-source-client.cjs');
 const { installDesktopPlaintext } = require('./electron-plaintext.cjs');
 const { installBackendSpawn } = require('./backend-spawn.cjs');
+const { recordSourceDiagnostic } = require('./source-diagnostics.cjs');
 const fail = code => Object.assign(new Error(code), { code });
 function localBackends(context, ownsProcess, dependencies = {}) {
   const profiles = dependencies.profiles ?? require('./electron-plaintext.cjs').reviewedSourceProfiles;
@@ -53,6 +54,15 @@ function installElectronTraffic(electron, configuration, context, dependencies =
   const recover = dependencies.recover ?? recoverLocalBackends;
   let recoveryReason = null;
   let readinessDeadlineUnixMs = null;
+  let readinessStartedUnixMs = null;
+  const diagnose = (installed,error) => {
+    try {
+    const desktopState=desktop?.inspect(),backendState=backend?.inspect();
+    (dependencies.diagnose??recordSourceDiagnostic)({pid:process.pid,startedUnixMs:readinessStartedUnixMs,
+      finishedUnixMs:Date.now(),phase:installedBeforeReady?'startup':'recovery',appReady:electron.app.isReady(),
+      installed,sourceConnected,error:error?.code??error?.name,recoveryReason,desktop:desktopState,backend:backendState});
+    }catch{}
+  };
   let sourceConnected = false, sourceReason = null;
   source.ready.then(() => { sourceConnected = true; }, error => { sourceReason = typeof error?.code === 'string' ? error.code : 'source_unavailable'; });
   let desktop, backend;
@@ -66,6 +76,8 @@ function installElectronTraffic(electron, configuration, context, dependencies =
   const status = () => ({ installed: true, source: { connected: sourceConnected, reason: sourceReason }, desktop: desktop.inspect(), backend: backend.inspect(), recovery: { reason: recoveryReason } });
   return Object.freeze({
     async ready() {
+      readinessStartedUnixMs??=Date.now();
+      try {
       // The startup installer runs on a paused native entry frame. Arm its
       // bounded readiness budget when the resumed client starts the handshake,
       // rather than spending that budget while Native is still paused/loading.
@@ -99,7 +111,10 @@ function installElectronTraffic(electron, configuration, context, dependencies =
       else unsupportedSources.push({ id: 'owned-backend-provider', reason: !desktopState.taskConfigurationAvailable
         ? desktopState.taskConfigurationReason === 'unsupported_build' ? 'unsupported_build' : 'hook_unavailable'
         : backendState.reason === 'child_unavailable' ? 'child_unavailable' : 'route_unavailable' });
-      return { installed: activatedSources.length > 0, activatedSources, unsupportedSources };
+      const installed=activatedSources.length>0;
+      diagnose(installed,null);
+      return { installed, activatedSources, unsupportedSources };
+      }catch(error){diagnose(false,error);throw error;}
     },
     inspect: status,
     async close() { desktop.close(); backend.close(); if(!shared)source.close(); },

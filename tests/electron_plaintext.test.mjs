@@ -68,6 +68,31 @@ test('native lazy initializers run once before live class bindings are hooked',a
   }finally{hook.close();}
 });
 
+test('initialized lazy bindings receive a final verified probe after the readiness deadline',async()=>{
+  const lazyBootstrap='let Pt;module.exports={initialize(){Pt=class {fetch(){} request(){}};}};';
+  const lazyMain='let wEe;module.exports={initialize(){wEe=class {performDesktopFetch(){}};}};';
+  const hook=installDesktopPlaintext({app:{isReady:()=>false}},{source:{interceptHttp(){}},deadlineUnixMs:Date.now()+1000},
+    {expectedHashes:{'bootstrap-DK4EfNwt.js':hash(lazyBootstrap),'main-LM8MUIFp.js':hash(lazyMain)}});
+  try {
+    const bootstrap=compile('bootstrap-DK4EfNwt.js',lazyBootstrap),main=compile('main-LM8MUIFp.js',lazyMain);
+    assert.equal(hook.inspect().available,false);
+    bootstrap.initialize();main.initialize();
+    assert.equal((await hook.ready({deadlineUnixMs:Date.now()-1})).available,true);
+  }finally{hook.close();}
+});
+
+test('a temporarily unavailable reviewed lexical binding is retried without invoking native factories',async()=>{
+  const bootstrap='let Pt=class {fetch(){}request(){}};module.exports={Pt};',main='let wEe=class {performDesktopFetch(){}};module.exports={wEe};';
+  let ready=false;
+  const compileRecord=(name,source)=>{const filename=path.join(process.cwd(),name),module=new Module(filename);module.filename=filename;module.paths=Module._nodeModulePaths(process.cwd());module._compile(source+'\nmodule.exports.evaluate=expression=>eval(expression);',filename);return{name,hash:hash(source),exported:module.exports,evaluate(expression){if(!ready)throw new ReferenceError('binding not initialized');return module.exports.evaluate(expression);}};};
+  const records=[compileRecord('bootstrap-DK4EfNwt.js',bootstrap),compileRecord('main-LM8MUIFp.js',main)];
+  const moduleRegistry={subscribe(callback){records.forEach(callback);return()=>{};}};
+  const hook=installDesktopPlaintext({app:{isReady:()=>false}},{source:{interceptHttp(){}},moduleRegistry,deadlineUnixMs:Date.now()+1000},
+    {expectedHashes:Object.fromEntries(records.map(record=>[record.name,record.hash]))});
+  try {assert.equal(hook.inspect().bindingErrors.main,'ReferenceError');ready=true;assert.equal((await hook.ready()).available,true);assert.deepEqual(hook.inspect().bindingErrors,{});}
+  finally{hook.close();}
+});
+
 test('split stdio and connection modules require both hashes and restore their own hooks',async()=>{
   const stdio='class $s { constructor(proc){this.proc=proc;this.sent=[];} send(message){this.sent.push(JSON.parse(message));} };module.exports={Stdio:$s,original:$s.prototype.send};';
   const connection='class Yh { constructor(proc){this.connection={proc};} routeIncomingMessage(message){return message;} };module.exports={Connection:Yh,original:Yh.prototype.routeIncomingMessage};';

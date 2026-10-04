@@ -124,6 +124,7 @@ function installDesktopPlaintext({ app }, { source, deadlineUnixMs, ownsBackendP
   const deferredModules = new Set();
   let bootstrapVerified = false, mainVerified = false, srcVerified = false, fetchInstalled = false, requestInstalled = false,
     stdioVerified = false, connectionVerified = false, stdioInstalled = false, connectionInstalled = false, desktopReason = null, taskReason = null, mismatch = null, closed = false;
+  const bindingErrors = Object.create(null);
   const restores = [];
   const taskRoutes = new Set(), routesByProcess = new WeakMap(), sendQueues = new WeakMap();
   function reserve(url, proc) {
@@ -302,7 +303,16 @@ function installDesktopPlaintext({ app }, { source, deadlineUnixMs, ownsBackendP
       srcVerified = stdioVerified && connectionVerified;
       return !pending;
     };
-    if (!apply()) deferredModules.add(apply);
+    const attempt = () => {
+      try { const result=apply();delete bindingErrors[profile.kind];return result; }
+      catch (error) {
+        bindingErrors[profile.kind]=['ReferenceError','TypeError'].includes(error?.name)?error.name:'binding_error';
+        if(error?.name==='ReferenceError')return false;
+        if(['bootstrap','main'].includes(profile.kind))desktopReason='hook_unavailable';else taskReason='hook_unavailable';
+        return true;
+      }
+    };
+    if (!attempt()) deferredModules.add(attempt);
   }
   Module.prototype._compile = function(code, filename) {
     const name=path.basename(filename);
@@ -332,12 +342,17 @@ function installDesktopPlaintext({ app }, { source, deadlineUnixMs, ownsBackendP
         for (const apply of deferredModules) if (apply()) deferredModules.delete(apply);
         await new Promise(resolve => setTimeout(resolve, 20));
       }
+      // A busy native event loop can initialize bindings after the last poll
+      // while exhausting the wait budget. Check those verified bindings once
+      // more before deciding that their hooks are unavailable.
+      if(!closed)for(const apply of deferredModules)if(apply())deferredModules.delete(apply);
       return this.inspect();
     },
     inspect: () => ({ installed: !closed, available: !desktopReason && bootstrapVerified && mainVerified && fetchInstalled && requestInstalled,
       taskConfigurationAvailable: !taskReason && srcVerified && stdioInstalled && connectionInstalled,
       modules: { bootstrap: bootstrapVerified, main: mainVerified, src: srcVerified, stdio: stdioInstalled, connection: connectionInstalled },
       mismatch,
+      bindingErrors:{...bindingErrors},deferredBindings:deferredModules.size,
       reason: desktopReason ?? (bootstrapVerified && mainVerified ? null : 'hook_unavailable'),
       taskConfigurationReason: taskReason ?? (srcVerified && stdioInstalled && connectionInstalled ? null : 'hook_unavailable') }),
     close() { if (closed) return; closed = true; deferredModules.clear(); for (const restore of restores.reverse()) restore(); for (const route of taskRoutes) closeRoute(route); taskRoutes.clear(); scope.disable(); },

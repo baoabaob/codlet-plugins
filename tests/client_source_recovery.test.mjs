@@ -62,6 +62,7 @@ function entryFixture(beforeReady = true, backendAvailable = true) {
   const configuration={source:{},deadlineUnixMs:Date.now()+1000};
   const calls=[];
   const dependencies={
+    diagnose(){},
     installDesktop:()=>({ready:async()=>desktopState,inspect:()=>desktopState,close(){calls.push('desktop-close');}}),
     installBackend:()=>({ready:async()=>backendState,inspect:()=>backendState,ownsProcess:()=>backendAvailable,close(){calls.push('backend-close');}}),
     recover:async()=>calls.push('reconnect')
@@ -117,4 +118,10 @@ test('private source preflight validates reviewed Desktop modules without forcin
   const names=['bootstrap-CZlEGA2m.js','main-C_jM0dPl.js','application-network-startup-ouXbhtc5.js'];
   const context={modules:{list:()=>names.map(name=>({name,hash:reviewedSourceProfiles[name].hash})),instances(){throw Error('preflight must not select a reconnect');}}};
   assert.doesNotThrow(()=>validateClientSource({app:{isReady:()=>true}},context));
+});
+
+test('a diagnostic write failure cannot reject source activation',async()=>{
+  const f=entryFixture();f.dependencies.diagnose=()=>{throw Error('read-only temporary directory');};
+  const entry=installElectronTraffic(f.electron,f.configuration,f.context,f.dependencies);f.resume();
+  assert.equal((await entry.ready()).installed,true);await entry.close();
 });
