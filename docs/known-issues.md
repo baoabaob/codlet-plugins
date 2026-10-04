@@ -22,6 +22,13 @@ The unauthenticated GitHub importer cannot install private repositories or draft
 
 ## Traffic activation boundaries
 
+Desktop Adapter 0.2.11 fixes the distinction between pre-entry installation and
+late recovery. The original phase is captured before awaiting source readiness;
+app readiness changing during startup no longer triggers a backend reconnect.
+Late recovery still refuses active turns and pending requests, but a busy or
+unreviewed backend does not reject an independently reviewed Desktop HTTP path.
+Backend coverage stays unavailable until that path is actually attached.
+
 Desktop Adapter 0.2.10 and GUI 0.1.9 support Core Preview 27's client-source
 lifecycle. Source-specific startup suspension is recoverable by update/reload
 in the same client, including its enabled dependent closure. Core Preview 26

@@ -4,7 +4,7 @@ import {createRequire} from 'node:module';
 import path from 'node:path';
 import Module from 'node:module';
 import {createHash} from 'node:crypto';
-const {recoverLocalBackends}=createRequire(import.meta.url)('../host/electron-main.cjs');
+const {recoverLocalBackends,installElectronTraffic,validateClientSource}=createRequire(import.meta.url)('../host/electron-main.cjs');
 function fixture() {
   const calls=[];
   class Connection {
@@ -52,4 +52,41 @@ test('a replacement attaches reviewed hooks to initialized modules and removes i
     assert.equal((await hook.ready()).available,true);assert.notEqual(native.Pt.prototype.fetch,original);
     hook.close();assert.equal(native.Pt.prototype.fetch,original);assert.equal(subscribers.size,0);
   }
+});
+function entryFixture(beforeReady = true, backendAvailable = true) {
+  let ready = !beforeReady, resolve;
+  const source={ready:new Promise(value=>resolve=value)},resources=new Map([['plaintextSource',source]]);
+  const desktopState={available:true,taskConfigurationAvailable:true};
+  const backendState={available:backendAvailable,reason:backendAvailable?null:'child_unavailable'};
+  const context={resources,modules:{}};
+  const configuration={source:{},deadlineUnixMs:Date.now()+1000};
+  const calls=[];
+  const dependencies={
+    installDesktop:()=>({ready:async()=>desktopState,inspect:()=>desktopState,close(){calls.push('desktop-close');}}),
+    installBackend:()=>({ready:async()=>backendState,inspect:()=>backendState,ownsProcess:()=>backendAvailable,close(){calls.push('backend-close');}}),
+    recover:async()=>calls.push('reconnect')
+  };
+  return {source,context,configuration,calls,dependencies,electron:{app:{isReady:()=>ready}},resume(){ready=true;resolve();}};
+}
+test('a pre-entry install stays a startup install after asynchronous readiness and never reconnects initialization requests',async()=>{
+  const f=entryFixture();
+  const entry=installElectronTraffic(f.electron,f.configuration,f.context,f.dependencies);
+  const pending=entry.ready();f.resume();const result=await pending;
+  assert.equal(result.installed,true);assert.equal(result.activatedSources.length,2);
+  assert.equal(f.calls.includes('reconnect'),false);await entry.close();
+});
+test('a busy late backend leaves the independent Desktop source available without interrupting the backend',async()=>{
+  const f=entryFixture(false,false);
+  f.dependencies.recover=async()=>{throw Object.assign(Error(),{code:'client_source_backend_busy'});};
+  const entry=installElectronTraffic(f.electron,f.configuration,f.context,f.dependencies);f.resume();
+  const result=await entry.ready();assert.equal(result.installed,true);
+  assert.deepEqual(result.activatedSources.map(source=>source.id),['desktop-main-http']);
+  assert.deepEqual(result.unsupportedSources,[{id:'owned-backend-provider',reason:'child_unavailable'}]);
+  assert.equal(entry.inspect().recovery.reason,'client_source_backend_busy');await entry.close();
+});
+test('private source preflight validates reviewed Desktop modules without forcing a backend reconnect',()=>{
+  const {reviewedSourceProfiles}=createRequire(import.meta.url)('../host/electron-plaintext.cjs');
+  const names=['bootstrap-CZlEGA2m.js','main-C_jM0dPl.js','application-network-startup-ouXbhtc5.js'];
+  const context={modules:{list:()=>names.map(name=>({name,hash:reviewedSourceProfiles[name].hash})),instances(){throw Error('preflight must not select a reconnect');}}};
+  assert.doesNotThrow(()=>validateClientSource({app:{isReady:()=>true}},context));
 });

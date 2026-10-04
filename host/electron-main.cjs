@@ -39,34 +39,44 @@ function validateClientSource(electron, context) {
     if(profile && profile.hash===record.hash) kinds.add(profile.kind);
   }
   if(!kinds.has('bootstrap')||!kinds.has('main')||!kinds.has('stdio')&&!kinds.has('src')) throw fail('desktop_build_unverified');
-  const state=context.resources.get('backendState');
-  localBackends(context, child => state.owned.has(child));
+  // Desktop hooks can be attached without reconnecting a local backend. A
+  // busy or unsupported backend must not reject an independently reviewed
+  // Desktop path; its reconnect guard belongs to that path's recovery below.
 }
-function installElectronTraffic(electron, configuration, context) {
+function installElectronTraffic(electron, configuration, context, dependencies = {}) {
   if (!configuration?.source || !Number.isSafeInteger(configuration.deadlineUnixMs)) throw fail('invalid_launch_configuration');
   const shared=context?.resources.get('plaintextSource');
   const source = shared ?? connectPlaintextSource(configuration.source);
+  const installedBeforeReady = !electron.app.isReady();
+  const installBackend = dependencies.installBackend ?? installBackendSpawn;
+  const installDesktop = dependencies.installDesktop ?? installDesktopPlaintext;
+  const recover = dependencies.recover ?? recoverLocalBackends;
+  let recoveryReason = null;
   let sourceConnected = false, sourceReason = null;
   source.ready.then(() => { sourceConnected = true; }, error => { sourceReason = typeof error?.code === 'string' ? error.code : 'source_unavailable'; });
   let desktop, backend;
   try {
-    backend = installBackendSpawn({ source, runtimeExecutable: configuration.runtimeExecutable, deadlineUnixMs: configuration.deadlineUnixMs }, {state:context?.resources.get('backendState'),trackBackend:context?.trackBackend});
-    desktop = installDesktopPlaintext(electron, { source, deadlineUnixMs: configuration.deadlineUnixMs,
+    backend = installBackend({ source, runtimeExecutable: configuration.runtimeExecutable, deadlineUnixMs: configuration.deadlineUnixMs }, {state:context?.resources.get('backendState'),trackBackend:context?.trackBackend});
+    desktop = installDesktop(electron, { source, deadlineUnixMs: configuration.deadlineUnixMs,
       ownsBackendProcess: backend.ownsProcess, isProviderSupported: backend.isProviderSupported,
       providerTrustForProcess: backend.providerTrustForProcess,
       pendingAccountUpdate: backend.pendingAccountUpdate, updateAccountMode: backend.updateAccountMode, moduleRegistry:context?.modules });
   } catch (error) { desktop?.close(); backend?.close(); if(!shared)source.close(); throw error; }
-  const status = () => ({ installed: true, source: { connected: sourceConnected, reason: sourceReason }, desktop: desktop.inspect(), backend: backend.inspect() });
+  const status = () => ({ installed: true, source: { connected: sourceConnected, reason: sourceReason }, desktop: desktop.inspect(), backend: backend.inspect(), recovery: { reason: recoveryReason } });
   return Object.freeze({
     async ready() {
       await source.ready;
-      if(context?.modules&&electron.app.isReady()) {
+      if(context?.modules&&!installedBeforeReady) {
         // A source learned after startup may need one local app-server reconnect;
         // the desktop process and its native pages stay alive. Never interrupt
         // an active turn or replay an outstanding native request.
-        await recoverLocalBackends(context, backend.ownsProcess);
+        try { await recover(context, backend.ownsProcess); }
+        catch (error) {
+          if (!['client_source_backend_busy','backend_build_unverified'].includes(error?.code)) throw error;
+          recoveryReason = error.code;
+        }
       }
-      const [desktopState, backendState] = await Promise.all([desktop.ready(), backend.ready()]);
+      const [desktopState, backendState] = await Promise.all([desktop.ready(), recoveryReason ? backend.inspect() : backend.ready()]);
       const activatedSources = [], unsupportedSources = [];
       if (desktopState.available) activatedSources.push({ id: 'desktop-main-http', operations: ['http.intercept'], protocols: ['http', 'sse'],
         coverage: ['desktop-main-fetch', 'desktop-main-upload-progress'] });
