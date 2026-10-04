@@ -84,6 +84,34 @@ test('a busy late backend leaves the independent Desktop source available withou
   assert.deepEqual(result.unsupportedSources,[{id:'owned-backend-provider',reason:'child_unavailable'}]);
   assert.equal(entry.inspect().recovery.reason,'client_source_backend_busy');await entry.close();
 });
+
+test('an expired pre-entry deadline is armed again when startup readiness begins',async()=>{
+  const f=entryFixture(true,false);
+  f.configuration.deadlineUnixMs=Date.now()-1;
+  f.dependencies.installDesktop=()=>({
+    ready:async options=>({available:options?.deadlineUnixMs>Date.now(),taskConfigurationAvailable:false}),
+    inspect:()=>({available:false}),close(){}
+  });
+  const entry=installElectronTraffic(f.electron,f.configuration,f.context,f.dependencies);
+  f.resume();
+  const result=await entry.ready();
+  assert.equal(result.installed,true);assert.deepEqual(result.activatedSources.map(source=>source.id),['desktop-main-http']);
+  assert.equal(f.calls.includes('reconnect'),false);await entry.close();
+});
+
+test('a startup backend route timeout does not discard verified Desktop coverage',async()=>{
+  const f=entryFixture(true,false);
+  f.dependencies.installBackend=()=>({
+    ready:async()=>{throw Object.assign(Error(),{code:'backend_route_timeout'});},
+    inspect:()=>({available:false,reason:'route_unavailable'}),ownsProcess:()=>false,close(){}
+  });
+  const entry=installElectronTraffic(f.electron,f.configuration,f.context,f.dependencies);
+  f.resume();
+  const result=await entry.ready();
+  assert.equal(result.installed,true);assert.deepEqual(result.activatedSources.map(source=>source.id),['desktop-main-http']);
+  assert.deepEqual(result.unsupportedSources,[{id:'owned-backend-provider',reason:'route_unavailable'}]);
+  assert.equal(entry.inspect().recovery.reason,'backend_route_timeout');await entry.close();
+});
 test('private source preflight validates reviewed Desktop modules without forcing a backend reconnect',()=>{
   const {reviewedSourceProfiles}=createRequire(import.meta.url)('../host/electron-plaintext.cjs');
   const names=['bootstrap-CZlEGA2m.js','main-C_jM0dPl.js','application-network-startup-ouXbhtc5.js'];

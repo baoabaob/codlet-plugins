@@ -22,6 +22,13 @@ The unauthenticated GitHub importer cannot install private repositories or draft
 
 ## Traffic activation boundaries
 
+Desktop Adapter 0.2.12 arms the bounded startup readiness budget after the
+paused entry frame resumes. An already settled backend route is not rejected
+because that budget expired, and a backend route timeout leaves an independently
+verified Desktop path active. Regression tests cover these failures and repeat
+the packaged source's cold bootstrap in three owned Node children. These
+fixtures do not establish signed-client or real model-request acceptance.
+
 Desktop Adapter 0.2.11 fixes the distinction between pre-entry installation and
 late recovery. The original phase is captured before awaiting source readiness;
 app readiness changing during startup no longer triggers a backend reconnect.

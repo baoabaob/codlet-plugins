@@ -78,3 +78,12 @@ test('client-owned backend routes and process identity survive source replacemen
   const next=installBackendSpawn(configuration,dependencies);assert.equal(next.ownsProcess(child),true);assert.equal((await next.ready()).available,true);
   next.close();assert.equal(routes[0].closed,false);child.emit('exit');assert.equal(routes[0].closed,true);assert.equal(state.records.size,0);
 });
+
+test('settled owned routes stay ready even after the startup deadline passes',async()=>{
+  const state={owned:new WeakSet(),trust:new WeakMap(),accounts:new WeakMap(),providers:new WeakMap(),records:new Set(),pending:new Set(),prepared:1};
+  const child=new EventEmitter();state.owned.add(child);state.records.add({child});
+  const prototype={spawn(){throw Error('must not reconnect');}},original=prototype.spawn;
+  const hook=installBackendSpawn({source:{reserveRoute(){}},runtimeExecutable:process.execPath,deadlineUnixMs:Date.now()-1},{prototype,state});
+  try {assert.equal((await hook.ready()).available,true);}
+  finally {hook.close();assert.equal(prototype.spawn,original);}
+});

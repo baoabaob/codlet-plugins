@@ -327,8 +327,8 @@ function installDesktopPlaintext({ app }, { source, deadlineUnixMs, ownsBackendP
   const needsTaskSources = Object.keys(expectedHashes).some(name => ['src', 'stdio', 'connection'].includes(PROFILES[name]?.kind) || name.startsWith('src-'));
   const taskDone = () => taskReason || !needsTaskSources || srcVerified && stdioInstalled && connectionInstalled;
   return Object.freeze({
-    async ready() {
-      while (!closed && !(desktopDone() && taskDone()) && Date.now() < deadlineUnixMs - 500) {
+    async ready({ deadlineUnixMs: readinessDeadlineUnixMs = deadlineUnixMs } = {}) {
+      while (!closed && !(desktopDone() && taskDone()) && Date.now() < readinessDeadlineUnixMs - 500) {
         for (const apply of deferredModules) if (apply()) deferredModules.delete(apply);
         await new Promise(resolve => setTimeout(resolve, 20));
       }

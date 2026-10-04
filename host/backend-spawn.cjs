@@ -131,10 +131,10 @@ function installBackendSpawn(configuration, dependencies = {}) {
   }
   prototype.spawn = wrapped;
   return Object.freeze({
-    async ready() {
-      while (!prepared && !declined && !closed && Date.now() < configuration.deadlineUnixMs - 500) await new Promise(resolve => setTimeout(resolve, 20));
-      if (prepared) {
-        const limit = configuration.deadlineUnixMs - 500 - Date.now();
+    async ready({ deadlineUnixMs = configuration.deadlineUnixMs } = {}) {
+      while (!prepared && !declined && !closed && Date.now() < deadlineUnixMs - 500) await new Promise(resolve => setTimeout(resolve, 20));
+      if (prepared && pending.size > 0) {
+        const limit = deadlineUnixMs - 500 - Date.now();
         if (limit <= 0) throw fail('backend_route_timeout');
         let timer;
         try { await Promise.race([Promise.all([...pending]), new Promise((_, reject) => { timer = setTimeout(() => reject(fail('backend_route_timeout')), limit); })]); }

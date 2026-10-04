@@ -52,6 +52,7 @@ function installElectronTraffic(electron, configuration, context, dependencies =
   const installDesktop = dependencies.installDesktop ?? installDesktopPlaintext;
   const recover = dependencies.recover ?? recoverLocalBackends;
   let recoveryReason = null;
+  let readinessDeadlineUnixMs = null;
   let sourceConnected = false, sourceReason = null;
   source.ready.then(() => { sourceConnected = true; }, error => { sourceReason = typeof error?.code === 'string' ? error.code : 'source_unavailable'; });
   let desktop, backend;
@@ -65,6 +66,10 @@ function installElectronTraffic(electron, configuration, context, dependencies =
   const status = () => ({ installed: true, source: { connected: sourceConnected, reason: sourceReason }, desktop: desktop.inspect(), backend: backend.inspect(), recovery: { reason: recoveryReason } });
   return Object.freeze({
     async ready() {
+      // The startup installer runs on a paused native entry frame. Arm its
+      // bounded readiness budget when the resumed client starts the handshake,
+      // rather than spending that budget while Native is still paused/loading.
+      readinessDeadlineUnixMs ??= installedBeforeReady ? Date.now() + 5000 : configuration.deadlineUnixMs;
       await source.ready;
       if(context?.modules&&!installedBeforeReady) {
         // A source learned after startup may need one local app-server reconnect;
@@ -76,7 +81,15 @@ function installElectronTraffic(electron, configuration, context, dependencies =
           recoveryReason = error.code;
         }
       }
-      const [desktopState, backendState] = await Promise.all([desktop.ready(), recoveryReason ? backend.inspect() : backend.ready()]);
+      const readyOptions = { deadlineUnixMs: readinessDeadlineUnixMs };
+      const backendReady = recoveryReason ? backend.inspect() : backend.ready(readyOptions).catch(error => {
+        if (error?.code !== 'backend_route_timeout') throw error;
+        // Model-route readiness is independent of the Desktop source. Keep
+        // the verified Desktop hook, and report only the failed model path.
+        recoveryReason = error.code;
+        return { ...backend.inspect(), available: false, reason: 'route_unavailable' };
+      });
+      const [desktopState, backendState] = await Promise.all([desktop.ready(readyOptions), backendReady]);
       const activatedSources = [], unsupportedSources = [];
       if (desktopState.available) activatedSources.push({ id: 'desktop-main-http', operations: ['http.intercept'], protocols: ['http', 'sse'],
         coverage: ['desktop-main-fetch', 'desktop-main-upload-progress'] });
