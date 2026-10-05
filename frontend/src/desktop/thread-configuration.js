@@ -26,13 +26,14 @@ function privateBaseUrl(value) {
     return url.href.replace(/\/$/u, '');
 }
 
-export function createThreadConfiguration({ check, owner, capability, client, build }) {
+export function createThreadConfiguration({ check, owner, capability, client, build, restoration }) {
     const hooks = new Map(), pending = new Set();
     let alive = true, sequence = 0;
     const supported = build.threadConfiguration === true;
     const ordered = () => [...hooks.values()].sort((a, b) => a.priority - b.priority || a.pluginId.localeCompare(b.pluginId) || a.order - b.order);
-    const inspect = hook => ({ pluginId: hook.pluginId, generation: hook.generation, id: hook.id, enabled: hook.enabled, priority: hook.priority, timeoutMs: hook.timeoutMs, appliesAt: [...hook.appliesAt], calls: hook.calls, applied: hook.applied, failures: hook.failures });
-    const probe = () => ({ available: alive && supported, appliesAt: [...phases], existingLoadedThreads: true, hooks: hooks.size, pending: pending.size,
+    const inspect = hook => ({ pluginId: hook.pluginId, generation: hook.generation, id: hook.id, enabled: hook.enabled, priority: hook.priority, timeoutMs: hook.timeoutMs, appliesAt: [...hook.appliesAt], calls: hook.calls, applied: hook.applied, failures: hook.failures,
+        ...(hook.restoreOnDeactivate ? { restoreOnDeactivate: true, restorations: restoration.inspect(hook.restorationOwner) } : {}) });
+    const probe = () => ({ available: alive && supported, appliesAt: [...phases], existingLoadedThreads: true, hooks: hooks.size, pending: pending.size, restoration: restoration?.available() === true, restorationLeases: restoration?.pending() ?? 0,
         unavailable: supported ? null : { code: 'desktop_configuration_unsupported', message: 'Task configuration is not verified for this client build' } });
     const assertReady = () => {
         check();
@@ -43,7 +44,7 @@ export function createThreadConfiguration({ check, owner, capability, client, bu
         for (const item of pending) item.controller.abort(reason);
     }
     function register(ctx, options, handler) {
-        assertReady(); fields(options, ['id', 'priority', 'timeoutMs', 'enabled', 'appliesAt']);
+        assertReady(); fields(options, ['id', 'priority', 'timeoutMs', 'enabled', 'appliesAt', 'restoreOnDeactivate']);
         const principal = owner(ctx, capability), id = text(options.id, 'configuration id', 128);
         const key = `${principal.pluginId}:${principal.generation}:${id}`;
         if (hooks.has(key)) throw fail('duplicate_interceptor', 'Task configuration is already registered');
@@ -52,14 +53,39 @@ export function createThreadConfiguration({ check, owner, capability, client, bu
         if (!Number.isSafeInteger(priority) || Math.abs(priority) > 1000 || !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 2000 || options.enabled !== undefined && typeof options.enabled !== 'boolean') throw fail('invalid_argument', 'Invalid task configuration limits');
         const appliesAt = options.appliesAt === undefined ? defaultPhases : options.appliesAt;
         if (!Array.isArray(appliesAt) || !appliesAt.length || appliesAt.some(phase => !phases.includes(phase)) || new Set(appliesAt).size !== appliesAt.length) throw fail('invalid_argument', 'Invalid task configuration phases');
-        const hook = { ...principal, id, key, handler, priority, timeoutMs, appliesAt: Object.freeze([...appliesAt]), order: ++sequence, providerId: `codlet_${crypto.randomUUID().replaceAll('-', '')}`, active: true, enabled: options.enabled !== false, calls: 0, applied: 0, failures: 0 };
+        if (options.restoreOnDeactivate !== undefined && typeof options.restoreOnDeactivate !== 'boolean') throw fail('invalid_argument', 'restoreOnDeactivate must be boolean');
+        if (options.restoreOnDeactivate && (typeof ctx.onCleanup !== 'function' || !restoration?.available() || !appliesAt.includes('thread.resume'))) throw fail('configuration_restore_unsupported', 'Restoration requires asynchronous Core cleanup, reviewed reconfiguration and a resume hook');
+        const hook = { ...principal, id, key, handler, priority, timeoutMs, appliesAt: Object.freeze([...appliesAt]), order: ++sequence, providerId: `codlet_${crypto.randomUUID().replaceAll('-', '')}`, active: true, enabled: options.enabled !== false, calls: 0, applied: 0, failures: 0, restoreOnDeactivate: options.restoreOnDeactivate === true, controller: new AbortController(), restorationOwner: Object.freeze({ ...principal, id }) };
         hooks.set(key, hook);
-        let release;
+        let release, releaseCleanup;
         const cancelHook = () => { for (const item of pending) if (item.hooks.includes(hook)) item.controller.abort(fail('configuration_retired', 'Task configuration retired before dispatch')); };
-        const dispose = () => { if (!hook.active) return; hook.active = false; hooks.delete(key); cancelHook(); release?.(); };
-        hook.dispose = dispose;
-        try { release = ctx.onDeactivate(dispose); } catch (error) { dispose(); throw error; }
+        const retire = () => { if (!hook.active) return; hook.active = false; hook.handler = null; hooks.delete(key); cancelHook(); hook.controller.abort(); release?.(); };
+        const restore = async signal => {
+            if (!hook.restoreOnDeactivate) throw fail('configuration_restore_unsupported', 'Opt in to restoration before applying a loaded-thread change');
+            hook.enabled = false; cancelHook();
+            const result = await restoration.restore(hook.restorationOwner, signal);
+            if (!hook.active) releaseCleanup?.();
+            return result;
+        };
+        let disposal;
+        const dispose = () => {
+            if (!hook.active) return disposal;
+            retire(); disposal = hook.restoreOnDeactivate ? restore() : undefined;
+            return disposal;
+        };
+        hook.dispose = retire;
+        try {
+            release = ctx.onDeactivate(retire);
+            if (hook.restoreOnDeactivate) releaseCleanup = ctx.onCleanup(({ signal }) => restore(signal).then(() => undefined));
+        } catch (error) { retire(); releaseCleanup?.(); throw error; }
         return Object.freeze(Object.assign(dispose, {
+            reconfigure(args) {
+                assertReady();
+                if (!hook.active || !hook.enabled) throw fail('interceptor_retired', 'Enable the live configuration before applying it');
+                if (!hook.restoreOnDeactivate) throw fail('configuration_restore_unsupported', 'Opt in to restoration before applying a loaded-thread change');
+                return restoration.reconfigure(hook.restorationOwner, args, hook.controller.signal);
+            },
+            restore() { assertReady(); if (!hook.active) throw fail('interceptor_retired', 'Task configuration has retired'); return restore(); },
             setEnabled(enabled) {
                 assertReady();
                 if (!hook.active) throw fail('interceptor_retired', 'Task configuration has retired');
@@ -91,7 +117,10 @@ export function createThreadConfiguration({ check, owner, capability, client, bu
                     abort = () => reject(signal.reason ?? fail('configuration_retired', 'Task configuration retired'));
                     signal.addEventListener('abort', abort, { once: true });
                     timer = setTimeout(() => reject(fail('configuration_timeout', 'Task configuration callback timed out')), budget);
-                    Promise.resolve().then(() => hook.handler(draft, Object.freeze({ signal }))).then(resolve, reject);
+                    Promise.resolve().then(() => {
+                        if (signal.aborted || !hook.active) throw fail('configuration_retired', 'Task configuration retired before callback dispatch');
+                        return hook.handler(draft, Object.freeze({ signal }));
+                    }).then(resolve, reject);
                 }).finally(() => { clearTimeout(timer); signal.removeEventListener('abort', abort); });
                 if (signal.aborted || !hook.active) throw signal.reason ?? fail('configuration_retired', 'Task configuration retired before dispatch');
                 if (result == null) continue;
@@ -143,6 +172,8 @@ export function createThreadConfiguration({ check, owner, capability, client, bu
         return next;
     }
     function intercept(message, send) {
+        try { if (restoration?.intercept(message, send)) return; }
+        catch (error) { client.onError(message.request.id, error); return; }
         const source = message.request.method.replace('/', '.');
         const selected = ordered().filter(hook => hook.enabled && hook.appliesAt.includes(source));
         if (!alive || !selected.length) return send(message);
@@ -152,6 +183,7 @@ export function createThreadConfiguration({ check, owner, capability, client, bu
         run(message, item).then(next => {
             assertReady();
             if (item.controller.signal.aborted || !client.requestPromises.has(message.request.id)) throw fail('configuration_retired', 'Native task request retired before dispatch');
+            restoration?.authorize(next, item.chosen?.restorationOwner);
             send(next); if (item.chosen) item.chosen.applied++;
         }).catch(error => {
             if (client.requestPromises.has(message.request.id)) client.onError(message.request.id, fail(error.code ?? 'configuration_failed', error.message ?? 'Task configuration failed'));
@@ -159,7 +191,7 @@ export function createThreadConfiguration({ check, owner, capability, client, bu
     }
     return {
         register, intercept, probe, cancel,
-        list(args = {}) { assertReady(); fields(args, []); return { configurations: ordered().map(inspect) }; },
-        dispose() { if (!alive) return; alive = false; cancel(); for (const hook of [...hooks.values()]) hook.dispose(); hooks.clear(); }
+        list(args = {}) { assertReady(); fields(args, []); return { configurations: ordered().map(inspect), restorations: restoration?.list() ?? [] }; },
+        dispose() { if (!alive) return; alive = false; cancel(); for (const hook of [...hooks.values()]) hook.dispose(); hooks.clear(); return restoration?.dispose(); }
     };
 }

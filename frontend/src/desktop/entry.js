@@ -1,6 +1,7 @@
 import { CLIENT_PROFILES, clientProfile } from '../../../compatibility/client-profiles.js';
 import { createThreadConfiguration } from './thread-configuration.js';
 import { createThreadReconfiguration } from './thread-reconfiguration.js';
+import { createThreadRestoration } from './thread-restoration.js';
 import { reviewedNavigator } from '../native-navigation.js';
 import { desktopDocument, loadedAsset, localConnection, uniqueExport } from '../host-discovery.js';
 'use strict';
@@ -400,9 +401,11 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
         // plugins are high-trust code; this object does not claim an OS sandbox.
         return { pluginId: ctx.pluginId, generation: ctx.generation, capability };
     };
-    const threadConfiguration = createThreadConfiguration({ check, owner, capability: CAPS.write, client, build });
     const threadReconfiguration = createThreadReconfiguration({ manager, client, check, supported: build.threadReconfiguration,
         selection: () => selection(), loadedThread, activeTurnState });
+    const threadRestoration = createThreadRestoration({ check, reconfiguration: threadReconfiguration,
+        readConfiguration: (threadId, signal) => read('threads.configuration', { threadId }, signal) });
+    const threadConfiguration = createThreadConfiguration({ check, owner, capability: CAPS.write, client, build, restoration: threadRestoration });
 
     function navigationUnavailable(error) {
         if (navigationFailure) return;
@@ -813,7 +816,8 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
     function dispose() {
         if (!alive) return reloadReason ? { reloadRequired: true, reason: reloadReason } : undefined;
         alive = false;
-        threadConfiguration.dispose();
+        const restoration = threadConfiguration.dispose();
+        if (restoration?.reloadRequired) reloadReason ??= restoration.reason;
         for (const pending of pendingSubmits) pending.controller.abort(fail('adapter_deactivated', 'Desktop adapter was deactivated'));
         for (const hook of hooks.values()) hook.active = false;
         hooks.clear(); listeners.clear(); approvals.clear(); retiredApprovals.clear(); tickets.clear(); events.length = 0; eventBytes = 0;

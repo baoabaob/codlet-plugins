@@ -159,4 +159,22 @@ Pre-submit hooks have deterministic priority/owner/order, bounded concurrency an
 
 An explicit `threads.reconfigure` operation can cold-resume the selected idle owner task on reviewed builds. It requires an already installed resume hook and checks the actual Native response against the requested model/provider; see [the traffic contract](traffic.md). Read `threads.configuration` before a change to retain a non-secret restoration point; either returned field may be null, in which case a plugin must not guess an original value. Provider routes are owned by their plugin generation and are not automatically restored after forced retirement.
 
+Desktop Adapter 0.2.14 adds opt-in restoration for a configuration registration:
+
+```js
+const handle = api.registerThreadConfiguration(context, ticket, {
+  id: 'private-provider', appliesAt: ['thread.resume'], restoreOnDeactivate: true
+}, () => ({ provider: { id: 'codlet_example', baseUrl: channelEndpoint }, model: 'chosen-model' }));
+await handle.reconfigure({ threadId, modelProvider: 'codlet_example', model: 'chosen-model' });
+// Before explicitly closing the route, or leaving this task for other work:
+await handle.restore();
+// Normal Core retirement also awaits restoration through context.onCleanup.
+```
+
+This requires Core's `context.onCleanup` and a reviewed `reconfigureLoadedThread` contract. It refuses opt-in when either is absent. The handle captures the actual non-secret original provider/model before changing a loaded task; null originals fail before native release. The applying resume must select that registration's hook. The Adapter keeps at most 16 leases, keyed by task and exact registration owner/generation; another registration cannot take over or restore one. `handle.inspect()` and `configurations.list` expose restoration receipts without URLs or credentials.
+
+`handle.restore()` disables the selection hook and restores only if the task is still locally owned, selected and idle and its provider/model still match that lease's expected state. A later choice of a different provider is preserved (`superseded`); a changed model on the same provider requires explicit review. Restoration uses one scoped resume override, preserving other native parameters and checking the native receipt. Awaiting the callable handle also retires the registration and restores its leases. Repeated callable disposal joins the first disposal; a retired public handle cannot start another manual restore.
+
+Normal plugin retirement unregisters selection synchronously and awaits restoration before exported renderer `deactivate()` and Host teardown. A pending apply is cancelled before cleanup waits for its settlement. Forced retirement, active/background tasks, ownership drift and uncertain native results are reported as incomplete; they do not authorize interruption or silently overwrite user choices. Keep routes alive until acknowledged restoration during ordinary operation, and restore each task before leaving it selected elsewhere. Merely registering the option does not enroll unrelated native start/resume calls: automatic restoration applies to changes made through `handle.reconfigure`. The legacy `threads.reconfigure` RPC remains explicit/manual.
+
 The Host channel or verified plaintext source owns forwarding policy, credentials, permissions and traffic lifetime. Multiple configuration changes conflict. Retirement cancels pending selection, and late results cannot dispatch a retired request. The callback does not grant arbitrary backend settings or direct remote URLs; remote forwarding uses the consuming Host's exact-origin Core grants. Changes to this boundary must update this spec and the HTTP/WebSocket regression tests together.
