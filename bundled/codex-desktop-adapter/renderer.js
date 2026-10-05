@@ -598,7 +598,7 @@ var same = (a, b) => a.modelProvider === b.modelProvider && a.model === b.model;
 var cancelled = (signal) => {
   if (signal?.aborted) throw fail3("invocation_cancelled");
 };
-function createThreadRestoration({ reconfiguration, readConfiguration, check }) {
+function createThreadRestoration({ reconfiguration, readConfiguration, check, cleanupAvailable = true }) {
   const leases = /* @__PURE__ */ new Map(), overrides = /* @__PURE__ */ new Map(), operations = /* @__PURE__ */ new Map(), inflight = /* @__PURE__ */ new Map();
   let alive = true;
   const ready = (signal) => {
@@ -759,7 +759,7 @@ function createThreadRestoration({ reconfiguration, readConfiguration, check }) 
       const lease = leases.get(message.request.params?.threadId);
       if (lease?.status === "pending" && operations.has(lease.threadId) && lease.owner !== owner) throw fail3("configuration_owned");
     },
-    available: () => alive && reconfiguration.available(),
+    available: () => alive && cleanupAvailable && reconfiguration.available(),
     pending: () => leases.size,
     dispose() {
       alive = false;
@@ -1330,6 +1330,7 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
   const threadRestoration = createThreadRestoration({
     check,
     reconfiguration: threadReconfiguration,
+    cleanupAvailable: typeof context.onCleanup === "function",
     readConfiguration: (threadId, signal) => read("threads.configuration", { threadId }, signal)
   });
   const threadConfiguration = createThreadConfiguration({ check, owner, capability: CAPS.write, client, build, restoration: threadRestoration });

@@ -150,6 +150,8 @@ test('forced Core retirement cancels an unfinished release without dispatching a
 test('restoration opt-in refuses a Core without awaitable cleanup instead of promising best-effort teardown', async () => {
   const api = createThreadConfiguration({ check() {}, owner: () => ({ pluginId: 'old', generation: 1 }), capability: {}, client: {}, build: { threadConfiguration: true }, restoration: { available: () => true } });
   assert.throws(() => api.register({ onDeactivate() {} }, { id: 'restore', restoreOnDeactivate: true }, () => {}), { code: 'configuration_restore_unsupported' });
+  const olderCore = createThreadRestoration({ cleanupAvailable: false, reconfiguration: { available: () => true } });
+  assert.equal(olderCore.available(), false, 'probe must include the Core cleanup capability');
 });
 
 test('caller argument mutation cannot retarget a pending leased operation', async t => {

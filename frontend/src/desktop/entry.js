@@ -403,7 +403,7 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
     };
     const threadReconfiguration = createThreadReconfiguration({ manager, client, check, supported: build.threadReconfiguration,
         selection: () => selection(), loadedThread, activeTurnState });
-    const threadRestoration = createThreadRestoration({ check, reconfiguration: threadReconfiguration,
+    const threadRestoration = createThreadRestoration({ check, reconfiguration: threadReconfiguration, cleanupAvailable: typeof context.onCleanup === 'function',
         readConfiguration: (threadId, signal) => read('threads.configuration', { threadId }, signal) });
     const threadConfiguration = createThreadConfiguration({ check, owner, capability: CAPS.write, client, build, restoration: threadRestoration });
 

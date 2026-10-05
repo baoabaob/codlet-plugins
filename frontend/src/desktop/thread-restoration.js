@@ -5,7 +5,7 @@ const fail = code => Object.assign(new Error(code), { code });
 const same = (a, b) => a.modelProvider === b.modelProvider && a.model === b.model;
 const cancelled = signal => { if (signal?.aborted) throw fail('invocation_cancelled'); };
 
-export function createThreadRestoration({ reconfiguration, readConfiguration, check }) {
+export function createThreadRestoration({ reconfiguration, readConfiguration, check, cleanupAvailable = true }) {
   const leases = new Map(), overrides = new Map(), operations = new Map(), inflight = new Map();
   let alive = true;
   const ready = signal => { check(); cancelled(signal); if (!alive) throw fail('adapter_deactivated'); };
@@ -118,7 +118,7 @@ export function createThreadRestoration({ reconfiguration, readConfiguration, ch
       const lease = leases.get(message.request.params?.threadId);
       if (lease?.status === 'pending' && operations.has(lease.threadId) && lease.owner !== owner) throw fail('configuration_owned');
     },
-    available: () => alive && reconfiguration.available(),
+    available: () => alive && cleanupAvailable && reconfiguration.available(),
     pending: () => leases.size,
     dispose() {
       alive = false; overrides.clear();
