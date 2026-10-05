@@ -65,7 +65,7 @@ test('the packaged source activates on repeated cold boots after the pre-entry b
       const result=await attach({inspectorUrl,expectedPid:child.pid,executable:process.execPath,traffic:{},selection:{owner:'codex.desktop.adapter',generation:1,code,configuration:{source:{}}}},bridge);
       assert.equal(result.exactChildVerified,true);assert.equal(result.activation.installed,false);
       const completed=(await status(result.bridge,{op:'ready',operationId:'startup-ready',expectedEpoch:0})).result;
-      assert.equal(completed.outcome,'applied');assert.equal(completed.activation.installed,true);
+      assert.equal(completed.outcome,'applied');assert.equal(completed.activation.installed,true,JSON.stringify(completed));
       assert.deepEqual(completed.activation.activatedSources.map(source=>source.id),['desktop-main-http']);
       const observed=(await status(result.bridge)).result;
       assert.equal(observed.owner,'codex.desktop.adapter');assert.equal(observed.generation,1);assert.equal(observed.pid,child.pid);
