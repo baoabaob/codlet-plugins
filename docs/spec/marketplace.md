@@ -1,6 +1,6 @@
 # GUI 插件市场：交互要求与集成边界
 
-这是已验收交互设计及生产集成规范。生产入口 `frontend/src/codlet/app.jsx` 的 Add 菜单打开内部市场页，通过 Core 的 `githubDiscover` 发现 GitHub 仓库及 Release，并经现有 `githubPrepare`、`prepare`、`submit`、`operation` 流程审核和安装。`scripts/marketplace-preview/` 保留原始交互设计演示，其中条目和统计仍是模拟数据。生产 GUI 的本地预览使用 `scripts/serve-gui-preview.mjs` 中可注入的 Core RPC fixture，测试不会访问真实 GitHub 或变更用户注册。
+生产入口 `frontend/src/codlet/app.jsx` 的 Add 菜单打开内部市场页，通过 Core 的 `githubDiscover` 发现 GitHub 仓库及 Release，并经 `githubPrepare`、`prepare`、`submit`、`operation` 流程审核和安装。本地预览使用 `scripts/serve-gui-preview.mjs` 中可注入的 Core RPC fixture，测试不会访问真实 GitHub 或变更用户注册。早期独立交互原型保留在 Git 历史中。
 
 ## 入口与布局
 
@@ -17,7 +17,7 @@
 
 ## 来源与统计口径
 
-原型不再消费任意 `official: true` 字段。`compatibility/official-sources.json` 登记维护者控制的仓库，匹配 GitHub repository ID、owner ID、完整仓库名和插件 ID 绑定才显示“官方”。仓库被转移、同名重建、冒用作者名或添加 topic 均不能自动成为官方插件。本地文件没有这些来源证据时，不凭插件 ID 判定官方。
+`compatibility/official-sources.json` 登记维护者控制的仓库，匹配 GitHub repository ID、owner ID、完整仓库名和插件 ID 绑定才显示“官方”。仓库被转移、同名重建、冒用作者名或添加 topic 均不能自动成为官方插件。本地文件没有这些来源证据时，不凭插件 ID 判定官方。
 
 正式市场的来源字段由 Core 查询 GitHub。发现列表只把精确匹配的仓库标为“官方仓库”，不声称未下载的 ZIP 是官方插件。下载并校验后，GUI 再用 Core 预览里的插件 ID、repository ID、owner ID 和仓库名绑定显示“官方”。该标记是展示规则；Core 仍复核安装包来源、摘要、权限与明确授权。
 
@@ -34,9 +34,7 @@
 1. 本地导入、预装与 GitHub 来源显示同一套发布元数据；市场发现展示作者声明，包准备后展示实际 ZIP 内的元数据。
 2. 官方包声明 Windows x64、Windows ARM64、macOS ARM64；支持声明与真实验收记录需要分开，不能将用户界面的支持声明当成测试报告。
 
-按已确认的产品展示，预览中的官方插件列出 Windows x64、Windows ARM64、macOS Apple Silicon，不再显示“其他平台 / 待验收”。社区示例的系统信息同样是声明/模拟数据；此界面调整没有改写实际设备的历史验收记录，也不包含 Linux 适配。
-
-仅使用跨平台 Core/Adapter 公共 API 的插件可以继承支持范围，但依赖一个 Adapter 本身不足以证明这一点。原型的 `supportedPlatforms` 先要求公共 API 边界审查结果，再按实际绑定的 provider、所需 capability API 版本、传递依赖和 Core 平台集合取交集；provider 缺失/冲突、循环、能力信息缺失或发现越界都保持未知。这里的审查记录与能力元数据仍是原型约定，未加入当前 Core 的发布契约，不能让插件作者自填一个字段就获得自动兼容标记。
+依赖 Adapter 本身不能证明跨平台兼容。当前产品不从依赖图推导支持范围；这需要经审查、绑定包摘要的 API 使用证据和实际设备验收。作者的系统声明仍按声明展示。
 
 `node scripts/audit-portability.mjs PLUGIN_DIRECTORY` 提供只读开发检查，报告原生文件、系统模块、平台路径、动态代码和直接私有接口等线索；限制扫描文件数和大小，不执行插件。它只产生候选/待审查/需显式声明结果，始终返回 `verified: false`。静态检查不能证明任意 JavaScript 的可移植性，也不代替真实设备测试；正式接入需把审核结论绑定到包摘要与实际能力解析结果。
 
@@ -65,7 +63,7 @@
 
 ```text
 node scripts/prepare-core-sdk.mjs ABSOLUTE_CORE_CHECKOUT
-node scripts/marketplace-preview/serve.mjs
+node scripts/serve-gui-preview.mjs
 ```
 
-服务只监听本机回环地址，仅提供界面文件与 Core UI SDK。启动输出 URL。页面底部可以切换浅/深色、模拟设备和加载/空列表/失败状态。生产 GUI 的构建入口不引用预览代码。
+服务只监听本机回环地址，运行真实 GUI 构建与内存管理数据。启动后打开输出的 URL；其结果不替代实际 GitHub 和原生 Desktop 验收。

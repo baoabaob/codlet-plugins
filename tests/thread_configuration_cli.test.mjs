@@ -14,6 +14,9 @@ import { createThreadConfiguration } from '../frontend/src/desktop/thread-config
 // Opt-in native acceptance: isolated home, synthetic prompt, loopback Responses
 // fixture only. No user auth file or actual model endpoint is used.
 const cli = process.env.CODLET_TEST_OFFICIAL_CLI;
+if (cli && process.platform === 'win32' && process.env.CODLET_TEST_DISPOSABLE_WINDOWS_HOST !== '1') {
+    throw new Error('Native Windows turn acceptance requires a disposable VM/host and CODLET_TEST_DISPOSABLE_WINDOWS_HOST=1; CODEX_HOME does not isolate machine-wide sandbox setup.');
+}
 for (const mode of ['http', 'websocket']) test(`official AppServer starts and resumes real ${mode} traffic through a task-configured private provider`, { skip: !cli, timeout: 60000 }, async t => {
     const root = await mkdtemp(path.join(tmpdir(), 'codlet-transport-native-'));
     const requests = [], sockets = new Set();

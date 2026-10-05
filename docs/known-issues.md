@@ -100,6 +100,6 @@ The old proxy/certificate route was removed. Legitimate user provider CA setting
 
 ## Pending product work
 
-- The production marketplace uses public GitHub repository search and Core package review. Search covers repository names, descriptions and topics; publisher manifest tags that lack a matching topic are not globally searchable. Missing or incomplete release declarations leave compatibility or cumulative download statistics unknown. The separate [interaction preview](spec/marketplace.md) still uses synthetic data and memory-only operations.
+- The production marketplace uses public GitHub repository search and Core package review. Search covers repository names, descriptions and topics; publisher manifest tags that lack a matching topic are not globally searchable. Missing or incomplete release declarations leave compatibility or cumulative download statistics unknown. The local GUI preview uses synthetic management responses.
 - Task-local model/provider configuration is available through `codex.backend.write@1` at thread start/resume; a hook that opts into `turn.start` can also select the model for each turn. Provider changes remain limited to thread start/resume. Live OAuth and uncovered network paths need separate owned-device acceptance. See the [adapter contract](spec/adapters.md).
 - Full native UI behavior and installer acceptance must be checked on the final integrated source, not inferred from this repository's offline suite.

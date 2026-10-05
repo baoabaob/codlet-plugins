@@ -34,11 +34,13 @@ The production plugins use Core's supplied UI SDK. This repository does not rebu
 | --- | --- |
 | `codex_ui_adapter`, `codex_desktop_adapter`, `thread_configuration` | Native shell ownership, semantic mapping, drift, hooks, cancellation and retirement |
 | `codlet_controller`, `codlet_gui`, notices, tag search, `combined_update` | Management receipts, stale async replies, permissions, update states, focus and UI cleanup |
-| `marketplace-model` | Prototype provenance, sorting, compatibility inference and bounded portability audit; not live catalog acceptance |
+| `marketplace-model` | Repository provenance, sorting, declarations and bounded portability audit; not live catalog acceptance |
 | `distribution.test.mjs`, `distribution.ps1` | Build closure, package hashes, traversal rejection and remote snapshot ownership |
 | `thread_configuration_cli` | Opt-in real AppServer HTTP/WebSocket fixture; skipped unless `CODLET_TEST_OFFICIAL_CLI` points to an executable |
 
 The native CLI fixture uses its own temporary home, synthetic prompt and loopback server. It does not use a user auth file or a real model endpoint. A passing jsdom or CLI test is not a native Desktop visual/accessibility or OS installer acceptance result.
+
+On Windows, run the native turn fixture only on a disposable VM/host and set `CODLET_TEST_DISPOSABLE_WINDOWS_HOST=1` there. A temporary profile does not isolate native sandbox accounts/firewall changes. SDK/Host tests should set `CODLET_CORE_ROOT` to the matching Core checkout so their owned Node fixtures are included.
 
 For the separately verified Desktop JS and backend provider boundaries, use the opt-in [request-chain drivers and coverage limits](spec/request-chain.md). These require the reviewed real client build and are not normal CI tests.
 
@@ -48,14 +50,13 @@ powershell -NoProfile -File tests/distribution.ps1
 
 ## Previews and performance
 
-After building and preparing the SDK, run either loopback-only preview and open the printed URL:
+After building and preparing the SDK, run the production GUI preview and open the printed loopback URL:
 
 ```text
 node scripts/serve-gui-preview.mjs
-node scripts/marketplace-preview/serve.mjs
 ```
 
-The production GUI preview uses deterministic in-memory management responses. The marketplace preview is separate from production and has synthetic data; see its [integration requirements](spec/marketplace.md). Both are development tools, not installation interfaces.
+The production GUI preview uses deterministic in-memory management responses and includes the marketplace. It is a development tool; see the [marketplace contract](spec/marketplace.md). The superseded standalone prototype is available in Git history.
 
 `scripts/preview-runtime.mjs`, `tests/support/ui-fixture.mjs` and `tests/support/native-shell.js` are shared by current regression tests and should not be removed as old demos.
 
