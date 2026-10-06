@@ -22,6 +22,15 @@ The unauthenticated GitHub importer cannot install private repositories or draft
 
 ## Traffic activation boundaries
 
+Desktop Adapter 0.2.14 reviews the Windows `26.930.7945.0` / frontend
+`26.930.61225` / build `13232` main, bootstrap and Stdio modules. It retains the
+native final-fetch, network-policy, stdio-send and notification contracts. Its
+App Server `0.160.1` profile is backed by [disposable Windows CI](https://github.com/baoabaob/codlet-plugins/actions/runs/37463145066): eight controlled HTTP/SSE/WS cases cover custom/built-in/synthetic ChatGPT auth, cancellation, two-thread routing, cold resume and provider reconfiguration.
+The signed desktop binary and the official public release have identical PE
+content after excluding only checksum and Authenticode fields; runtime admission
+still pins each complete file hash. This evidence does not certify real OAuth,
+the full desktop/installer acceptance, or unreviewed client packages.
+
 Desktop Adapter 0.2.13 retries temporarily unavailable reviewed lexical bindings
 and performs one final probe after a busy event loop exhausts the wait budget.
 It records a bounded readiness snapshot in the system temporary directory

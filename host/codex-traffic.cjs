@@ -6,6 +6,10 @@ const zlib = require('node:zlib');
 const failure = code => Object.assign(new Error(code), { code });
 const VERIFIED_BACKENDS = Object.freeze({
   win32: Object.freeze([
+    // The installed and published 0.160.1 files differ only in Authenticode
+    // data/checksum. Their complete remaining PE image matches the CI fixture.
+    Object.freeze({ sha256: '3b8f6e33caa75f232558a3cf76ff9b87bb5ef6dbcf4996372f24e55c78b1b916', version: '0.160.1', evidence: 'same-pe-image-as-controlled-0.160.1-http-sse-ws-routing-fixture' }),
+    Object.freeze({ sha256: '9e7c59c05cc1ce5677b1f94e835b2ac038ca3be14504e78d558eacdb0ea3f55d', version: '0.160.1', evidence: 'controlled-custom-builtin-chatgpt-http-sse-ws-two-thread-routing' }),
     Object.freeze({ sha256: '37762753b554982eef1c109303d1be652b6397f1479e844794353a85650199c6', version: '0.160.0', evidence: 'controlled-custom-builtin-chatgpt-http-sse-ws-two-thread-routing' }),
     Object.freeze({ sha256: '1722907aa64401bcc9b34467ef5c2af43f6aef9a5045ef04d11d19dfae4589fb', version: '0.159.0-alpha.12.1', evidence: 'controlled-functional-http-sse-ws-local-fixture' }),
     Object.freeze({ sha256: '8f0554ede25bbc5450921897c468b2e84635aa513c5017457997af0954581f49', version: '0.158.0-alpha.2.1', evidence: 'controlled-custom-provider-two-thread-http-ws-reconfiguration' }),
