@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "packageVersion": "26.930.7945.0",
+  "backendVersion": "0.160.1",
+  "installedSha256": "3b8f6e33caa75f232558a3cf76ff9b87bb5ef6dbcf4996372f24e55c78b1b916",
+  "peImageSha256": "b9baf3ae2a3e010d85552b8579a9891d4236de12851d2abe1c5e779d49fbc9a2",
+  "releaseUrl": "https://github.com/openai/codex/releases/download/rust-v0.160.1/codex-x86_64-pc-windows-msvc.exe",
+  "releaseSha256": "9e7c59c05cc1ce5677b1f94e835b2ac038ca3be14504e78d558eacdb0ea3f55d",
+  "releaseBytes": 326875440
+}

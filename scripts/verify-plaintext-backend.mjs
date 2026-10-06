@@ -19,6 +19,9 @@ if (process.argv.includes('--help')) {
   process.exit(0);
 }
 const options = Object.fromEntries(process.argv.slice(2).reduce((pairs, value, i, all) => i % 2 ? pairs : [...pairs, [value, all[i + 1]]], []));
+if (process.platform === 'win32' && process.env.CODLET_TEST_DISPOSABLE_WINDOWS_HOST !== '1') {
+  throw Error('Native Windows backend acceptance requires a disposable VM/host and CODLET_TEST_DISPOSABLE_WINDOWS_HOST=1.');
+}
 const macCandidate = process.platform === 'darwin' && process.arch === 'arm64';
 // These fixtures emit synthetic text only and test transports, not shell tools.
 // Windows sandbox provisioning owns global users/firewall rules across profiles.
