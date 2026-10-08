@@ -35,6 +35,11 @@ const PROFILES = Object.freeze({
   'bootstrap-C8gUBg5L.js': { hash: '1f726d0e3103d81501551546d3b6e70f1fc10646f9326e00fe68605f144c5f4f', kind: 'bootstrap', symbol: 'yY', connectionSymbol: 'ON' },
   'main-gtVueRkt.js': { hash: 'a4b72dcd241e8ee360aa960442cc585aa822685a42efd056c760937d9f8b623e', kind: 'main', symbol: 'kce' },
   'application-network-startup-BEAX-hka.js': { hash: '634382c7af55d0ff57eb028aa4dd904130215c44fb559ea90a4f4035a5419f6e', kind: 'stdio', symbol: 'Hs' },
+  // Windows 26.1002.7124.0 / frontend 26.1002.52244 / build 13536:
+  // reviewed live bindings retain policy checks, final fetch, stdio and account notifications.
+  'bootstrap-Dz9A8y86.js': { hash: 'a70497f5ffa764fe74f4de7ac05a5f73aff8d1e2f44de4476d1d9a684af43ddd', kind: 'bootstrap', symbol: 'jY', connectionSymbol: 'hN' },
+  'main-p91kJShj.js': { hash: 'aafd6a750458cb39b6202f9be00231482122d32ac14017b79d544c4ab741e889', kind: 'main', symbol: 'Hb' },
+  'application-network-startup-Bt0a8E1L.js': { hash: 'aa5478e31c8a623632dfedffcecfbe40d5033d38a8504649716657681a0840b4', kind: 'stdio', symbol: 'Hs' },
 });
 const HASHES = Object.freeze(Object.fromEntries(Object.entries(PROFILES).map(([name, profile]) => [name, profile.hash])));
 const fail = code => Object.assign(new Error(code), { code });
