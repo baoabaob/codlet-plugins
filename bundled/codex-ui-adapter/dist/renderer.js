@@ -551,13 +551,8 @@ function hostFibers(limit = 2e4) {
     const attached = attachedKey && landmark[attachedKey];
     for (const start of [attached, attached?.alternate]) {
       if (!start || start.stateNode !== landmark) continue;
-      const chain = /* @__PURE__ */ new Set();
-      let fiber = start;
-      while (fiber && !chain.has(fiber) && chain.size < 256) {
-        chain.add(fiber);
-        if (fiber === current3) return chain;
-        fiber = fiber.return;
-      }
+      const chain = currentAncestry(start, current3);
+      if (chain) return chain;
     }
     throw fail2("desktop_host_pending", "Waiting for the current native navigation tree");
   }
@@ -572,22 +567,26 @@ function hostFibers(limit = 2e4) {
   }
   return seen;
 }
-function mountedOwner(fiber, current3) {
-  const pending = [fiber], seen = /* @__PURE__ */ new Set();
+function currentAncestry(fiber, current3) {
+  const pending = [{ fiber, depth: 1 }], seen = /* @__PURE__ */ new Set();
   let links = 0;
-  while (pending.length && seen.size < 256) {
-    const child = pending.pop();
-    if (!child || seen.has(child)) continue;
-    if (child === current3) return true;
+  for (let index = 0; index < pending.length && seen.size < 512; index++) {
+    const entry = pending[index], child = entry.fiber;
+    if (!child || seen.has(child) || entry.depth > 256) continue;
+    if (child === current3) {
+      const chain = /* @__PURE__ */ new Set();
+      for (let item = entry; item; item = item.previous) chain.add(item.fiber);
+      return chain;
+    }
     seen.add(child);
     for (const parent of /* @__PURE__ */ new Set([child.return, child.return?.alternate])) {
       if (!parent) continue;
       const siblings = /* @__PURE__ */ new Set();
       let candidate = parent.child;
       while (candidate && !siblings.has(candidate)) {
-        if (++links > 256) return false;
+        if (++links > 2048) return null;
         if (candidate === child) {
-          pending.push(parent);
+          pending.push({ fiber: parent, previous: entry, depth: entry.depth + 1 });
           break;
         }
         siblings.add(candidate);
@@ -595,7 +594,7 @@ function mountedOwner(fiber, current3) {
       }
     }
   }
-  return false;
+  return null;
 }
 function createScopeLocator(token, fibers2 = hostFibers()) {
   const root = document.getElementById("root");
@@ -623,7 +622,7 @@ function createScopeLocator(token, fibers2 = hostFibers()) {
       throw fail2("desktop_scope_missing", "Desktop AppScope root was replaced");
     const current3 = container?.stateNode?.current ?? container;
     for (const owner2 of owners) for (const fiber of [owner2, owner2.alternate]) {
-      if (!mountedOwner(fiber, current3)) continue;
+      if (!currentAncestry(fiber, current3)) continue;
       const chain = fiber.memoizedProps?.value, present = chain instanceof Map && chain.get(token.id);
       if (present?.token !== token) continue;
       if (present !== node) throw fail2("desktop_connection_replaced", "Desktop AppScope was replaced");
@@ -6755,7 +6754,7 @@ function createWorkspaceDiscovery(baseNative, { load = (url) => import(url), rea
       const primary = await module2(primaryUrls[0]);
       const ThreadSubscription = uniqueExport(primary, (value) => markers(value, ["threadKey", "cancelRelease", "useSyncExternalStore", "hostId", "threadId"]), "thread subscription");
       const manager = existing().manager;
-      for (const method of ["getConversation", "loadBackgroundThreadHistoryPage", "addConversationStateCallback"])
+      for (const method of ["getConversation", "loadBackgroundThreadHistoryPage", "loadRemainingTurnItems", "addConversationStateCallback"])
         if (typeof manager[method] !== "function") throw workspaceError("workspace_transcript_unavailable", `Native transcript manager lacks ${method}`);
       return { ...native, Content, ThreadSubscription, Scope: Scope3, composerScope, composerValue, manager };
     })(),
@@ -6842,7 +6841,13 @@ function createTranscripts({ document: document2, load, surface, check, report }
         continue;
       }
       running++;
-      Promise.resolve().then(() => native.manager.getConversation(job.id)?.resumeState === "resumed" ? void 0 : native.manager.loadBackgroundThreadHistoryPage(job.id, { prioritize: job.priority > 0 })).then(job.resolve, job.reject).finally(() => {
+      Promise.resolve().then(async () => {
+        if (native.manager.getConversation(job.id)?.resumeState === "resumed") return;
+        await native.manager.loadBackgroundThreadHistoryPage(job.id, { prioritize: job.priority > 0 });
+        if (disposed || ![...records].some((record) => !record.disposed && record.options.threadId === job.id)) return;
+        if (native.manager.getConversation(job.id)?.resumeState !== "resumed")
+          await native.manager.loadRemainingTurnItems(job.id);
+      }).then(job.resolve, job.reject).finally(() => {
         running--;
         if (histories.get(job.id) === job.promise) histories.delete(job.id);
         pump();
@@ -6911,7 +6916,7 @@ function createTranscripts({ document: document2, load, surface, check, report }
         return;
       }
       const conversation = native.manager.getConversation(record.options.threadId);
-      if (conversation?.resumeState !== "resumed") return;
+      if (!conversation) return;
       const body = scroller.querySelector('[data-thread-find-target="conversation"]');
       const hasHistory = !!conversation.turns?.length || conversation.turnHistory?.kind === "canonical" && conversation.turnHistory.history?.islands?.some((island) => island.entries?.length);
       if (!body || hasHistory && !body.textContent.trim()) return;
@@ -6940,7 +6945,7 @@ function createTranscripts({ document: document2, load, surface, check, report }
             contentSearchOrchestrationId: "codlet:" + owned + ":" + opts.threadId,
             isReadOnly: opts.readOnly,
             trackReadState: opts.trackReadState,
-            retainActiveInterest: true
+            retainActiveInterest: !opts.readOnly
           }),
           h(record.Commit, { epoch: record.epoch })
         )

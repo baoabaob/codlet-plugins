@@ -34,8 +34,16 @@ export function createTranscripts({ document, load, surface, check, report }) {
       const job = queue.shift();
       if (![...records].some(record => !record.disposed && record.options.threadId === job.id)) { histories.delete(job.id); job.resolve(); continue; }
       running++;
-      Promise.resolve().then(() => native.manager.getConversation(job.id)?.resumeState === 'resumed' ? undefined :
-        native.manager.loadBackgroundThreadHistoryPage(job.id, { prioritize: job.priority > 0 })).then(job.resolve, job.reject).finally(() => {
+      Promise.resolve().then(async () => {
+        if (native.manager.getConversation(job.id)?.resumeState === 'resumed') return;
+        await native.manager.loadBackgroundThreadHistoryPage(job.id, { prioritize: job.priority > 0 });
+        if (disposed || ![...records].some(record => !record.disposed && record.options.threadId === job.id)) return;
+        // Background hydration deliberately leaves an unselected thread in
+        // needs_resume. Fill its summary-only turn items through the existing
+        // read path; neither navigation nor stream acquisition is required.
+        if (native.manager.getConversation(job.id)?.resumeState !== 'resumed')
+          await native.manager.loadRemainingTurnItems(job.id);
+      }).then(job.resolve, job.reject).finally(() => {
         running--; if (histories.get(job.id) === job.promise) histories.delete(job.id); pump();
       });
     }
@@ -76,7 +84,7 @@ export function createTranscripts({ document, load, surface, check, report }) {
       const scroller = wrapper.querySelector('.thread-scroll-container');
       if (!scroller) { fail(workspaceError('workspace_transcript_unavailable', 'The native transcript has no independent scroller')); return; }
       const conversation = native.manager.getConversation(record.options.threadId);
-      if (conversation?.resumeState !== 'resumed') return;
+      if (!conversation) return;
       const body = scroller.querySelector('[data-thread-find-target="conversation"]');
       const hasHistory = !!conversation.turns?.length || conversation.turnHistory?.kind === 'canonical' && conversation.turnHistory.history?.islands?.some(island => island.entries?.length);
       if (!body || hasHistory && !body.textContent.trim()) return;
@@ -91,7 +99,7 @@ export function createTranscripts({ document, load, surface, check, report }) {
         h(N.Scope, { scope: N.composerScope, value: record.scopeValue },
           h(N.ThreadSubscription, { threadKey: record.threadKey }),
           h(N.Content, { conversationId: opts.threadId, hostId: 'local', contentSearchOrchestrationId: 'codlet:' + owned + ':' + opts.threadId,
-            isReadOnly: opts.readOnly, trackReadState: opts.trackReadState, retainActiveInterest: true }), h(record.Commit, { epoch: record.epoch }))));
+            isReadOnly: opts.readOnly, trackReadState: opts.trackReadState, retainActiveInterest: !opts.readOnly }), h(record.Commit, { epoch: record.epoch }))));
       if (opts.readOnly) wrapper.setAttribute('inert', ''); else wrapper.removeAttribute('inert');
       const tree = wrapProviders(N, record.providers, child);
       if (sync) N.DOM.flushSync(() => record.root.render(tree)); else record.root.render(tree);

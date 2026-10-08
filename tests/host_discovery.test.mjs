@@ -94,6 +94,7 @@ test('captured scope follows committed alternates and reused children, and rejec
       root.child=scope;s.container.stateNode.current=root;
       return {root,scope};
     })()`,f.context);
+    assert.equal(vm.runInContext('hostFibers().size',f.context),5,'discovery follows shared children through the current alternate parent');
     connection.check();
     // Sidebar/route content retirement must not retire the outer AppScope.
     next.scope.child=null;connection.check();
@@ -103,6 +104,12 @@ test('captured scope follows committed alternates and reused children, and rejec
     else original.memoizedProps.value.set(f.native.token.id,{...f.native.node});
     assert.throws(()=>connection.check(),{code:'desktop_connection_replaced'});
   }
+});
+test('a stale DOM attachment that returns to the current root cannot override its actually mounted alternate',async()=>{
+  const f=largeShell();f.context.auditShell=f.shell;
+  vm.runInContext(`const staleParent={return:auditShell.rootFiber,child:null};auditShell.rail.__reactFiber$fixture={stateNode:auditShell.rail,return:staleParent,alternate:auditShell.navFiber};`,f.context);
+  assert.equal(vm.runInContext('hostFibers().size',f.context),5);
+  const connection=await f.probe();assert.equal(connection.manager,f.native.manager);connection.check();
 });
 test('unknown large trees, duplicate native landmarks and detached shell ancestry remain fail closed',async()=>{
   const unknown=largeShell();unknown.shell.rails.length=0;

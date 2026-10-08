@@ -405,8 +405,13 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
         opening = true;
         try {
             const stamp = navigation.stamp();
-            const metadata = await nativeRequest('thread/read', { threadId, includeTurns: false }, signal);
-            if (metadata?.thread?.id !== threadId) throw fail('desktop_navigation_unavailable', 'Desktop did not confirm the requested task identity');
+            // The existing local manager has already validated cached identities.
+            // Navigating to those tasks needs no second metadata round trip.
+            const cached = manager.getConversation(threadId);
+            if (cached?.id !== threadId || cached.hostId != null && cached.hostId !== 'local') {
+                const metadata = await nativeRequest('thread/read', { threadId, includeTurns: false }, signal);
+                if (metadata?.thread?.id !== threadId) throw fail('desktop_navigation_unavailable', 'Desktop did not confirm the requested task identity');
+            }
             selection();
             if (navigation.stamp() !== stamp) throw fail('desktop_navigation_superseded', 'The user navigated while this task was being checked');
             navigation.open(threadId);

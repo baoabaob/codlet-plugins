@@ -122,6 +122,37 @@ test('transcripts share discovery/history/listener, preserve roots and scroll on
   assert.throws(() => handles[0].getScrollPosition(), { code: 'workspace_retired' });
 });
 
+test('different cold read-only transcripts hydrate full turn items without resume, navigation or active stream interests',async t=>{
+  const f=fixture(t),N=native(f),owner=f.connect(),callbacks=new Set(),threads=new Map(),requests=[],interests=[];
+  let running=0,peak=0;
+  for(const id of ['cold-one','cold-two','cold-three','cold-empty'])threads.set(id,{id,resumeState:'needs_resume',turns:[],streamRole:'none'});
+  N.manager={getConversation:id=>threads.get(id),getStreamRole:id=>({role:threads.get(id).streamRole}),
+    async loadBackgroundThreadHistoryPage(id){running++;peak=Math.max(peak,running);requests.push(['history',id]);await tick();const thread=threads.get(id);thread.turns=id==='cold-empty'?[]:[{items:[{type:'fileChange'}],itemsPagination:{hasLoadedOldest:false}}];return 'more';},
+    async loadRemainingTurnItems(id){requests.push(['items',id]);await tick();threads.get(id).body=id==='cold-empty'?'':'full native body '+id;running--;for(const callback of callbacks)callback(id);},
+    resumeConversation(){assert.fail('read-only mounting must not resume a task');},sendRequest(){assert.fail('read-only mounting must use the existing history read APIs');},
+    addConversationStateCallback(fn){callbacks.add(fn);return()=>callbacks.delete(fn);}};
+  N.Scope=({children})=>children;N.composerScope={};N.composerValue=route=>({id:route.conversationId});N.ThreadSubscription=()=>null;
+  N.Content=({conversationId,retainActiveInterest})=>{interests.push([conversationId,retainActiveInterest]);return N.React.createElement('div',{className:'thread-scroll-container'},N.React.createElement('div',{'data-thread-find-target':'conversation'},threads.get(conversationId).body));};
+  f.discovery.transcript=async()=>N;
+  const states=[],handles=[...threads.keys()].map(id=>{const box=f.document.createElement('div');f.document.body.append(box);return owner.session.mountTranscript(box,{threadId:id,onState:state=>states.push([id,state.phase])});});
+  await Promise.all(handles.map(handle=>handle.ready));assert.equal(peak,2);assert.equal(requests.length,8);assert.equal(f.navigator.location.pathname,'/local/thread-a');
+  assert.deepEqual([...threads.values()].map(thread=>[thread.resumeState,thread.streamRole]),Array.from({length:4},()=>['needs_resume','none']));
+  assert.ok(interests.every(([,active])=>active===false));assert.equal(states.filter(([,phase])=>phase==='ready').length,4);
+  assert.equal(callbacks.size,1);assert.equal(N.roots(),4);owner.ctx.retire();assert.equal(callbacks.size,0);
+});
+
+test('cold item hydration errors reject readiness; retirement after background hydration cancels further reads',async t=>{
+  for(const mode of ['error','retire']){
+    const f=fixture(t),N=native(f),owner=f.connect(),thread={resumeState:'needs_resume',turns:[{}]};let release,items=0;
+    N.manager={getConversation:()=>thread,loadBackgroundThreadHistoryPage:()=>new Promise(resolve=>{release=resolve;}),
+      async loadRemainingTurnItems(){items++;throw Object.assign(Error('native item read failed'),{code:'history_read_failed'});},addConversationStateCallback:()=>()=>{}};
+    N.Scope=({children})=>children;N.composerScope={};N.composerValue=()=>({});N.ThreadSubscription=()=>null;N.Content=()=>null;f.discovery.transcript=async()=>N;
+    const box=f.document.createElement('div');f.document.body.append(box);const handle=owner.session.mountTranscript(box,{threadId:'cold-failure'});await tick();
+    if(mode==='retire')owner.ctx.retire();release('more');await assert.rejects(handle.ready,{code:mode==='retire'?'workspace_retired':'history_read_failed'});await tick();
+    assert.equal(items,mode==='retire'?0:1);assert.equal(N.roots(),0);
+  }
+});
+
 test('native shortcut capture/clear/restore/search and programmatic conflicts retain consumer ownership', async t => {
   const f = fixture(t), N = native(f), owner = f.connect(), changes = [], commands = new Map(); let invocations = 0;
   N.platform = 'windows'; N.keymap = () => ({ bindings: [] }); N.commands = [{ id: 'native.command', electron: { menuTitle: 'Native action' } }]; N.bindings = () => [{ accelerator: 'Ctrl+K' }];

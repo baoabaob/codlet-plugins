@@ -91,7 +91,7 @@ export function createWorkspaceDiscovery(baseNative, { load = url => import(url)
       const primary = await module(primaryUrls[0]);
       const ThreadSubscription = uniqueExport(primary, value => markers(value, ['threadKey', 'cancelRelease', 'useSyncExternalStore', 'hostId', 'threadId']), 'thread subscription');
       const manager = existing().manager;
-      for (const method of ['getConversation', 'loadBackgroundThreadHistoryPage', 'addConversationStateCallback'])
+      for (const method of ['getConversation', 'loadBackgroundThreadHistoryPage', 'loadRemainingTurnItems', 'addConversationStateCallback'])
         if (typeof manager[method] !== 'function') throw workspaceError('workspace_transcript_unavailable', `Native transcript manager lacks ${method}`);
       return { ...native, Content, ThreadSubscription, Scope, composerScope, composerValue, manager };
     })(),

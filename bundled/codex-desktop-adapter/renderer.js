@@ -913,13 +913,8 @@ function hostFibers(limit = 2e4) {
     const attached = attachedKey && landmark[attachedKey];
     for (const start of [attached, attached?.alternate]) {
       if (!start || start.stateNode !== landmark) continue;
-      const chain = /* @__PURE__ */ new Set();
-      let fiber = start;
-      while (fiber && !chain.has(fiber) && chain.size < 256) {
-        chain.add(fiber);
-        if (fiber === current) return chain;
-        fiber = fiber.return;
-      }
+      const chain = currentAncestry(start, current);
+      if (chain) return chain;
     }
     throw fail5("desktop_host_pending", "Waiting for the current native navigation tree");
   }
@@ -934,22 +929,26 @@ function hostFibers(limit = 2e4) {
   }
   return seen;
 }
-function mountedOwner(fiber, current) {
-  const pending = [fiber], seen = /* @__PURE__ */ new Set();
+function currentAncestry(fiber, current) {
+  const pending = [{ fiber, depth: 1 }], seen = /* @__PURE__ */ new Set();
   let links = 0;
-  while (pending.length && seen.size < 256) {
-    const child = pending.pop();
-    if (!child || seen.has(child)) continue;
-    if (child === current) return true;
+  for (let index = 0; index < pending.length && seen.size < 512; index++) {
+    const entry = pending[index], child = entry.fiber;
+    if (!child || seen.has(child) || entry.depth > 256) continue;
+    if (child === current) {
+      const chain = /* @__PURE__ */ new Set();
+      for (let item = entry; item; item = item.previous) chain.add(item.fiber);
+      return chain;
+    }
     seen.add(child);
     for (const parent of /* @__PURE__ */ new Set([child.return, child.return?.alternate])) {
       if (!parent) continue;
       const siblings = /* @__PURE__ */ new Set();
       let candidate = parent.child;
       while (candidate && !siblings.has(candidate)) {
-        if (++links > 256) return false;
+        if (++links > 2048) return null;
         if (candidate === child) {
-          pending.push(parent);
+          pending.push({ fiber: parent, previous: entry, depth: entry.depth + 1 });
           break;
         }
         siblings.add(candidate);
@@ -957,7 +956,7 @@ function mountedOwner(fiber, current) {
       }
     }
   }
-  return false;
+  return null;
 }
 function createScopeLocator(token, fibers = hostFibers()) {
   const root = document.getElementById("root");
@@ -985,7 +984,7 @@ function createScopeLocator(token, fibers = hostFibers()) {
       throw fail5("desktop_scope_missing", "Desktop AppScope root was replaced");
     const current = container?.stateNode?.current ?? container;
     for (const owner of owners) for (const fiber of [owner, owner.alternate]) {
-      if (!mountedOwner(fiber, current)) continue;
+      if (!currentAncestry(fiber, current)) continue;
       const chain = fiber.memoizedProps?.value, present = chain instanceof Map && chain.get(token.id);
       if (present?.token !== token) continue;
       if (present !== node) throw fail5("desktop_connection_replaced", "Desktop AppScope was replaced");
@@ -1519,8 +1518,11 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
     opening = true;
     try {
       const stamp = navigation.stamp();
-      const metadata = await nativeRequest("thread/read", { threadId, includeTurns: false }, signal);
-      if (metadata?.thread?.id !== threadId) throw fail6("desktop_navigation_unavailable", "Desktop did not confirm the requested task identity");
+      const cached = manager.getConversation(threadId);
+      if (cached?.id !== threadId || cached.hostId != null && cached.hostId !== "local") {
+        const metadata = await nativeRequest("thread/read", { threadId, includeTurns: false }, signal);
+        if (metadata?.thread?.id !== threadId) throw fail6("desktop_navigation_unavailable", "Desktop did not confirm the requested task identity");
+      }
       selection();
       if (navigation.stamp() !== stamp) throw fail6("desktop_navigation_superseded", "The user navigated while this task was being checked");
       navigation.open(threadId);

@@ -20,12 +20,8 @@ export function hostFibers(limit = 20000) {
     const attached = attachedKey && landmark[attachedKey];
     for (const start of [attached, attached?.alternate]) {
       if (!start || start.stateNode !== landmark) continue;
-      const chain = new Set(); let fiber = start;
-      while (fiber && !chain.has(fiber) && chain.size < 256) {
-        chain.add(fiber);
-        if (fiber === current) return chain;
-        fiber = fiber.return;
-      }
+      const chain = currentAncestry(start, current);
+      if (chain) return chain;
     }
     throw fail('desktop_host_pending', 'Waiting for the current native navigation tree');
   }
@@ -47,24 +43,31 @@ export function hostFibers(limit = 20000) {
 // descendants. React can reuse a child whose return points at the alternate;
 // checking both parents' actual child links handles that case and rejects a
 // detached provider even when its stale return chain still reaches the root.
-function mountedOwner(fiber, current) {
-  const pending = [fiber], seen = new Set(); let links = 0;
-  while (pending.length && seen.size < 256) {
-    const child = pending.pop();
-    if (!child || seen.has(child)) continue;
-    if (child === current) return true;
+function currentAncestry(fiber, current) {
+  const pending = [{ fiber, depth: 1 }], seen = new Set(); let links = 0;
+  // A commit may reuse children whose return links still name the previous
+  // parent. Prove each edge in either parent's child list, then follow the
+  // proven current branch. Bounds cover both alternates of a 256-deep shell.
+  for (let index = 0; index < pending.length && seen.size < 512; index++) {
+    const entry = pending[index], child = entry.fiber;
+    if (!child || seen.has(child) || entry.depth > 256) continue;
+    if (child === current) {
+      const chain = new Set();
+      for (let item = entry; item; item = item.previous) chain.add(item.fiber);
+      return chain;
+    }
     seen.add(child);
     for (const parent of new Set([child.return, child.return?.alternate])) {
       if (!parent) continue;
       const siblings = new Set(); let candidate = parent.child;
       while (candidate && !siblings.has(candidate)) {
-        if (++links > 256) return false;
-        if (candidate === child) { pending.push(parent); break; }
+        if (++links > 2048) return null;
+        if (candidate === child) { pending.push({ fiber: parent, previous: entry, depth: entry.depth + 1 }); break; }
         siblings.add(candidate); candidate = candidate.sibling;
       }
     }
   }
-  return false;
+  return null;
 }
 
 export function createScopeLocator(token, fibers = hostFibers()) {
@@ -88,7 +91,7 @@ export function createScopeLocator(token, fibers = hostFibers()) {
       throw fail('desktop_scope_missing', 'Desktop AppScope root was replaced');
     const current = container?.stateNode?.current ?? container;
     for (const owner of owners) for (const fiber of [owner, owner.alternate]) {
-      if (!mountedOwner(fiber, current)) continue;
+      if (!currentAncestry(fiber, current)) continue;
       const chain = fiber.memoizedProps?.value, present = chain instanceof Map && chain.get(token.id);
       if (present?.token !== token) continue;
       if (present !== node) throw fail('desktop_connection_replaced', 'Desktop AppScope was replaced');

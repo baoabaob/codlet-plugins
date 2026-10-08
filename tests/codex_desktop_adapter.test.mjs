@@ -626,6 +626,16 @@ test('opening a cold task navigates once and lets Native publish resume and foll
     f.dispose();
 });
 
+test('opening a cached local task avoids metadata requests and preserves the navigation receipt', async () => {
+    const f=fixture(1,true,true);
+    f.threads.set('thread-cached',{id:'thread-cached',hostId:'local',resumeState:'resumed',requests:[],turns:[]});
+    f.responses.set('thread/read',new Error('cached navigation must not read metadata'));
+    const result=await f.api.write('threads.open',{threadId:'thread-cached'});
+    assert.equal(result.threadId,'thread-cached');assert.equal(result.status,'opened');
+    assert.equal(f.requestCalls.length,0);assert.deepEqual(f.navigationCalls,[['push','/local/thread-cached']]);
+    f.dispose();
+});
+
 test('invalid, cancelled, concurrent and superseded open requests never replace a newer user route', async () => {
     const f = fixture(1, true);
     await assert.rejects(f.api.write('threads.open', { threadId: '../escape' }), { code: 'invalid_argument' });
