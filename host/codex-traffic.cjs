@@ -6,6 +6,10 @@ const zlib = require('node:zlib');
 const failure = code => Object.assign(new Error(code), { code });
 const VERIFIED_BACKENDS = Object.freeze({
   win32: Object.freeze([
+    // Disposable Windows acceptance covers both signed distributions of the
+    // same 0.162.0-alpha.2 PE image; admission pins each complete file separately.
+    Object.freeze({ sha256: '3553cd6e7df5a093d8cb8301cd8088a57e0971aba71ddbe0e67f7f44a15cdf68', version: '0.162.0-alpha.2', evidence: 'same-pe-image-as-controlled-0.162.0-alpha.2-http-sse-ws-routing-fixture' }),
+    Object.freeze({ sha256: 'd83cc3582592e307df008411f02f61a93fb93580b53dc173608a63202d97bbe4', version: '0.162.0-alpha.2', evidence: 'controlled-custom-builtin-chatgpt-http-sse-ws-two-thread-routing' }),
     // The installed and published 0.160.1 files differ only in Authenticode
     // data/checksum. Their complete remaining PE image matches the CI fixture.
     Object.freeze({ sha256: '3b8f6e33caa75f232558a3cf76ff9b87bb5ef6dbcf4996372f24e55c78b1b916', version: '0.160.1', evidence: 'same-pe-image-as-controlled-0.160.1-http-sse-ws-routing-fixture' }),

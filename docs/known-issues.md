@@ -22,6 +22,19 @@ The unauthenticated GitHub importer cannot install private repositories or draft
 
 ## Traffic activation boundaries
 
+Desktop Adapter 0.2.15 reviews Windows `26.1002.7124.0` / frontend
+`26.1002.52244` / build `13536`. Its new module bindings retain network policy,
+native authentication and principal checks, final fetch/upload progress, stdio
+framing and account notifications. App Server `0.162.0-alpha.2` passed the same
+eight controlled Windows cases in [disposable CI](https://github.com/baoabaob/codlet-plugins/actions/runs/37747179353),
+with thirty completed synthetic turns and cleanup. The signed client backend
+and official release share the same executable image; admission pins both
+complete hashes. An adapter update can restore the Desktop branch in a running
+client. If a native backend has pending requests or active turns, recovery leaves
+it running and reports `client_source_backend_busy`; its model traffic source
+is deferred until an idle reload or the next Codlet launch. Controlled fixtures
+do not establish real OAuth or complete desktop/installer acceptance.
+
 Desktop Adapter 0.2.14 reviews the Windows `26.930.7945.0` / frontend
 `26.930.61225` / build `13232` main, bootstrap and Stdio modules. It retains the
 native final-fetch, network-policy, stdio-send and notification contracts. Its
