@@ -8,17 +8,18 @@ const source = readFileSync(new URL('../bundled/codex-desktop-adapter/renderer.j
 const plain = value => JSON.parse(JSON.stringify(value));
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
-function fixture(buildIndex = 0, withNavigation = false) {
+function fixture(buildIndex = 0, withNavigation = false, withLoaded = false) {
     const scope = vm.createContext({ module: { exports: {} }, setTimeout, clearTimeout, AbortController, URL, crypto: { randomUUID } });
     const create = vm.runInContext(source + '\ncreateAdapter', scope);
     const build = vm.runInContext('BUILDS', scope)[buildIndex];
     const endpoints = new Map(), cleanup = new Set(), sent = [], failures = [], callbacks = new Map(), approvals = [], requestCalls = [];
-    const thread = { resumeState: 'resumed', requests: [], turns: [] }, threads = new Map([['thread-a', thread]]);
+    const thread = { ...(withLoaded ? { id: 'thread-a', title: 'Cached task', cwd: 'X:/fixture' } : {}), resumeState: 'resumed', requests: [], turns: [] }, threads = new Map([['thread-a', thread]]);
     const client = { requestPromises: new Map(), onError(id, error) { failures.push({ id, error }); this.requestPromises.delete(id); } };
     const original = message => { sent.push(message); };
     const postbox = { postMessage: original };
     const responses = new Map();
     const manager = {
+        ...(withLoaded ? { getCachedConversations: () => [...threads.values()] } : {}),
         getConversation: id => threads.get(id) ?? null,
         getStreamRole: () => ({ role: 'owner' }),
         sendRequest: async (method, params) => { requestCalls.push({ method, params }); const result = responses.get(method); if (result instanceof Error) throw result; return typeof result === 'function' ? result(params) : result; },
@@ -57,6 +58,24 @@ function fixture(buildIndex = 0, withNavigation = false) {
     }
     return { ...adapter, context, scope, endpoints, cleanup, sent, failures, callbacks, approvals, requestCalls, client, postbox, original, thread, threads, navigator, nativeNavigation, navigationCalls, replaceNavigator(value) { currentNavigator = value; }, responses, owner, submit, connection: { manager, client, postbox, build, check() {} }, drift() { replaced = true; } };
 }
+
+test('threads.loaded is registered on Desktop Read and returns bounded summaries with targeted metadata events and no backend request', async () => {
+    const f = fixture(0, false, true);
+    assert.ok(f.endpoints.has('codex.backend.read:threads.loaded'));
+    const initial = await f.api.readEvents({ limit: 100 });
+    const page = await f.api.read('threads.loaded', { limit: 1 });
+    assert.deepEqual(plain(page), { threads: [{ id: 'thread-a', title: 'Cached task', cwd: 'X:/fixture', hostId: 'local', runtimeStatus: 'idle' }], cursor: null });
+    assert.equal(f.requestCalls.length, 0);
+    f.thread.threadRuntimeStatus = { type: 'active', activeFlags: ['waitingOnUserInput'] };
+    f.callbacks.get('conversation')('thread-a');
+    const next = await f.api.readEvents({ cursor: initial.cursor, limit: 100 });
+    assert.equal(next.events.filter(event => event.type === 'thread.summary.changed').length, 1);
+    assert.equal(next.events.find(event => event.type === 'thread.summary.changed').thread.runtimeStatus, 'attention');
+    f.callbacks.get('conversation')('thread-a');
+    const unchanged = await f.api.readEvents({ cursor: next.cursor, limit: 100 });
+    assert.equal(unchanged.events.filter(event => event.type === 'thread.summary.changed').length, 0);
+    f.dispose();
+});
 
 test('native integer JSON-RPC errors remain valid public failures without retiring the adapter', async () => {
     const f=fixture();

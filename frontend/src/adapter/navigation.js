@@ -3,7 +3,8 @@ import { CLIENT_PROFILES, clientProfile } from '../../../compatibility/client-pr
 import { COMPOSER_CAPABILITY, createComposerActions, composerLease } from './composer-action.js';
 import { reviewedNavigator } from '../native-navigation.js';
 import { COMPOSER_PROFILE, discoverNative } from './discovery.js';
-import { desktopDocument } from '../host-discovery.js';
+import { desktopDocument, hostFibers } from '../host-discovery.js';
+import { createWorkspace } from './workspace.js';
 
 // Reviewed mappings are the fast path. Structural discovery handles unlisted
 // builds; all private host details remain in this optional adapter.
@@ -23,43 +24,12 @@ const fail = (code, message) => Object.assign(new Error(message), { code });
 let current;
 
 export function fibers() {
-  const root = document.getElementById('root');
-  const key = root && Object.keys(root).find(key => key.startsWith('__reactContainer$'));
-  const container = key && root[key], current = container?.stateNode?.current ?? container;
-  // Router providers belong to the native shell's ancestry. A conversation may
-  // contain tens of thousands of fibers and is not part of this contract.
-  const rails = root ? [...root.querySelectorAll('nav[data-app-navigation-rail="true"]')] : [];
-  const landmarks = rails.length ? rails : root ? [...root.querySelectorAll('nav')].filter(nav =>
-    [...nav.querySelectorAll('button.sidebar-item')].some(button => !button.closest('[data-codlet-native-navigation]'))) : [];
-  if (landmarks.length > 1) throw fail('ui_host_drift', 'Native navigation ownership is ambiguous');
-  if (landmarks.length === 1) {
-    const landmark = landmarks[0], key = Object.keys(landmark).find(key => key.startsWith('__reactFiber$'));
-    const attached = key && landmark[key];
-    // React may leave a host node pointing at the alternate after a commit.
-    // Accept only a bounded chain that reaches this root's current tree.
-    for (const start of [attached, attached?.alternate]) {
-      if (!start || start.stateNode !== landmark) continue;
-      const chain = new Set(); let fiber = start;
-      while (fiber && !chain.has(fiber) && chain.size < 256) {
-        chain.add(fiber);
-        if (fiber === current) return chain;
-        fiber = fiber.return;
-      }
-    }
-    throw fail('ui_host_pending', 'Waiting for the current native navigation tree');
+  try { return hostFibers(); }
+  catch (error) {
+    if (error.code === 'desktop_host_pending') throw fail('ui_host_pending', error.message);
+    if (error.code === 'desktop_host_drift') throw fail('ui_host_drift', error.message);
+    throw error;
   }
-  // Auxiliary windows and cold startup have no navigation landmark. Keep a
-  // bounded fallback there; an unrelated large document must still fail closed.
-  const pending = [current], seen = new Set();
-  while (pending.length && seen.size < 20000) {
-    const fiber = pending.pop();
-    if (!fiber || seen.has(fiber)) continue;
-    seen.add(fiber);
-    if (fiber.sibling) pending.push(fiber.sibling);
-    if (fiber.child) pending.push(fiber.child);
-  }
-  if (pending.length) throw fail('ui_host_drift', 'The Desktop tree exceeded the reviewed probe boundary');
-  return seen;
 }
 
 export function locateHost() {
@@ -381,7 +351,7 @@ async function loadNative() {
 }
 
 export function deferredNavigation(context, load = loadNative) {
-  let alive = true, navigation, failure, cancelWait, independentActions;
+  let alive = true, navigation, failure, cancelWait, independentActions, native;
   const pending = new Map(), pendingComposer = new Map();
   const composer = () => {
     if (load !== loadNative) return null;
@@ -395,7 +365,7 @@ export function deferredNavigation(context, load = loadNative) {
     return independentActions;
   };
   const ready = (async () => {
-    let native, delay = 50;
+    let delay = 50;
     while (alive) {
       try {
         if (load === loadNative) desktopDocument();
@@ -461,6 +431,7 @@ export function deferredNavigation(context, load = loadNative) {
   });
   return {
     ready,
+    native: () => ready.then(() => native),
     register(args, invocation) {
       if (!alive || invocation?.signal?.aborted) throw fail('ui_retired', 'The page registration retired');
       if (failure) throw failure;
@@ -529,10 +500,13 @@ export function deferredNavigation(context, load = loadNative) {
 }
 export function deactivate() { current?.dispose(); current = null; }
 export async function activate(context) {
-  deactivate(); const session = deferredNavigation(context); current = session;
+  deactivate(); const session = deferredNavigation(context);
   context.rpc.provide(CAPABILITY, 'register', async (args, invocation) => session.register(args, invocation));
   context.rpc.provide(CAPABILITY, 'newTaskDraft', async (args, invocation) => session.newTaskDraft(args, invocation));
   context.rpc.provide(COMPOSER_CAPABILITY, 'register', async (args, invocation) => session.registerComposer(args, invocation));
   context.rpc.provide(COMPOSER_CAPABILITY, 'unregister', async (args, invocation) => session.unregisterComposer(args, invocation));
   context.rpc.provide(COMPOSER_CAPABILITY, 'status', async (args, invocation) => session.statusComposer(args, invocation));
+  const workspace = createWorkspace(context, { locate: locateHost, baseNative: session.native });
+  current = { dispose() { workspace.dispose(); session.dispose(); } };
+  session.ready.then(() => workspace.refresh(), () => {}).catch(() => {});
 }

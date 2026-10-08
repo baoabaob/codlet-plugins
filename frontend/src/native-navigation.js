@@ -2,6 +2,13 @@
 // build 11645 uses a data router whose single wildcard route owns the same JSX
 // route tree. Observe that router; never construct a replacement native router.
 const bridges = new WeakMap();
+const subscribable = new WeakSet();
+
+export function subscribeNativeRoute(navigator, listener) {
+  // React Router data routers support several subscribers. Legacy memory
+  // histories own a single listener, so their routes are observed at DOM commit.
+  return subscribable.has(navigator) ? navigator.listen(listener) : null;
+}
 
 export function reviewedNavigator(navigators, contexts) {
   if (navigators.size !== 1) return null;
@@ -34,5 +41,6 @@ export function reviewedNavigator(navigators, contexts) {
     },
   };
   bridges.set(router, { navigator, navigate, subscribe, bridge });
+  subscribable.add(bridge);
   return bridge;
 }

@@ -1,15 +1,48 @@
-import { parse } from 'acorn';
+import { parse, tokenizer } from 'acorn';
 
 const fail = message => Object.assign(new Error(message), { code: 'ui_react_drift' });
+export function factoryStatements(source) {
+  // Tokenize the native module once, but construct ASTs only for possible CJS
+  // factories and its export map. Native's unrelated UI functions dominate the
+  // multi-megabyte module and need neither AST allocation nor traversal here.
+  const tokens = tokenizer(source, { ecmaVersion: 'latest', sourceType: 'module' }), result = [];
+  let braces = 0, parentheses = 0, brackets = 0, start = null, kind = null;
+  for (;;) {
+    const token = tokens.getToken(), label = token.type.label;
+    if (label === 'eof') break;
+    const keyword = token.type.keyword ?? (token.value === 'let' ? 'let' : null);
+    if (!braces && !parentheses && !brackets && ['var', 'let', 'const', 'export'].includes(keyword)) {
+      if (start != null && kind === 'export' && /^export\s*$/.test(source.slice(start, token.start))) continue;
+      if (start != null) add(token.start);
+      start = token.start; kind = keyword;
+    }
+    if (label === '{' || label === '${') braces++;
+    else if (label === '}') braces--;
+    else if (label === '(') parentheses++;
+    else if (label === ')') parentheses--;
+    else if (label === '[') brackets++;
+    else if (label === ']') brackets--;
+    if (start != null && label === ';' && !braces && !parentheses && !brackets) add(token.end);
+  }
+  if (start != null) add(source.length);
+  return result;
+  function add(end) {
+    const part = source.slice(start, end);
+    if (kind === 'export' || /\bexports\b|\.createElement\b|\.createRoot\b|\.flushSync\b/.test(part))
+      // A sliced export map has declarations in other slices. Parse only its
+      // syntax here; the factory graph below validates every referenced name.
+      result.push(...parse(part, { ecmaVersion: 'latest', sourceType: kind === 'export' ? 'script' : 'module', allowImportExportEverywhere: kind === 'export' }).body);
+    start = kind = null;
+  }
+}
 // Resolve CommonJS exports structurally. Parsing never executes downloaded text;
 // only a uniquely identified React/DOM factory from the loaded native ESM module
 // can be called. The generated local identifiers and export aliases may change.
 export function reactFactories(source) {
   if (typeof source !== 'string' || source.length > 16 * 1024 * 1024) throw fail('Native shared module exceeds the source limit');
-  const ast = parse(source, { ecmaVersion: 'latest', sourceType: 'module' });
   const factories = new Map(), exports = new Map();
   const expressions = value => value?.type === 'SequenceExpression' ? value.expressions.flatMap(expressions) : [value];
-  for (const statement of ast.body) {
+  for (const statement of factoryStatements(source)) {
     if (statement.type === 'ExportNamedDeclaration') for (const item of statement.specifiers)
       if (item.type === 'ExportSpecifier') exports.set(item.local.name, item.exported.name);
     if (statement.type !== 'VariableDeclaration') continue;

@@ -2,8 +2,9 @@ import { CLIENT_PROFILES, clientProfile } from '../../../compatibility/client-pr
 import { createThreadConfiguration } from './thread-configuration.js';
 import { createThreadReconfiguration } from './thread-reconfiguration.js';
 import { createThreadRestoration } from './thread-restoration.js';
+import { createLoadedThreads } from './loaded-threads.js';
 import { reviewedNavigator } from '../native-navigation.js';
-import { desktopDocument, loadedAsset, localConnection, uniqueExport } from '../host-discovery.js';
+import { desktopDocument, hostFibers, createScopeLocator, loadedAsset, localConnection, uniqueExport } from '../host-discovery.js';
 'use strict';
 
 // All Desktop build details stay in this optional directory package. The Core
@@ -40,27 +41,6 @@ const freeze = value => {
     if (value && typeof value === 'object') { Object.values(value).forEach(freeze); Object.freeze(value); }
     return value;
 };
-
-function locateScope(token) {
-    const root = document.getElementById('root');
-    const key = root && Object.keys(root).find(key => key.startsWith('__reactContainer$'));
-    const container = key ? root[key] : null;
-    const first = container?.stateNode?.current ?? container;
-    const seen = new Set(), pending = first ? [first] : [];
-    while (pending.length && seen.size < 4096) {
-        const fiber = pending.pop();
-        if (!fiber || seen.has(fiber)) continue;
-        seen.add(fiber);
-        const chain = fiber.memoizedProps?.value;
-        if (chain instanceof Map && chain.has(token?.id)) {
-            const node = chain.get(token.id);
-            if (node?.token === token && node.store && node.familyBindings instanceof Map) return { chain, node };
-        }
-        if (fiber.sibling) pending.push(fiber.sibling);
-        if (fiber.child) pending.push(fiber.child);
-    }
-    throw fail('desktop_scope_missing', 'Desktop AppScope is not mounted; reload the adapter after Desktop is ready');
-}
 
 function validateDesktopBuild(checkEntry = true, allowPending = false) {
     const detected = globalThis.electronBridge?.getSentryInitOptions?.();
@@ -120,7 +100,7 @@ async function probeDesktop(loadModule = source => import(source), readyTimeoutM
     };
     const scopeModule = build.scopeModule ? await additional(build.scopeModule) : module;
     const transportModule = build.postboxModule ? await additional(build.postboxModule) : module;
-    let token, managerFamily, clientFamily, services, postbox, scope, manager, client;
+    let token, managerFamily, clientFamily, services, postbox, scope, locateScope, manager, client;
     for (;;) {
         if (signal?.aborted) throw fail('adapter_deactivated', 'Desktop adapter was deactivated during initialization');
         try {
@@ -128,14 +108,14 @@ async function probeDesktop(loadModule = source => import(source), readyTimeoutM
             // Snapshot them only once Desktop has mounted its own connection.
             token = scopeModule[build.exports.scope]; managerFamily = module[build.exports.manager]; clientFamily = module[build.exports.client];
             services = module[build.exports.services]; postbox = transportModule[build.exports.postbox];
-            scope = locateScope(token);
+            locateScope = createScopeLocator(token); scope = locateScope();
             if (!scope.node.familyBindings.get(managerFamily)?.has('local') || !scope.node.familyBindings.get(clientFamily)?.has('local')) throw fail('desktop_connection_not_ready', 'Desktop has not initialized its own local connection');
             manager = managerFamily.read(scope.node, scope.chain, 'local');
             client = clientFamily.read(scope.node, scope.chain, 'local');
             if (!services || !manager || !client || !postbox || client.getAppServerVersion?.() == null) throw fail('desktop_connection_not_ready', 'Desktop connection is still initializing');
             break;
         } catch (error) {
-            if (!['desktop_scope_missing', 'desktop_connection_not_ready'].includes(error.code) || Date.now() >= readyDeadline) throw error;
+            if (!['desktop_scope_missing', 'desktop_host_pending', 'desktop_connection_not_ready'].includes(error.code) || Date.now() >= readyDeadline) throw error;
             // Only a bounded activation wait. Nothing polls after ready/failed.
             await probeTick(signal, Math.min(50, readyDeadline - Date.now()));
         }
@@ -152,7 +132,7 @@ async function probeDesktop(loadModule = source => import(source), readyTimeoutM
         manager, client, postbox, build: verifiedBuild,
         check() {
             if (validateDesktopBuild() !== build) throw fail('desktop_build_drift', 'Desktop build changed after adapter initialization');
-            const current = locateScope(token);
+            const current = locateScope();
             if (current.node !== scope.node || scopeModule[build.exports.scope] !== token || module[build.exports.manager] !== managerFamily || module[build.exports.client] !== clientFamily || module[build.exports.services] !== services || transportModule[build.exports.postbox] !== postbox || !current.node.familyBindings.get(managerFamily)?.has('local') || !current.node.familyBindings.get(clientFamily)?.has('local') || managerFamily.read(current.node, current.chain, 'local') !== manager || clientFamily.read(current.node, current.chain, 'local') !== client || manager.requestClient !== client || client.getAppServerVersion() !== observedVersion) throw fail('desktop_connection_replaced', 'Desktop connection changed; reload the adapter');
         }
     };
@@ -164,7 +144,7 @@ async function probeDiscoveredDesktop(loadModule, readyTimeoutMs, signal) {
     for (;;) {
         try { connection = localConnection(); sharedUrl = loadedAsset('shared'); if (!connection.client.getAppServerVersion()) throw fail('desktop_connection_not_ready', 'Waiting for the local App Server'); break; }
         catch (error) {
-            if (!['desktop_connection_not_ready', 'ui_host_pending'].includes(error.code) || Date.now() >= deadline) throw error;
+            if (!['desktop_connection_not_ready', 'desktop_host_pending', 'ui_host_pending'].includes(error.code) || Date.now() >= deadline) throw error;
             await probeTick(signal, 100);
         }
     }
@@ -173,6 +153,7 @@ async function probeDiscoveredDesktop(loadModule, readyTimeoutMs, signal) {
     const postbox = uniqueExport(module, value => value && typeof value.postMessage === 'function' &&
         typeof value.getState === 'function' && typeof value.setState === 'function' &&
         Object.getOwnPropertyDescriptor(value, 'postMessage')?.writable === true, 'message transport');
+    const postboxExports = Object.keys(module).filter(key => module[key] === postbox);
     const { manager, client } = connection;
     for (const method of ['sendRequest', 'getConversation', 'getStreamRole', 'addNotificationCallback', 'addConversationStateCallback', 'replyWithCommandExecutionApprovalDecision', 'replyWithFileChangeApprovalDecision', 'replyWithPermissionsRequestApprovalResponse', 'replyWithUserInputResponse'])
         if (typeof manager[method] !== 'function') throw fail('desktop_manager_drift', `Desktop manager lacks ${method}`);
@@ -184,12 +165,9 @@ async function probeDiscoveredDesktop(loadModule, readyTimeoutMs, signal) {
     return { manager, client, postbox, build, check() {
         // Discovery scans candidates once. Steady-state callbacks verify the
         // captured owner and bindings without rereading unrelated host services.
-        const current = locateScope(connection.node.token);
-        if (current.node !== connection.node || !current.node.familyBindings.get(connection.managerFamily)?.has('local') ||
-            !current.node.familyBindings.get(connection.clientFamily)?.has('local') ||
-            connection.managerFamily.read(current.node, current.chain, 'local') !== manager ||
-            connection.clientFamily.read(current.node, current.chain, 'local') !== client || manager.requestClient !== client || loadedAsset('shared') !== sharedUrl ||
-            !Object.values(module).includes(postbox) || client.getAppServerVersion() !== build.appServerVersion)
+        connection.check();
+        if (loadedAsset('shared') !== sharedUrl ||
+            postboxExports.some(key => module[key] !== postbox) || client.getAppServerVersion() !== build.appServerVersion)
             throw fail('desktop_connection_replaced', 'Desktop connection changed; reload the adapter');
     } };
 }
@@ -238,22 +216,14 @@ function permissionsDto(params) {
 }
 
 function locateNavigator() {
-    const root = document.getElementById('root');
-    const key = root && Object.keys(root).find(key => key.startsWith('__reactContainer$'));
-    const container = key ? root[key] : null;
-    const pending = [container?.stateNode?.current ?? container], seen = new Set(), candidates = new Set(), routerContexts = new Set();
-    while (pending.length && seen.size < 4096) {
-        const fiber = pending.pop();
-        if (!fiber || seen.has(fiber)) continue;
-        seen.add(fiber);
+    const candidates = new Set(), routerContexts = new Set();
+    for (const fiber of hostFibers()) {
         for (const value of [fiber.memoizedProps, fiber.memoizedProps?.value]) if (value?.navigator) {
             candidates.add(value.navigator);
             if (value.router) routerContexts.add(value);
         }
-        if (fiber.sibling) pending.push(fiber.sibling);
-        if (fiber.child) pending.push(fiber.child);
     }
-    if (pending.length || candidates.size !== 1) throw fail('desktop_navigation_unavailable', 'A unique Desktop memory router is required');
+    if (candidates.size !== 1) throw fail('desktop_navigation_unavailable', 'A unique Desktop memory router is required');
     const navigator = reviewedNavigator(candidates, routerContexts);
     if (!navigator) throw fail('desktop_navigation_unavailable', 'The reviewed Desktop router is unavailable');
     if (typeof navigator.location?.pathname !== 'string' || !navigator.location.pathname.startsWith('/') || navigator.location.pathname.startsWith('/avatar-overlay') || typeof navigator.listen !== 'function') throw fail('desktop_navigation_unavailable', 'Task navigation is unavailable in this Desktop window');
@@ -337,6 +307,7 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
     const instance = crypto.randomUUID();
     let alive = true, sequence = 0, eventBytes = 0, hookSequence = 0, reloadReason = null, unavailable = null;
     const hooks = new Map(), pendingSubmits = new Set(), events = [], waiters = new Set(), listeners = new Set(), cleanups = [], approvals = new Map(), retiredApprovals = new Map(), tickets = new Map(), submissions = new Map();
+    const loadedThreads = createLoadedThreads(manager, value => emit(value), instance);
     let navigation = null, navigationFailure = null, lastSelection = null, opening = false;
     const check = () => {
         if (!alive) throw fail('adapter_deactivated', 'Desktop adapter was deactivated');
@@ -569,6 +540,7 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
         const pagination = () => ({ limit: bounded(args.limit, 20, 100), ...(args.cursor == null ? {} : { cursor: str(args.cursor, 'cursor', 4096) }) });
         switch (method) {
             case 'selection.get': fields(args, []); return selection();
+            case 'threads.loaded': return loadedThreads.read(args);
             case 'threads.configuration': {
                 fields(args, ['threadId']);
                 const id = identity(args.threadId, 'threadId');
@@ -820,7 +792,7 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
         if (restoration?.reloadRequired) reloadReason ??= restoration.reason;
         for (const pending of pendingSubmits) pending.controller.abort(fail('adapter_deactivated', 'Desktop adapter was deactivated'));
         for (const hook of hooks.values()) hook.active = false;
-        hooks.clear(); listeners.clear(); approvals.clear(); retiredApprovals.clear(); tickets.clear(); events.length = 0; eventBytes = 0;
+        hooks.clear(); listeners.clear(); approvals.clear(); retiredApprovals.clear(); tickets.clear(); loadedThreads.dispose(); events.length = 0; eventBytes = 0;
         for (const wake of [...waiters]) wake();
         for (const cleanup of cleanups.splice(0).reverse()) { try { cleanup(); } catch (error) { reloadReason ??= String(error.message ?? error); } }
         if (postbox.postMessage === intercept) postbox.postMessage = originalPost;
@@ -833,7 +805,10 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
         postbox.postMessage = intercept;
         Object.defineProperty(globalThis, symbol, { value: publicApi, configurable: true });
         cleanups.push(manager.addNotificationCallback(['thread/started', 'turn/started', 'turn/completed', 'item/started', 'item/completed', 'item/agentMessage/delta', 'item/commandExecution/outputDelta', 'serverRequest/resolved'], receive));
-        cleanups.push(manager.addConversationStateCallback(threadId => { try { check(); syncApprovals(threadId); refreshSelection(threadId); } catch (error) { markUnavailable(fail(error.code ?? 'desktop_approval_schema_drift', error.message)); } }));
+        cleanups.push(manager.addConversationStateCallback(threadId => { try { check(); syncApprovals(threadId); loadedThreads.refresh(threadId); refreshSelection(threadId); } catch (error) { markUnavailable(fail(error.code ?? 'desktop_approval_schema_drift', error.message)); } }));
+        if (typeof manager.addConversationRemovedCallback === 'function') cleanups.push(manager.addConversationRemovedCallback(threadId => {
+            try { check(); loadedThreads.refresh(threadId); } catch (error) { markUnavailable(error); }
+        }));
         try {
             if (!build.navigation) throw fail('desktop_navigation_unavailable', 'Task navigation has not been verified for this Desktop build');
             navigation = createNavigation(manager, () => refreshSelection(), connection.locateNavigator); cleanups.push(() => navigation.dispose());
@@ -846,7 +821,7 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
         context.rpc.provide(CAPS.submit, 'interceptors.list', args => listInterceptors(args));
         context.rpc.provide(CAPS.write, 'getApi', (_args, invocation) => issueTicket(CAPS.write, invocation));
         context.rpc.provide(CAPS.write, 'configurations.list', args => threadConfiguration.list(args ?? {}));
-        for (const method of ['selection.get', 'threads.list', 'threads.get', 'threads.configuration', 'turns.list', 'items.list', 'models.list', 'skills.list', 'providers.list', 'approvals.list']) context.rpc.provide(CAPS.read, method, (args, invocation) => read(method, args ?? {}, invocation.signal));
+        for (const method of ['selection.get', 'threads.list', 'threads.loaded', 'threads.get', 'threads.configuration', 'turns.list', 'items.list', 'models.list', 'skills.list', 'providers.list', 'approvals.list']) context.rpc.provide(CAPS.read, method, (args, invocation) => read(method, args ?? {}, invocation.signal));
         for (const method of ['threads.open', 'threads.reconfigure', 'turns.start', 'turns.steer', 'turns.interrupt', 'approvals.respond']) context.rpc.provide(CAPS.write, method, (args, invocation) => write(method, args ?? {}, invocation.signal));
         context.rpc.provide(CAPS.events, 'read', (args, invocation) => readEvents(args ?? {}, invocation.signal));
         context.rpc.provide(CAPS.events, 'getApi', (_args, invocation) => issueTicket(CAPS.events, invocation));

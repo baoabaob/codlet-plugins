@@ -490,6 +490,10 @@ function composerLease(args, invocation) {
 
 // src/native-navigation.js
 var bridges = /* @__PURE__ */ new WeakMap();
+var subscribable = /* @__PURE__ */ new WeakSet();
+function subscribeNativeRoute(navigator, listener) {
+  return subscribable.has(navigator) ? navigator.listen(listener) : null;
+}
 function reviewedNavigator(navigators, contexts) {
   if (navigators.size !== 1) return null;
   const navigator = [...navigators][0];
@@ -525,6 +529,7 @@ function reviewedNavigator(navigators, contexts) {
     }
   };
   bridges.set(router, { navigator, navigate, subscribe, bridge });
+  subscribable.add(bridge);
   return bridge;
 }
 
@@ -534,6 +539,99 @@ function desktopDocument() {
   if (location.origin !== "app://-" || location.pathname !== "/index.html")
     throw fail2("desktop_document_unsupported", "This is not a Desktop document");
 }
+function hostFibers(limit = 2e4) {
+  const root = document.getElementById("root");
+  const key2 = root && Object.keys(root).find((key3) => key3.startsWith("__reactContainer$"));
+  const container = key2 && root[key2], current3 = container?.stateNode?.current ?? container;
+  const rails = root ? [...root.querySelectorAll?.('nav[data-app-navigation-rail="true"]') ?? []] : [];
+  const landmarks = rails.length ? rails : root ? [...root.querySelectorAll?.("nav") ?? []].filter((nav) => [...nav.querySelectorAll("button.sidebar-item")].some((button) => !button.closest("[data-codlet-native-navigation]"))) : [];
+  if (landmarks.length > 1) throw fail2("desktop_host_drift", "Native navigation ownership is ambiguous");
+  if (landmarks.length === 1) {
+    const landmark = landmarks[0], attachedKey = Object.keys(landmark).find((key3) => key3.startsWith("__reactFiber$"));
+    const attached = attachedKey && landmark[attachedKey];
+    for (const start of [attached, attached?.alternate]) {
+      if (!start || start.stateNode !== landmark) continue;
+      const chain = /* @__PURE__ */ new Set();
+      let fiber = start;
+      while (fiber && !chain.has(fiber) && chain.size < 256) {
+        chain.add(fiber);
+        if (fiber === current3) return chain;
+        fiber = fiber.return;
+      }
+    }
+    throw fail2("desktop_host_pending", "Waiting for the current native navigation tree");
+  }
+  const pending = [current3], seen = /* @__PURE__ */ new Set();
+  while (pending.length) {
+    const fiber = pending.pop();
+    if (!fiber || seen.has(fiber)) continue;
+    if (seen.size >= limit) throw fail2("desktop_host_drift", "Desktop tree exceeds the discovery limit");
+    seen.add(fiber);
+    if (fiber.sibling) pending.push(fiber.sibling);
+    if (fiber.child) pending.push(fiber.child);
+  }
+  return seen;
+}
+function mountedOwner(fiber, current3) {
+  const pending = [fiber], seen = /* @__PURE__ */ new Set();
+  let links = 0;
+  while (pending.length && seen.size < 256) {
+    const child = pending.pop();
+    if (!child || seen.has(child)) continue;
+    if (child === current3) return true;
+    seen.add(child);
+    for (const parent of /* @__PURE__ */ new Set([child.return, child.return?.alternate])) {
+      if (!parent) continue;
+      const siblings = /* @__PURE__ */ new Set();
+      let candidate = parent.child;
+      while (candidate && !siblings.has(candidate)) {
+        if (++links > 256) return false;
+        if (candidate === child) {
+          pending.push(parent);
+          break;
+        }
+        siblings.add(candidate);
+        candidate = candidate.sibling;
+      }
+    }
+  }
+  return false;
+}
+function createScopeLocator(token, fibers2 = hostFibers()) {
+  const root = document.getElementById("root");
+  const key2 = root && Object.keys(root).find((key3) => key3.startsWith("__reactContainer$"));
+  const container = key2 && root[key2];
+  const owners = [...fibers2].filter((fiber) => {
+    const chain = fiber.memoizedProps?.value, node2 = chain instanceof Map && chain.get(token?.id);
+    return token && node2?.token === token && node2?.store && node2.familyBindings instanceof Map;
+  });
+  const nodes = new Set(owners.map((fiber) => fiber.memoizedProps.value.get(token.id)));
+  if (nodes.size > 1) throw fail2("desktop_scope_ambiguous", "Desktop AppScope has multiple owners");
+  if (!owners.length) throw fail2("desktop_scope_missing", "Desktop AppScope is not mounted; reload the adapter after Desktop is ready");
+  const depth = (fiber) => {
+    const seen = /* @__PURE__ */ new Set();
+    while (fiber && !seen.has(fiber) && seen.size < 256) {
+      seen.add(fiber);
+      fiber = fiber.return;
+    }
+    return seen.size;
+  };
+  owners.sort((a, b) => depth(a) - depth(b));
+  const node = [...nodes][0];
+  return () => {
+    if (document.getElementById("root") !== root || root[key2] !== container)
+      throw fail2("desktop_scope_missing", "Desktop AppScope root was replaced");
+    const current3 = container?.stateNode?.current ?? container;
+    for (const owner2 of owners) for (const fiber of [owner2, owner2.alternate]) {
+      if (!mountedOwner(fiber, current3)) continue;
+      const chain = fiber.memoizedProps?.value, present = chain instanceof Map && chain.get(token.id);
+      if (present?.token !== token) continue;
+      if (present !== node) throw fail2("desktop_connection_replaced", "Desktop AppScope was replaced");
+      return { chain, node };
+    }
+    throw fail2("desktop_scope_missing", "Desktop AppScope is no longer mounted");
+  };
+}
 function loadedAsset(role) {
   desktopDocument();
   if (!["shared", "initial"].includes(role)) throw fail2("desktop_asset_invalid", "Unknown native module role");
@@ -542,10 +640,63 @@ function loadedAsset(role) {
   if (candidates.length !== 1) throw fail2(candidates.length ? "desktop_asset_ambiguous" : "ui_host_pending", `A unique loaded Desktop ${role} module is required`);
   return candidates[0];
 }
+function localConnection() {
+  desktopDocument();
+  const fibers2 = hostFibers();
+  const nodes = /* @__PURE__ */ new Set(), matches = /* @__PURE__ */ new Map();
+  let metadataEntries = 0, localReads = 0;
+  for (const fiber of fibers2) {
+    const chain = fiber.memoizedProps?.value;
+    if (!(chain instanceof Map)) continue;
+    for (const node of chain.values()) {
+      if (!node?.token || chain.get(node.token.id) !== node || !(node.familyBindings instanceof Map) || nodes.has(node)) continue;
+      nodes.add(node);
+      if (nodes.size > 256 || (metadataEntries += node.familyBindings.size) > 32768) throw fail2("desktop_scope_drift", "Desktop scope exceeds the discovery limit");
+      const bound = [];
+      for (const [family, bindings] of node.familyBindings) {
+        if (family?.scope !== node.token || typeof family.read !== "function" || !(bindings instanceof Map) || !bindings.has("local")) continue;
+        if (++localReads > 512) throw fail2("desktop_scope_drift", "Desktop local bindings exceed the discovery limit");
+        const value = family.read(node, chain, "local");
+        bound.push({ family, value });
+      }
+      for (const { family: managerFamily, value: manager } of bound) {
+        if (typeof manager?.getHostId !== "function" || manager.getHostId() !== "local" || typeof manager.getConversation !== "function") continue;
+        const client = manager.requestClient;
+        const clients = bound.filter((item) => item.value === client && typeof client?.sendRequest === "function" && typeof client.getAppServerVersion === "function" && typeof client.setAppServerVersion === "function" && client.requestPromises instanceof Map);
+        if (clients.length !== 1) continue;
+        const previous = matches.get(manager);
+        if (previous && (previous.node !== node || previous.clientFamily !== clients[0].family))
+          throw fail2("desktop_scope_ambiguous", "Desktop connection has multiple owners");
+        matches.set(manager, { node, chain, managerFamily, clientFamily: clients[0].family, manager, client });
+      }
+    }
+  }
+  if (matches.size !== 1) throw fail2(matches.size ? "desktop_scope_ambiguous" : "desktop_connection_not_ready", "A unique existing local Desktop connection is required");
+  const connection = [...matches.values()][0], locate = createScopeLocator(connection.node.token, fibers2);
+  connection.check = () => {
+    desktopDocument();
+    const { node, chain } = locate(), { managerFamily, clientFamily, manager, client } = connection;
+    if (!node.familyBindings.get(managerFamily)?.has("local") || !node.familyBindings.get(clientFamily)?.has("local") || managerFamily.read(node, chain, "local") !== manager || clientFamily.read(node, chain, "local") !== client || manager.getHostId() !== "local" || manager.requestClient !== client)
+      throw fail2("desktop_connection_replaced", "The existing local Desktop connection was replaced");
+    connection.chain = chain;
+    return connection;
+  };
+  return connection.check();
+}
 var component = (value) => typeof value === "function" || [Symbol.for("react.memo"), Symbol.for("react.forward_ref")].includes(value?.$$typeof);
+var sourceCache = /* @__PURE__ */ new WeakMap();
 function componentSource(value) {
-  const fn = typeof value === "function" ? value : value?.render ?? value?.type;
-  return typeof fn === "function" ? Function.prototype.toString.call(fn) : "";
+  if (value == null || !["function", "object"].includes(typeof value)) return "";
+  if (sourceCache.has(value)) return sourceCache.get(value);
+  try {
+    const fn = typeof value === "function" ? value : value?.render ?? value?.type;
+    const result = typeof fn === "function" ? Function.prototype.toString.call(fn) : "";
+    sourceCache.set(value, result);
+    return result;
+  } catch {
+    sourceCache.set(value, "");
+    return "";
+  }
 }
 function uniqueExport(module2, predicate, role, optional = false) {
   const values = [...new Set(Object.values(module2).filter(predicate))];
@@ -2744,13 +2895,13 @@ types$1.star.updateContext = function(prevType) {
   this.exprAllowed = true;
 };
 types$1.name.updateContext = function(prevType) {
-  var allowed = false;
+  var allowed2 = false;
   if (this.options.ecmaVersion >= 6 && prevType !== types$1.dot) {
     if (this.value === "of" && !this.exprAllowed || this.value === "yield" && this.inGeneratorContext()) {
-      allowed = true;
+      allowed2 = true;
     }
   }
-  this.exprAllowed = allowed;
+  this.exprAllowed = allowed2;
 };
 var pp$5 = Parser.prototype;
 pp$5.checkPropClash = function(prop, propHash, refDestructuringErrors) {
@@ -6165,15 +6316,50 @@ Parser.acorn = {
 function parse3(input, options) {
   return Parser.parse(input, options);
 }
+function parseExpressionAt2(input, pos, options) {
+  return Parser.parseExpressionAt(input, pos, options);
+}
+function tokenizer2(input, options) {
+  return Parser.tokenizer(input, options);
+}
 
 // src/adapter/react-factories.js
 var fail3 = (message) => Object.assign(new Error(message), { code: "ui_react_drift" });
+function factoryStatements(source) {
+  const tokens = tokenizer2(source, { ecmaVersion: "latest", sourceType: "module" }), result = [];
+  let braces = 0, parentheses = 0, brackets = 0, start = null, kind = null;
+  for (; ; ) {
+    const token = tokens.getToken(), label = token.type.label;
+    if (label === "eof") break;
+    const keyword = token.type.keyword ?? (token.value === "let" ? "let" : null);
+    if (!braces && !parentheses && !brackets && ["var", "let", "const", "export"].includes(keyword)) {
+      if (start != null && kind === "export" && /^export\s*$/.test(source.slice(start, token.start))) continue;
+      if (start != null) add(token.start);
+      start = token.start;
+      kind = keyword;
+    }
+    if (label === "{" || label === "${") braces++;
+    else if (label === "}") braces--;
+    else if (label === "(") parentheses++;
+    else if (label === ")") parentheses--;
+    else if (label === "[") brackets++;
+    else if (label === "]") brackets--;
+    if (start != null && label === ";" && !braces && !parentheses && !brackets) add(token.end);
+  }
+  if (start != null) add(source.length);
+  return result;
+  function add(end) {
+    const part = source.slice(start, end);
+    if (kind === "export" || /\bexports\b|\.createElement\b|\.createRoot\b|\.flushSync\b/.test(part))
+      result.push(...parse3(part, { ecmaVersion: "latest", sourceType: kind === "export" ? "script" : "module", allowImportExportEverywhere: kind === "export" }).body);
+    start = kind = null;
+  }
+}
 function reactFactories(source) {
   if (typeof source !== "string" || source.length > 16 * 1024 * 1024) throw fail3("Native shared module exceeds the source limit");
-  const ast = parse3(source, { ecmaVersion: "latest", sourceType: "module" });
   const factories = /* @__PURE__ */ new Map(), exports = /* @__PURE__ */ new Map();
   const expressions = (value) => value?.type === "SequenceExpression" ? value.expressions.flatMap(expressions) : [value];
-  for (const statement of ast.body) {
+  for (const statement of factoryStatements(source)) {
     if (statement.type === "ExportNamedDeclaration") {
       for (const item of statement.specifiers)
         if (item.type === "ExportSpecifier") exports.set(item.local.name, item.exported.name);
@@ -6238,15 +6424,15 @@ function railComponents(shared, initial) {
   if (homes.length !== 1) throw fail4("ui_host_pending", "Waiting for the native Home destination");
   const chain = ancestors(homes[0]);
   const exports = /* @__PURE__ */ new Set([...Object.values(shared), ...Object.values(initial)]);
-  const one = (predicate, role) => {
+  const one2 = (predicate, role) => {
     const found = [...new Set(chain.filter((f) => component(f.type) && exports.has(f.type) && predicate(f.memoizedProps ?? {}, componentSource(f.type))).map((f) => f.type))];
     if (found.length !== 1) throw fail4("ui_host_drift", `A unique mounted native ${role} is required (found ${found.length})`);
     return found[0];
   };
   return {
-    RailButton: one((props, source) => props.uniform === true && props.iconSize && props["data-sidebar-destination"] === "builtin:home" && source.includes("data-selected") && source.includes("data-uniform"), "rail button"),
-    RailTooltip: one((props, source) => props.tooltipContent != null && props.side === "right" && source.includes("tooltipContent") && source.includes("delayDuration"), "rail tooltip"),
-    SidebarGroup: one((props, source) => props.itemSpacing === "rail" && source.includes("group/nav-list"), "sidebar group")
+    RailButton: one2((props, source) => props.uniform === true && props.iconSize && props["data-sidebar-destination"] === "builtin:home" && source.includes("data-selected") && source.includes("data-uniform"), "rail button"),
+    RailTooltip: one2((props, source) => props.tooltipContent != null && props.side === "right" && source.includes("tooltipContent") && source.includes("delayDuration"), "rail tooltip"),
+    SidebarGroup: one2((props, source) => props.itemSpacing === "rail" && source.includes("group/nav-list"), "sidebar group")
   };
 }
 function newTaskHook(initial) {
@@ -6305,6 +6491,1246 @@ async function discoverNative({ load = (url) => import(url), read = async (url) 
   };
 }
 
+// src/adapter/workspace-dom.js
+var workspaceError = (code, message) => Object.assign(new Error(message), { code });
+var OWNED = "[data-codlet-workspace-owned]";
+function ancestry(node, limit = 64) {
+  const key2 = node && Object.keys(node).find((key3) => key3.startsWith("__reactFiber$"));
+  const result = [];
+  let fiber = key2 && node[key2];
+  for (; fiber && result.length < limit; fiber = fiber.return) result.push(fiber);
+  return result;
+}
+function providersFor(node) {
+  const result = [], seen = /* @__PURE__ */ new Set();
+  for (const fiber of ancestry(node, 180)) {
+    let count = 0;
+    for (let dep = fiber.dependencies?.firstContext; dep && count++ < 128; dep = dep.next) {
+      if (!dep.context || seen.has(dep.context)) continue;
+      seen.add(dep.context);
+      result.push([dep.context, dep.memoizedValue]);
+    }
+    if (fiber.tag === 10 && Object.hasOwn(fiber.memoizedProps ?? {}, "value")) {
+      const context = fiber.type?._context ?? fiber.type;
+      if (context && !seen.has(context)) {
+        seen.add(context);
+        result.push([context, fiber.memoizedProps.value]);
+      }
+    }
+  }
+  return result;
+}
+var wrapProviders = (native, providers, child) => providers.reduce((child2, [type, value]) => native.React.createElement(type, { value }, child2), child);
+var active = (node) => node.isConnected && !node.closest(`${OWNED},[data-app-shell-active-page="false"]`);
+function one(nodes, role, optional = false) {
+  const candidates = [...new Set([...nodes].filter(active))];
+  if (!candidates.length && optional) return null;
+  if (candidates.length !== 1) throw workspaceError(candidates.length ? "workspace_host_drift" : "workspace_host_pending", `A unique native ${role} is required (found ${candidates.length})`);
+  return candidates[0];
+}
+function findWorkspaceSurface(document2) {
+  const main = one(document2.querySelectorAll("main[data-app-shell-main-surface]"), "main surface", true);
+  if (!main) return null;
+  const composer = one(main.querySelectorAll("[data-codex-composer-root]"), "main composer", true);
+  const scroller = composer?.closest(".thread-scroll-container") ?? one(main.querySelectorAll(".thread-scroll-container"), "thread scroller", true);
+  if (scroller && !main.contains(scroller)) throw workspaceError("workspace_host_drift", "The main thread scroller changed ownership");
+  const content = scroller?.closest("[data-includes-composer]") ?? null;
+  const footer = composer?.closest("[data-thread-scroll-footer]") ?? null;
+  if (composer && (!scroller || !content || !footer || !scroller.contains(footer)))
+    throw workspaceError("workspace_host_drift", "The thread body and composer footer no longer match the workspace contract");
+  const header = one(document2.querySelectorAll("[data-app-shell-main-titlebar]"), "main titlebar", true);
+  const rightPanel = one(document2.querySelectorAll('aside[data-app-shell-focus-area="right-panel"]'), "right resource panel", true);
+  return { main, composer, content, scroller, footer, header, rightPanel };
+}
+function findActivity(document2) {
+  const matches = [];
+  for (const button of document2.querySelectorAll("#root button")) {
+    if (!active(button) || button.closest("main")) continue;
+    const owner2 = ancestry(button, 24).find((fiber) => {
+      const props = fiber.memoizedProps ?? {};
+      if (props.description?.props?.id === "sidebarElectron.priorityThreads.coachmark.description" && props.title?.props?.id === "sidebarElectron.priorityThreads.filterByPriority" && props.children?.props?.["aria-label"] === button.getAttribute("aria-label")) return true;
+      const source = componentSource(fiber.type);
+      return source.includes("sidebarElectron.priorityThreads.coachmark.description") && source.includes("onActivate") && source.includes("needsAttention");
+    });
+    if (owner2) matches.push(button);
+  }
+  return one(matches, "activity control", true);
+}
+function resolveThreadReference(document2, element, isCachedLocal = () => false) {
+  if (!(element instanceof document2.defaultView.Element) || element.ownerDocument !== document2 || !active(element) || element.closest("main")) return null;
+  const title = element.closest("[data-thread-title]");
+  if (!title) return null;
+  const found = /* @__PURE__ */ new Map();
+  for (const fiber of ancestry(title, 32)) {
+    const props = fiber.memoizedProps ?? {};
+    const values = [props, props.thread, props.conversation, props.item, props.threadKey];
+    for (const value of values) {
+      if (!value || typeof value !== "object") continue;
+      const id = value.conversationId ?? value.threadId ?? (value === props ? null : value.id);
+      if (typeof id !== "string" || !/^[\w-]{8,256}$/.test(id)) continue;
+      if (value.hostId != null && value.hostId !== "local" || value.kind != null && !["local", "codex"].includes(value.kind) || props.itemKind != null && props.itemKind !== "local") return null;
+      if (value.hostId !== "local" && !["local", "codex"].includes(value.kind) && props.itemKind !== "local" && !isCachedLocal(id)) continue;
+      found.set(id, { threadId: id, hostId: "local" });
+    }
+    if (found.size) break;
+  }
+  return found.size === 1 ? [...found.values()][0] : null;
+}
+function geometry(element) {
+  if (!element) return null;
+  const rect = element.getBoundingClientRect();
+  return Object.freeze({ element, rect: Object.freeze(Object.fromEntries(["x", "y", "width", "height", "top", "right", "bottom", "left"].map((key2) => [key2, rect[key2]]))) });
+}
+var optionDefaults = Object.freeze({ hideBody: false, hideHeader: false, hideComposer: false, composerEnabled: true, rightPanelEnabled: true });
+function surfaceOptions(options, previous = optionDefaults) {
+  if (!options || typeof options !== "object" || Array.isArray(options) || Object.keys(options).some((key2) => !(key2 in optionDefaults) || typeof options[key2] !== "boolean"))
+    throw workspaceError("invalid_argument", "Invalid surface lease options");
+  return { ...previous, ...options };
+}
+function createSurfaceControl() {
+  const leases = /* @__PURE__ */ new Set(), journal = /* @__PURE__ */ new Map();
+  const read = (node, key2) => key2 === "visibility" ? [node.style.getPropertyValue(key2), node.style.getPropertyPriority(key2)] : node.getAttribute(key2);
+  const write = (node, key2, value) => {
+    if (key2 === "visibility") {
+      if (value[0]) node.style.setProperty(key2, ...value);
+      else node.style.removeProperty(key2);
+    } else if (value == null) node.removeAttribute(key2);
+    else node.setAttribute(key2, value);
+  };
+  const equal = (a, b) => Array.isArray(a) ? a[0] === b?.[0] && a[1] === b?.[1] : a === b;
+  function reconcile(surface) {
+    const desired = /* @__PURE__ */ new Map();
+    function suppress(node, hidden, disabled) {
+      if (!node || !hidden && !disabled) return;
+      const fields = desired.get(node) ?? /* @__PURE__ */ new Map();
+      desired.set(node, fields);
+      if (hidden) fields.set("visibility", ["hidden", "important"]);
+      if (hidden || disabled) {
+        fields.set("inert", "");
+        fields.set("aria-hidden", "true");
+      }
+    }
+    if (surface?.composer) for (const lease of leases) {
+      if (lease.options.hideBody) {
+        for (const node of surface.scroller.children)
+          if (node !== surface.footer && !node.contains(surface.composer) && !node.matches(OWNED)) suppress(node, true, true);
+      }
+      suppress(surface.header, lease.options.hideHeader, false);
+      suppress(surface.footer, lease.options.hideComposer, !lease.options.composerEnabled);
+      suppress(surface.composer, false, !lease.options.composerEnabled);
+      suppress(surface.rightPanel, false, !lease.options.rightPanelEnabled);
+    }
+    for (const [node, fields] of journal) {
+      for (const [key2, entry] of fields) if (!desired.get(node)?.has(key2)) {
+        if (equal(read(node, key2), entry.applied)) write(node, key2, entry.original);
+        fields.delete(key2);
+      }
+      if (!fields.size) journal.delete(node);
+    }
+    for (const [node, fields] of desired) for (const [key2, value] of fields) {
+      const current3 = read(node, key2);
+      let saved = journal.get(node);
+      if (!saved) {
+        saved = /* @__PURE__ */ new Map();
+        journal.set(node, saved);
+      }
+      let entry = saved.get(key2);
+      if (!entry) {
+        entry = { original: current3, applied: value };
+        saved.set(key2, entry);
+      } else if (!equal(current3, entry.applied)) entry.original = current3;
+      if (!equal(current3, value)) write(node, key2, value);
+      entry.applied = value;
+    }
+  }
+  return { leases, reconcile, dispose() {
+    leases.clear();
+    reconcile(null);
+  } };
+}
+
+// src/adapter/workspace-discovery.js
+async function readWorkspaceAsset(url, signal) {
+  const response = await fetch(url, { credentials: "omit", signal });
+  if (!response.ok || response.url !== url) throw workspaceError("workspace_host_drift", "Unable to read the loaded workspace module");
+  const reader = response.body.getReader(), chunks = [];
+  let size = 0;
+  try {
+    for (; ; ) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > 16 * 1024 * 1024) throw workspaceError("workspace_host_drift", "Workspace module exceeds the discovery limit");
+      chunks.push(value);
+    }
+  } finally {
+    await reader.cancel();
+  }
+  const bytes = new Uint8Array(size);
+  let offset2 = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset2);
+    offset2 += chunk.byteLength;
+  }
+  return new TextDecoder().decode(bytes);
+}
+function assetReferences(source, parent, role) {
+  if (!/^[a-z-]+$/.test(role)) throw workspaceError("invalid_argument", "Invalid native module role");
+  const pattern = new RegExp("[\"'`]((?:\\./)?" + role + "-[A-Za-z0-9_-]+\\.js)[\"'`]", "g");
+  return [...new Set([...source.matchAll(pattern)].map((match) => new URL(match[1], parent).href))].filter((url) => /^app:\/\/-\/assets\/[A-Za-z0-9_-]+\.js$/.test(url));
+}
+function visit(node, fn) {
+  if (!node || typeof node !== "object") return;
+  if (node.type) fn(node);
+  for (const [key2, value] of Object.entries(node)) if (!["start", "end"].includes(key2)) {
+    if (Array.isArray(value)) value.forEach((item) => visit(item, fn));
+    else if (value && typeof value === "object") visit(value, fn);
+  }
+}
+function keymapExport(initial, source) {
+  const marker = "codex-command-keymap-state", markerAt = source.indexOf(marker);
+  if (markerAt < 0 || source.indexOf(marker, markerAt + marker.length) >= 0) throw workspaceError("workspace_shortcuts_unavailable", "Native keymap query is missing or ambiguous");
+  const declarations = [...source.slice(0, markerAt).matchAll(/\bfunction\s+[A-Za-z_$][\w$]*\s*\(/g)], start = declarations.at(-1)?.index;
+  if (start == null) throw workspaceError("workspace_shortcuts_unavailable", "Native keymap declaration is unavailable");
+  const ast = parseExpressionAt2(source, start, { ecmaVersion: "latest" }), candidates = /* @__PURE__ */ new Set();
+  if (ast.end <= markerAt || ast.end - ast.start > 32768) throw workspaceError("workspace_shortcuts_unavailable", "Native keymap declaration exceeds the discovery boundary");
+  visit(ast, (node) => {
+    if (node.type !== "AssignmentExpression" || node.left.type !== "Identifier" || node.right.type !== "CallExpression" || node.right.arguments.length !== 2) return;
+    const part = source.slice(node.right.start, node.right.end);
+    if (part.includes("primaryNumberShortcutTarget") && (part.includes(".data") || /\bdata\s*:/.test(part))) candidates.add(node.left.name);
+  });
+  if (candidates.size !== 1) throw workspaceError("workspace_shortcuts_unavailable", "Native keymap signal is missing or ambiguous");
+  const local = [...candidates][0], tail = source.slice(source.lastIndexOf("export"));
+  const pattern = new RegExp("(?:\\{|,)\\s*" + local.replace(/[$]/g, "\\$&") + "\\s+as\\s+([A-Za-z_$][\\w$]*)\\s*(?=,|\\})", "g");
+  const aliases = [...tail.matchAll(pattern)].map((match) => match[1]);
+  if (aliases.length !== 1) throw workspaceError("workspace_shortcuts_unavailable", "Native keymap export is missing or ambiguous");
+  return aliases[0];
+}
+var markers = (value, list) => {
+  const source = componentSource(value);
+  return list.every((marker) => source.includes(marker));
+};
+function createWorkspaceDiscovery(baseNative, { load = (url) => import(url), read = readWorkspaceAsset, connect = localConnection } = {}) {
+  const controller = new AbortController(), sources = /* @__PURE__ */ new Map(), modules = /* @__PURE__ */ new Map();
+  let common, transcript, shortcuts, connection;
+  const source = (url) => {
+    if (!sources.has(url)) sources.set(url, read(url, controller.signal));
+    return sources.get(url);
+  };
+  const module2 = (url) => {
+    if (!modules.has(url)) modules.set(url, load(url));
+    return modules.get(url);
+  };
+  const existing = () => {
+    connection ??= connect();
+    if (connection.check) return connection.check();
+    const { node, chain, managerFamily, clientFamily, manager, client } = connection;
+    if (managerFamily.read(node, chain, "local") !== manager || clientFamily.read(node, chain, "local") !== client || manager.requestClient !== client)
+      throw workspaceError("workspace_host_drift", "The existing local Desktop connection was replaced");
+    return connection;
+  };
+  const getCommon = () => common ??= (async () => {
+    const native = await baseNative(), sharedUrl = loadedAsset("shared"), initialUrl = loadedAsset("initial");
+    if (!native?.React || !native?.Client) throw workspaceError("workspace_host_pending", "Native React is not ready");
+    const [shared, initial] = await Promise.all([module2(sharedUrl), module2(initialUrl)]);
+    return { ...native, shared, initial, sharedUrl, initialUrl };
+  })();
+  return {
+    connection: existing,
+    transcript: () => transcript ??= (async () => {
+      const native = await getCommon(), graph = await source(native.initialUrl), urls = assetReferences(graph, native.initialUrl, "local-conversation-thread");
+      if (!urls.length || urls.length > 8) throw workspaceError("workspace_transcript_unavailable", "Native transcript modules are missing or ambiguous");
+      const candidates = await Promise.all(urls.map(async (url) => ({ url, source: await source(url) })));
+      const wrappers = candidates.filter((value) => value.source.includes("LocalConversationSideChatTab") && !value.source.includes("retainActiveInterest"));
+      const implementations = candidates.filter((value) => value.source.includes("trackReadState") && value.source.includes("retainActiveInterest"));
+      if (wrappers.length !== 1 || implementations.length !== 1) throw workspaceError("workspace_transcript_unavailable", "The native transcript entry contract changed");
+      await module2(wrappers[0].url);
+      const thread = await module2(implementations[0].url);
+      const Content = uniqueExport(thread, (value) => markers(value, ["trackReadState", "retainActiveInterest", "contentSearchOrchestrationId", "enableMcpApps"]), "transcript content");
+      const Scope3 = uniqueExport(native.shared, (value) => markers(value, ["Missing parent scope", "providedValue"]), "scope provider");
+      const composerScope = uniqueExport(native.shared, (value) => value?.__scopeBrand === "ComposerScope" && typeof value.id === "symbol", "composer scope");
+      const composerValue = uniqueExport(native.shared, (value) => markers(value, ["routeKind", "local-thread", "client-local-thread", "browserTabMentionConversationId"]), "composer scope value");
+      const primaryUrls = assetReferences(graph, native.initialUrl, "app-primary");
+      if (primaryUrls.length !== 1) throw workspaceError("workspace_transcript_unavailable", "A unique native thread subscription module is required");
+      const primary = await module2(primaryUrls[0]);
+      const ThreadSubscription = uniqueExport(primary, (value) => markers(value, ["threadKey", "cancelRelease", "useSyncExternalStore", "hostId", "threadId"]), "thread subscription");
+      const manager = existing().manager;
+      for (const method of ["getConversation", "loadBackgroundThreadHistoryPage", "addConversationStateCallback"])
+        if (typeof manager[method] !== "function") throw workspaceError("workspace_transcript_unavailable", `Native transcript manager lacks ${method}`);
+      return { ...native, Content, ThreadSubscription, Scope: Scope3, composerScope, composerValue, manager };
+    })(),
+    shortcuts: () => shortcuts ??= (async () => {
+      const native = await getCommon(), graph = await source(native.initialUrl), urls = assetReferences(graph, native.initialUrl, "app-primary");
+      const settingsUrls = assetReferences(graph, native.initialUrl, "keyboard-shortcuts-settings");
+      if (!settingsUrls.length || settingsUrls.length > 4) throw workspaceError("workspace_shortcuts_unavailable", "Native shortcut settings entries are unavailable");
+      const settings = await Promise.all(settingsUrls.map(async (url) => ({ url, source: await source(url) })));
+      const wrappers = settings.filter((value) => value.source.includes("KeyboardShortcutsSettings") && !value.source.includes("settings.keyboardShortcuts.resetAllConfirm"));
+      if (wrappers.length !== 1) throw workspaceError("workspace_shortcuts_unavailable", "The native shortcut settings entry changed");
+      await module2(wrappers[0].url);
+      if (urls.length !== 1) throw workspaceError("workspace_shortcuts_unavailable", "A unique native shortcut control module is required");
+      const primary = await module2(urls[0]);
+      const Capture = uniqueExport(primary, (value) => markers(value, ["allowsBareModifiers", "allowsSequences", "captureAriaLabel", "onStartCapture"]), "shortcut capture control");
+      const eventAccelerator = uniqueExport(primary, (value) => typeof value === "function" && value.length === 1 && componentSource(value).length < 1024 && markers(value, ["ctrlKey", "metaKey", "altKey", "shiftKey", "Command", ".join("]), "keyboard event accelerator");
+      const Row = uniqueExport(native.shared, (value) => markers(value, ["labelSizing", "controlSizing", "description", "control"]), "settings row");
+      const useCommand = uniqueExport(native.initial, (value) => markers(value, ["contextHandler", "keyboardHandler", "menuItem", "useEffect"]), "command hook");
+      const dispatchKeyboard = uniqueExport(native.initial, (value) => typeof value === "function" && value.length === 3 && markers(value, ["keyboard_shortcut"]) && componentSource(value).length < 256, "keyboard command dispatch");
+      const bindings = uniqueExport(native.initial, (value) => typeof value === "function" && markers(value, ["keymapState", "accelerator:", "label:", "macOS", "chatgpt"]) && componentSource(value).length < 2048, "effective shortcut bindings");
+      const commands = uniqueExport(native.initial, (value) => Array.isArray(value) && value.some((command) => command?.id === "newTask") && value.some((command) => command?.id === "keyboardShortcuts"), "command definitions");
+      const keymap = native.initial[keymapExport(native.initial, graph)], connection2 = existing();
+      if (keymap?.scope !== connection2.node.token || typeof keymap.resolve !== "function" || typeof connection2.node.store?.get !== "function") throw workspaceError("workspace_shortcuts_unavailable", "Native shortcut keymap ownership or signal contract changed");
+      const identity = globalThis.navigator?.userAgentData?.platform ?? globalThis.navigator?.platform ?? "";
+      const platform = /^(Win|Windows)/.test(identity) ? "windows" : /^(Mac|macOS)/.test(identity) ? "macOS" : /^(Linux|linux)/.test(identity) ? "linux" : null;
+      if (!["windows", "macOS", "linux"].includes(platform)) throw workspaceError("workspace_shortcuts_unavailable", "The native shortcut platform is unknown");
+      return {
+        ...native,
+        Capture,
+        Row,
+        useCommand,
+        dispatchKeyboard,
+        eventAccelerator,
+        bindings,
+        commands,
+        platform,
+        keymap: () => {
+          if (!connection2.node.cachedBindings?.has(keymap)) throw workspaceError("workspace_host_pending", "Waiting for Native to bind its shortcut keymap");
+          return connection2.node.store.get(keymap.resolve(connection2.node, connection2.chain));
+        }
+      };
+    })(),
+    dispose() {
+      controller.abort();
+      sources.clear();
+      modules.clear();
+      connection = null;
+      common = transcript = shortcuts = null;
+    }
+  };
+}
+
+// src/adapter/workspace-transcript.js
+function transcriptOptions(options, previous = { hostId: "local", readOnly: true, trackReadState: false }) {
+  if (!options || typeof options !== "object" || Array.isArray(options) || Object.keys(options).some((key2) => !["threadId", "hostId", "readOnly", "trackReadState", "onState"].includes(key2)))
+    throw workspaceError("invalid_argument", "Invalid transcript options");
+  const result = { ...previous, ...options };
+  if (!/^[\w-]{8,256}$/.test(result.threadId ?? "") || result.hostId !== "local" || typeof result.readOnly !== "boolean" || typeof result.trackReadState !== "boolean" || result.onState != null && typeof result.onState !== "function")
+    throw workspaceError("invalid_argument", "Invalid local transcript identity or flags");
+  return result;
+}
+function createTranscripts({ document: document2, load, surface, check, report }) {
+  const records = /* @__PURE__ */ new Set(), containers = /* @__PURE__ */ new WeakSet(), histories = /* @__PURE__ */ new Map(), queue = [], updates = /* @__PURE__ */ new Set();
+  let updateScheduled = false;
+  let native, loading, unlisten, disposed = false, running = 0;
+  const ensure = () => (loading ??= Promise.resolve().then(load).then((value) => {
+    if (disposed) throw workspaceError("workspace_retired", "Transcript provider retired");
+    native = value;
+    return value;
+  })).then((value) => {
+    if (disposed) throw workspaceError("workspace_retired", "Transcript provider retired");
+    if (records.size && !unlisten) unlisten = native.manager.addConversationStateCallback((threadId) => {
+      for (const record of records) if (record.options.threadId === threadId && record.phase === "loading") record.tryReady?.();
+    });
+    return value;
+  });
+  function pump() {
+    if (disposed) return;
+    queue.sort((a, b) => b.priority - a.priority);
+    while (running < 2 && queue.length) {
+      const job = queue.shift();
+      if (![...records].some((record) => !record.disposed && record.options.threadId === job.id)) {
+        histories.delete(job.id);
+        job.resolve();
+        continue;
+      }
+      running++;
+      Promise.resolve().then(() => native.manager.getConversation(job.id)?.resumeState === "resumed" ? void 0 : native.manager.loadBackgroundThreadHistoryPage(job.id, { prioritize: job.priority > 0 })).then(job.resolve, job.reject).finally(() => {
+        running--;
+        if (histories.get(job.id) === job.promise) histories.delete(job.id);
+        pump();
+      });
+    }
+  }
+  function history(record) {
+    const id = record.options.threadId;
+    if (histories.has(id)) return histories.get(id);
+    const job = { id, priority: !record.options.readOnly ? 2 : record.container.getBoundingClientRect().height > 0 ? 1 : 0 };
+    job.promise = new Promise((resolve, reject) => {
+      job.resolve = resolve;
+      job.reject = reject;
+    });
+    histories.set(id, job.promise);
+    queue.push(job);
+    pump();
+    return job.promise;
+  }
+  function state(record, phase, error) {
+    if (record.disposed && phase !== "disposed") return;
+    if (record.phase === phase && !error) return;
+    record.phase = phase;
+    const value = Object.freeze({ phase, threadId: record.options.threadId, hostId: "local", diagnostic: error ? Object.freeze({ code: error.code ?? "workspace_transcript_unavailable", message: error.message }) : null });
+    try {
+      Promise.resolve(record.options.onState?.(value)).catch(report);
+    } catch (error2) {
+      report(error2);
+    }
+  }
+  function mount(container, options, owned) {
+    check();
+    if (records.size >= 32) throw workspaceError("resource_limit", "At most 32 native transcripts per Target are supported");
+    if (!(container instanceof document2.defaultView.HTMLElement) || container.ownerDocument !== document2 || !container.isConnected || container.childNodes.length || containers.has(container) || container.matches("main,[data-codex-composer-root],.thread-scroll-container") || container.closest("[data-codex-composer-root]"))
+      throw workspaceError("invalid_argument", "Transcript requires a connected empty consumer container");
+    const record = { container, options: transcriptOptions(options), disposed: false, epoch: 0, phase: null, root: null };
+    let resolveReady, rejectReady;
+    const ready = new Promise((resolve, reject) => {
+      resolveReady = resolve;
+      rejectReady = reject;
+    });
+    ready.catch(() => {
+    });
+    const wrapper = document2.createElement("div");
+    wrapper.dataset.codletWorkspaceOwned = owned;
+    wrapper.style.cssText = "display:flex;flex-direction:column;min-width:0;min-height:0;width:100%;height:100%;overflow:hidden;position:relative;";
+    container.append(wrapper);
+    record.wrapper = wrapper;
+    records.add(record);
+    containers.add(container);
+    let scroll, settled = false, readyObserver;
+    const fail6 = (error) => {
+      if (record.disposed) return;
+      state(record, "error", error);
+      report(error);
+      if (!settled) {
+        settled = true;
+        rejectReady(error);
+      }
+    };
+    function tryReady() {
+      if (record.disposed || !record.committed || record.bindingThread !== record.options.threadId || record.phase !== "loading") return;
+      const scroller = wrapper.querySelector(".thread-scroll-container");
+      if (!scroller) {
+        fail6(workspaceError("workspace_transcript_unavailable", "The native transcript has no independent scroller"));
+        return;
+      }
+      const conversation = native.manager.getConversation(record.options.threadId);
+      if (conversation?.resumeState !== "resumed") return;
+      const body = scroller.querySelector('[data-thread-find-target="conversation"]');
+      const hasHistory = !!conversation.turns?.length || conversation.turnHistory?.kind === "canonical" && conversation.turnHistory.history?.islands?.some((island) => island.entries?.length);
+      if (!body || hasHistory && !body.textContent.trim()) return;
+      scroll = scroller;
+      readyObserver?.disconnect();
+      state(record, "ready");
+      if (!settled) {
+        settled = true;
+        resolveReady();
+      }
+    }
+    record.tryReady = tryReady;
+    function render(sync = false) {
+      if (record.disposed || !record.root || record.bindingThread !== record.options.threadId) return;
+      const N = native, R = N.React, h = R.createElement, opts = record.options;
+      const child = h(record.Boundary, { key: opts.threadId }, h(
+        R.Suspense,
+        { fallback: null },
+        h(
+          N.Scope,
+          { scope: N.composerScope, value: record.scopeValue },
+          h(N.ThreadSubscription, { threadKey: record.threadKey }),
+          h(N.Content, {
+            conversationId: opts.threadId,
+            hostId: "local",
+            contentSearchOrchestrationId: "codlet:" + owned + ":" + opts.threadId,
+            isReadOnly: opts.readOnly,
+            trackReadState: opts.trackReadState,
+            retainActiveInterest: true
+          }),
+          h(record.Commit, { epoch: record.epoch })
+        )
+      ));
+      if (opts.readOnly) wrapper.setAttribute("inert", "");
+      else wrapper.removeAttribute("inert");
+      const tree = wrapProviders(N, record.providers, child);
+      if (sync) N.DOM.flushSync(() => record.root.render(tree));
+      else record.root.render(tree);
+    }
+    record.render = render;
+    function scheduleUpdate() {
+      updates.add(record);
+      if (updateScheduled) return;
+      updateScheduled = true;
+      queueMicrotask(() => {
+        updateScheduled = false;
+        const pending = [...updates];
+        updates.clear();
+        for (const entry of pending) if (!entry.disposed) try {
+          entry.render();
+        } catch (error) {
+          report(error);
+        }
+      });
+    }
+    async function bind(reload = true) {
+      const epoch = ++record.epoch;
+      state(record, "loading");
+      record.committed = false;
+      scroll = null;
+      try {
+        const N = await ensure();
+        if (record.disposed || epoch !== record.epoch) return;
+        if (reload) await history(record);
+        if (record.disposed || epoch !== record.epoch) return;
+        check();
+        const source = surface()?.content ?? surface()?.main;
+        if (!source?.isConnected) throw workspaceError("workspace_host_pending", "Open a main workspace before mounting a transcript");
+        const providers = providersFor(source);
+        if (!providers.length) throw workspaceError("workspace_transcript_unavailable", "Native transcript providers are unavailable");
+        const R = N.React, h = R.createElement;
+        if (!record.root) {
+          record.root = N.Client.createRoot(wrapper, { onUncaughtError: fail6, onCaughtError: fail6 });
+          record.Boundary = class extends R.Component {
+            constructor(props) {
+              super(props);
+              this.state = { failed: false };
+            }
+            static getDerivedStateFromError() {
+              return { failed: true };
+            }
+            componentDidCatch(error) {
+              fail6(error);
+            }
+            render() {
+              return this.state.failed ? null : this.props.children;
+            }
+          };
+          record.Commit = function Commit({ epoch: epoch2 }) {
+            R.useLayoutEffect(() => {
+              if (epoch2 !== record.epoch) return;
+              wrapper.dataset.codletWorkspaceCommit = String((record.commits ?? 0) + 1);
+              record.commits = (record.commits ?? 0) + 1;
+              record.committed = true;
+              tryReady();
+            });
+            return null;
+          };
+        }
+        const opts = record.options;
+        record.providers = providers;
+        if (record.bindingThread !== opts.threadId) {
+          record.scopeValue = N.composerValue({ routeKind: "local-thread", conversationId: opts.threadId, pathname: "/local/" + opts.threadId, hostId: "local" }, void 0, opts.threadId);
+          record.threadKey = { hostId: "local", threadId: opts.threadId };
+        }
+        record.bindingThread = opts.threadId;
+        readyObserver ??= new document2.defaultView.MutationObserver(tryReady);
+        readyObserver.observe(wrapper, { childList: true, subtree: true, characterData: true });
+        render(true);
+      } catch (error) {
+        if (!record.disposed && epoch === record.epoch) fail6(error);
+      }
+    }
+    const handle = Object.freeze({
+      ready,
+      update(partial) {
+        check();
+        if (record.disposed) throw workspaceError("workspace_retired", "Transcript retired");
+        const next = transcriptOptions(partial, record.options), previous = record.options;
+        record.options = next;
+        if (next.threadId !== previous.threadId) void bind();
+        else if (next.readOnly !== previous.readOnly || next.trackReadState !== previous.trackReadState) {
+          if (next.readOnly) wrapper.setAttribute("inert", "");
+          else wrapper.removeAttribute("inert");
+          scheduleUpdate();
+        }
+      },
+      getScrollPosition() {
+        check();
+        if (record.disposed) throw workspaceError("workspace_retired", "Transcript retired");
+        if (!scroll) throw workspaceError("workspace_host_pending", "Transcript scroller is not ready");
+        return { top: scroll.scrollTop, left: scroll.scrollLeft };
+      },
+      setScrollPosition(value) {
+        check();
+        if (record.disposed) throw workspaceError("workspace_retired", "Transcript retired");
+        if (!value || Object.keys(value).some((key2) => !["top", "left"].includes(key2)) || !["top", "left"].every((key2) => Number.isFinite(value[key2]))) throw workspaceError("invalid_argument", "Invalid transcript scroll position");
+        if (!scroll) throw workspaceError("workspace_host_pending", "Transcript scroller is not ready");
+        scroll.scrollTop = value.top;
+        scroll.scrollLeft = value.left;
+      },
+      dispose() {
+        if (record.disposed) return;
+        record.disposed = true;
+        record.epoch++;
+        readyObserver?.disconnect();
+        updates.delete(record);
+        state(record, "disposed");
+        records.delete(record);
+        containers.delete(container);
+        if (!settled) {
+          settled = true;
+          rejectReady(workspaceError("workspace_retired", "Transcript retired before readiness"));
+        }
+        if (record.root) native.DOM.flushSync(() => record.root.unmount());
+        wrapper.remove();
+        scroll = null;
+        if (!records.size) {
+          unlisten?.();
+          unlisten = null;
+        }
+      }
+    });
+    record.handle = handle;
+    record.rebind = () => void bind(false);
+    void bind();
+    return handle;
+  }
+  return { mount, rebind() {
+    for (const record of records) record.rebind();
+  }, dispose() {
+    if (disposed) return;
+    disposed = true;
+    for (const record of [...records]) record.handle.dispose();
+    unlisten?.();
+    for (const job of queue.splice(0)) job.reject(workspaceError("workspace_retired", "Queued history retired"));
+    histories.clear();
+    updates.clear();
+  } };
+}
+
+// src/adapter/workspace-shortcuts.js
+var allowed = ["id", "label", "description", "accelerator", "defaultAccelerator", "onInvoke", "onChange"];
+function shortcutOptions(options, previous) {
+  if (!options || typeof options !== "object" || Array.isArray(options) || Object.keys(options).some((key2) => !allowed.includes(key2) || previous && key2 === "id")) throw workspaceError("invalid_argument", "Invalid shortcut options");
+  const next = { description: "", accelerator: null, ...previous, ...options };
+  if (!/^[\w.-]{1,64}$/.test(next.id ?? "") || typeof next.label !== "string" || !next.label.trim() || next.label.length > 128 || typeof next.description !== "string" || next.description.length > 512 || typeof next.onInvoke !== "function" || next.onChange != null && typeof next.onChange !== "function")
+    throw workspaceError("invalid_argument", "Invalid shortcut identity, text or callbacks");
+  if (!previous && !Object.hasOwn(options, "defaultAccelerator")) next.defaultAccelerator = next.accelerator;
+  for (const value of [next.accelerator, next.defaultAccelerator]) if (value !== null && (typeof value !== "string" || !value.trim() || value.length > 128 || /\s/.test(value) || !normalizeAccelerator(value, "windows"))) throw workspaceError("invalid_argument", "Expected a single accelerator or null");
+  return next;
+}
+function normalizeAccelerator(value, platform) {
+  if (value == null) return null;
+  const parts = value.toLowerCase().split("+").map((part) => ({ cmdorctrl: platform === "macOS" ? "meta" : "ctrl", commandorcontrol: platform === "macOS" ? "meta" : "ctrl", control: "ctrl", cmd: "meta", command: "meta", super: "meta", option: "alt", esc: "escape", space: " " })[part] ?? part);
+  const modifiers = parts.filter((part) => ["ctrl", "meta", "alt", "shift"].includes(part)), keys = parts.filter((part) => !modifiers.includes(part));
+  if (keys.length !== 1 || !keys[0] || new Set(modifiers).size !== modifiers.length) return null;
+  return [...modifiers, keys[0]].sort().join("+");
+}
+function createShortcuts({ document: document2, load, surface, activity, check, report, changed }) {
+  const records = /* @__PURE__ */ new Set();
+  let native, loading, commandRoot, commandNode, settingsRoot, settingsNode, settingsHost, search, query = "", capturing = 0, disposed = false, listening = false;
+  const callback = (fn, ...args) => {
+    try {
+      Promise.resolve(fn?.(...args)).catch(report);
+    } catch (error) {
+      report(error);
+    }
+  };
+  function conflict(accelerator, exclude) {
+    if (accelerator == null || !native) return null;
+    const key2 = normalizeAccelerator(accelerator, native.platform), keymap = native.keymap();
+    if (!key2 || !keymap || !Array.isArray(keymap.bindings)) throw workspaceError("workspace_shortcuts_unavailable", "The native keymap is not ready");
+    for (const record of records) if (record !== exclude && normalizeAccelerator(record.options.accelerator, native.platform) === key2) return record.options.label;
+    for (const command of native.commands) if (native.bindings(command.id, keymap, native.platform).some((binding) => normalizeAccelerator(binding.accelerator, native.platform) === key2)) return command.electron?.menuTitle ?? command.id;
+    return null;
+  }
+  function snapshot(record) {
+    return record.snapshot ??= Object.freeze({ id: record.options.id, accelerator: record.options.accelerator, defaultAccelerator: record.options.defaultAccelerator, conflict: record.conflict ?? null });
+  }
+  function notify(record) {
+    record.snapshot = null;
+    for (const listener of record.listeners) listener();
+    changed();
+  }
+  function capture(record, value) {
+    try {
+      const options = shortcutOptions({ accelerator: value }, record.options), found = conflict(value, record);
+      if (found) {
+        record.conflict = found;
+        notify(record);
+        return false;
+      }
+      record.options = options;
+      record.conflict = null;
+      notify(record);
+      callback(record.options.onChange, value);
+      return true;
+    } catch (error) {
+      record.conflict = error.message;
+      notify(record);
+      report(error);
+      return false;
+    }
+  }
+  function components() {
+    const R = native.React, h = R.createElement;
+    function Command({ record }) {
+      const invoke = R.useCallback(() => {
+        if (!record.disposed) callback(record.options.onInvoke);
+      }, [record]);
+      native.useCommand(record.nativeId, invoke, { menuItem: { label: record.options.label, title: record.options.label, description: record.options.description }, isActive: () => !record.disposed && !capturing });
+      return null;
+    }
+    function Row({ record }) {
+      R.useSyncExternalStore(record.subscribe, () => snapshot(record));
+      const [active2, setActive] = R.useState(false);
+      R.useEffect(() => {
+        if (!active2) return;
+        capturing++;
+        return () => {
+          capturing--;
+        };
+      }, [active2]);
+      const matches = (record.options.label + " " + record.options.description + " " + (record.options.accelerator ?? "")).toLowerCase().includes(query);
+      if (!matches) return null;
+      const stop = () => {
+        setActive(false);
+        record.conflict = null;
+        notify(record);
+      };
+      return h(native.Row, {
+        label: record.options.label,
+        description: record.options.description,
+        control: h("div", { className: "flex max-w-full flex-col max-sm:w-full w-96" }, h(native.Capture, {
+          accelerator: record.options.accelerator,
+          acceleratorLabel: record.options.accelerator,
+          allowsBareModifiers: false,
+          allowsSequences: false,
+          canAppend: false,
+          captureAriaLabel: record.options.label,
+          hotkeyName: record.options.label,
+          conflict: record.conflict,
+          disabled: false,
+          isCapturing: active2,
+          valueLabelId: "codlet-shortcut-" + record.nativeId,
+          onCancelCapture: stop,
+          onStartCapture: () => setActive(true),
+          onCapture: (value) => {
+            if (capture(record, value)) setActive(false);
+          },
+          onClear: () => {
+            capture(record, null);
+            setActive(false);
+          },
+          onReset: record.options.accelerator === record.options.defaultAccelerator ? void 0 : () => {
+            if (capture(record, record.options.defaultAccelerator)) setActive(false);
+          }
+        }))
+      });
+    }
+    return { Command, Row };
+  }
+  let Components;
+  function renderCommands() {
+    if (!native || disposed || !records.size) return;
+    const source = activity() ?? surface()?.content ?? surface()?.main;
+    if (!source) throw workspaceError("workspace_host_pending", "Native command providers are pending");
+    if (!commandRoot) {
+      commandNode = document2.createElement("span");
+      commandNode.dataset.codletWorkspaceOwned = "commands";
+      commandNode.hidden = true;
+      document2.body.append(commandNode);
+      commandRoot = native.Client.createRoot(commandNode);
+    }
+    native.DOM.flushSync(() => commandRoot.render(wrapProviders(native, providersFor(source), native.React.createElement(
+      native.React.Fragment,
+      null,
+      ...[...records].map((record) => native.React.createElement(Components.Command, { key: record.nativeId, record }))
+    ))));
+  }
+  function settingsInput() {
+    const matches = [...document2.querySelectorAll("#root input")].filter((input) => !input.closest(OWNED + ',[data-app-shell-active-page="false"]') && ancestry(input, 24).some((fiber) => componentSource(fiber.type).includes("settings.keyboardShortcuts.search.placeholder")));
+    if (matches.length > 1) throw workspaceError("workspace_shortcuts_unavailable", "Shortcut settings search ownership is ambiguous");
+    return matches[0] ?? null;
+  }
+  function clearSettings() {
+    if (settingsRoot) native.DOM.flushSync(() => settingsRoot.unmount());
+    settingsRoot = null;
+    settingsNode?.remove();
+    settingsNode = settingsHost = search = null;
+    query = "";
+  }
+  function refresh() {
+    if (!native || disposed) return;
+    try {
+      const input = settingsInput();
+      if (!input) {
+        if (settingsRoot) clearSettings();
+        return;
+      }
+      const host = input.closest('[class*="@container/keyboard-shortcuts"]');
+      if (!host) throw workspaceError("workspace_shortcuts_unavailable", "The native shortcut settings layout changed");
+      search = input;
+      const nextQuery = input.value.trim().toLowerCase();
+      if (settingsHost !== host) {
+        clearSettings();
+        settingsHost = host;
+        search = input;
+        settingsNode = document2.createElement("div");
+        settingsNode.dataset.codletWorkspaceOwned = "shortcut-settings";
+        host.append(settingsNode);
+        settingsRoot = native.Client.createRoot(settingsNode);
+      }
+      query = nextQuery;
+      native.DOM.flushSync(() => settingsRoot.render(wrapProviders(native, providersFor(input), native.React.createElement(
+        native.React.Fragment,
+        null,
+        ...[...records].map((record) => native.React.createElement(Components.Row, { key: record.nativeId, record }))
+      ))));
+    } catch (error) {
+      report(error);
+    }
+  }
+  const inputListener = (event) => {
+    if (event.target === search) refresh();
+  };
+  const keyListener = (event) => {
+    if (!native || disposed || capturing || event.defaultPrevented || event.repeat || event.isComposing || event.target?.closest?.('[data-codex-shortcut-capture="true"], [role="dialog"] input, [role="dialog"] textarea, [role="dialog"] [contenteditable="true"]')) return;
+    const accelerator = native.eventAccelerator(event);
+    if (!accelerator) return;
+    const key2 = normalizeAccelerator(accelerator, native.platform);
+    for (const record of records) if (normalizeAccelerator(record.options.accelerator, native.platform) === key2) {
+      try {
+        if (!conflict(record.options.accelerator, record) && native.dispatchKeyboard(record.nativeId, event, {})) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+      } catch (error) {
+        report(error);
+      }
+      return;
+    }
+  };
+  function start() {
+    return (loading ??= Promise.resolve().then(load).then((value) => {
+      if (disposed) throw workspaceError("workspace_retired", "Shortcut provider retired");
+      native = value;
+      Components = components();
+      return value;
+    })).then((value) => {
+      if (disposed) throw workspaceError("workspace_retired", "Shortcut provider retired");
+      if (records.size && !listening) {
+        document2.addEventListener("keydown", keyListener, true);
+        document2.addEventListener("input", inputListener, true);
+        listening = true;
+      }
+      return value;
+    });
+  }
+  function register(options, owner2) {
+    check();
+    options = shortcutOptions(options);
+    if (records.size >= 64) throw workspaceError("resource_limit", "At most 64 workspace shortcuts per Target are supported");
+    if ([...records].some((record2) => record2.owner === owner2 && record2.options.id === options.id)) throw workspaceError("invalid_argument", "Shortcut ID already registered by this owner");
+    const record = { owner: owner2, options, nativeId: "codlet." + owner2.replace(/[^\w.-]/g, "_") + "." + options.id, disposed: false, listeners: /* @__PURE__ */ new Set() };
+    record.subscribe = (listener) => {
+      record.listeners.add(listener);
+      return () => record.listeners.delete(listener);
+    };
+    records.add(record);
+    const ready = start().then(() => {
+      if (record.disposed) throw workspaceError("workspace_retired", "Shortcut retired before readiness");
+      const found = conflict(record.options.accelerator, record);
+      if (found) throw workspaceError("shortcut_conflict", `Shortcut conflicts with ${found}`);
+      renderCommands();
+      refresh();
+      changed();
+    }).catch((error) => {
+      if (!record.disposed) {
+        handle.dispose();
+        report(error);
+      }
+      throw error;
+    });
+    ready.catch(() => {
+    });
+    const handle = Object.freeze({
+      ready,
+      getSnapshot() {
+        check();
+        if (record.disposed) throw workspaceError("workspace_retired", "Shortcut retired");
+        return snapshot(record);
+      },
+      update(partial) {
+        check();
+        if (record.disposed) throw workspaceError("workspace_retired", "Shortcut retired");
+        const next = shortcutOptions(partial, record.options), found = conflict(next.accelerator, record);
+        if (found) throw workspaceError("shortcut_conflict", `Shortcut conflicts with ${found}`);
+        record.options = next;
+        record.conflict = null;
+        notify(record);
+        renderCommands();
+        refresh();
+      },
+      dispose() {
+        if (record.disposed) return;
+        record.disposed = true;
+        records.delete(record);
+        record.listeners.clear();
+        if (records.size) {
+          renderCommands();
+          refresh();
+        } else {
+          clearSettings();
+          if (commandRoot) native.DOM.flushSync(() => commandRoot.unmount());
+          commandRoot = null;
+          commandNode?.remove();
+          commandNode = null;
+          document2.removeEventListener("keydown", keyListener, true);
+          document2.removeEventListener("input", inputListener, true);
+          listening = false;
+        }
+      }
+    });
+    record.handle = handle;
+    return handle;
+  }
+  return { register, refresh, rebind() {
+    if (records.size && native) {
+      renderCommands();
+      refresh();
+    }
+  }, dispose() {
+    if (disposed) return;
+    for (const record of [...records]) record.handle.dispose();
+    disposed = true;
+  } };
+}
+
+// src/adapter/workspace.js
+var WORKSPACE_CAPABILITY = Object.freeze({ name: "codex.ui.workspace", api: 1, scope: "target" });
+var WORKSPACE_SYMBOL = "codlet.codex.ui.workspace.v1";
+var emptyFeatures = () => ({ surface: false, activitySlot: false, transcript: false, shortcuts: false });
+var roleNames = ["main", "content", "scroller", "composer", "footer", "header", "rightPanel"];
+var errorValue = (error) => ({ code: typeof error?.code === "string" ? error.code : "workspace_host_drift", message: String(error?.message ?? error) });
+function createWorkspace(context, {
+  locate,
+  baseNative,
+  discovery: suppliedDiscovery,
+  document: doc = document,
+  requestFrame = (callback) => requestAnimationFrame(callback),
+  cancelFrame = (id) => cancelAnimationFrame(id),
+  validateDocument = desktopDocument
+} = {}) {
+  const symbol = Symbol.for(WORKSPACE_SYMBOL), tickets = /* @__PURE__ */ new Map(), sessions = /* @__PURE__ */ new Set(), slots = /* @__PURE__ */ new Set(), control = createSurfaceControl();
+  if (globalThis[symbol] !== void 0) throw workspaceError("workspace_host_drift", "Another workspace provider owns this document");
+  let alive = true, frame = null, observer, resize, host, root, unroute, structural = true, surface, activity, features = emptyFeatures(), diagnostic = null, surfaceFailure = null, revision = 0;
+  let snapshot = Object.freeze({ api: 1, revision, route: null, threadId: null, hostId: null, auxiliary: false, available: false, features: Object.freeze(features), diagnostic: null });
+  let publicSurface = Object.freeze({ available: false, ...Object.fromEntries(roleNames.map((key2) => [key2, null])) }), geometrySignature = "";
+  const report = (error) => {
+    try {
+      context.reportDiagnostic?.({ ...errorValue(error), level: "warning" });
+    } catch {
+    }
+  };
+  const check = () => {
+    if (!alive) throw workspaceError("workspace_retired", "Workspace provider retired");
+  };
+  const discovery = suppliedDiscovery ?? createWorkspaceDiscovery(baseNative);
+  const featureLoad = (role, load) => Promise.resolve().then(load).then((value) => {
+    check();
+    features = { ...features, [role]: true };
+    schedule(false);
+    return value;
+  }, (error) => {
+    features = { ...features, [role]: false };
+    diagnostic = errorValue(error);
+    report(error);
+    schedule(false);
+    throw error;
+  });
+  const transcripts = createTranscripts({ document: doc, load: () => featureLoad("transcript", discovery.transcript), surface: () => surface, check, report });
+  const shortcuts = createShortcuts({ document: doc, load: () => featureLoad("shortcuts", discovery.shortcuts), surface: () => surface, activity: () => activity, check, report, changed: () => schedule(false) });
+  function callback(listener, value) {
+    try {
+      Promise.resolve(listener(value)).catch(report);
+    } catch (error) {
+      report(error);
+    }
+  }
+  function publish(routeChanged = false) {
+    const location2 = host?.navigator.location, route = location2 ? { pathname: location2.pathname, search: location2.search ?? "", hash: location2.hash ?? "" } : null;
+    const match = route && /^\/local\/([\w-]{8,256})\/?$/.exec(route.pathname), threadId = match?.[1] ?? null;
+    const next = {
+      api: 1,
+      route,
+      threadId,
+      hostId: threadId ? "local" : null,
+      auxiliary: !!host?.auxiliary,
+      available: !!surface?.composer && !host?.auxiliary,
+      features,
+      diagnostic
+    };
+    const previous = { ...snapshot };
+    delete previous.revision;
+    const changed = routeChanged || geometrySignature !== previousGeometry || JSON.stringify(next) !== JSON.stringify(previous);
+    if (!changed) return;
+    previousGeometry = geometrySignature;
+    snapshot = Object.freeze({ ...next, revision: ++revision, route: route && Object.freeze(route), features: Object.freeze({ ...features }), diagnostic: diagnostic && Object.freeze({ ...diagnostic }) });
+    for (const session of sessions) for (const listener of session.listeners) callback(listener, snapshot);
+  }
+  let previousGeometry = "";
+  let microtaskSequence = 0;
+  function refreshGeometry() {
+    publicSurface = Object.freeze({ available: !!surface?.composer && !host?.auxiliary, ...Object.fromEntries(roleNames.map((key2) => [key2, geometry(surface?.[key2])])) });
+    geometrySignature = JSON.stringify(roleNames.map((key2) => publicSurface[key2]?.rect ?? null));
+  }
+  function reconcile() {
+    frame = null;
+    if (!alive || !sessions.size) return;
+    let routeChanged = false;
+    try {
+      if (!root?.isConnected || root !== doc.getElementById("root") || !host) {
+        validateDocument();
+        host = locate();
+        root = host.rootNode;
+        unroute?.();
+        unroute = subscribeNativeRoute(host.navigator, () => schedule(true));
+      }
+      routeChanged = host.navigator.location.pathname !== snapshot.route?.pathname;
+      const oldSurface = surface;
+      if (structural || routeChanged) {
+        structural = false;
+        surface = host.auxiliary ? null : findWorkspaceSurface(doc);
+        if (!activity?.isConnected && !host.auxiliary && (slots.size || features.shortcuts)) activity = findActivity(doc);
+        features = { ...features, surface: !!surface?.composer, activitySlot: !!activity, transcript: host.auxiliary ? false : features.transcript, shortcuts: host.auxiliary ? false : features.shortcuts };
+        if (diagnostic === surfaceFailure) diagnostic = surfaceFailure = null;
+        if (resize && oldSurface !== surface) {
+          resize.disconnect();
+          for (const node of new Set(roleNames.map((key2) => surface?.[key2]).filter(Boolean))) resize.observe(node);
+        }
+      }
+      control.reconcile(surface);
+      let anchor = activity;
+      if (anchor?.isConnected) for (const slot of [...slots].reverse()) {
+        if (slot.container.parentElement !== anchor.parentElement || slot.container.nextSibling !== anchor) anchor.before(slot.container);
+        anchor = slot.container;
+      }
+      refreshGeometry();
+      if (routeChanged) {
+        transcripts.rebind();
+        shortcuts.rebind();
+      } else if (structuralSettings) shortcuts.refresh();
+    } catch (error) {
+      diagnostic = surfaceFailure = errorValue(error);
+      if (diagnostic.code !== "workspace_host_pending" && diagnostic.code !== "ui_host_pending") report(error);
+      surface = null;
+      control.reconcile(null);
+      features = { ...features, surface: false };
+      refreshGeometry();
+    }
+    structuralSettings = false;
+    publish(routeChanged);
+  }
+  let structuralSettings = false;
+  function schedule(scan = true) {
+    if (!alive || !sessions.size) return;
+    structural ||= scan;
+    if (frame == null) {
+      if (doc.visibilityState === "hidden") {
+        const token = --microtaskSequence;
+        frame = token;
+        queueMicrotask(() => {
+          if (frame === token) reconcile();
+        });
+      } else frame = requestFrame(reconcile);
+    }
+  }
+  function observe() {
+    if (observer) return;
+    observer = new doc.defaultView.MutationObserver((records) => {
+      const relevant = records.filter((record) => {
+        const target = record.target.nodeType === 1 ? record.target : record.target.parentElement;
+        if (target?.closest(OWNED)) return false;
+        const nodes = [...record.addedNodes, ...record.removedNodes];
+        if (nodes.length && nodes.every((node) => node.nodeType === 1 && node.matches(OWNED))) return false;
+        if (surface?.scroller?.contains(target) && target !== surface.scroller && ![...record.removedNodes].some((node) => roleNames.some((key2) => node === surface[key2] || node.contains?.(surface[key2])))) return false;
+        return true;
+      });
+      if (!relevant.length) return;
+      structuralSettings = true;
+      schedule(true);
+    });
+    observer.observe(doc.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-app-shell-active-page"] });
+    if (doc.defaultView.ResizeObserver) resize = new doc.defaultView.ResizeObserver(() => schedule(false));
+    doc.defaultView.addEventListener("resize", onResize);
+  }
+  const onResize = () => schedule(false);
+  function stopObserving() {
+    observer?.disconnect();
+    resize?.disconnect();
+    observer = resize = null;
+    unroute?.();
+    unroute = null;
+    doc.defaultView.removeEventListener("resize", onResize);
+    if (frame != null && frame >= 0) cancelFrame(frame);
+    frame = null;
+    host = root = surface = activity = null;
+  }
+  function issueTicket(args, invocation) {
+    check();
+    if (!args || typeof args !== "object" || Array.isArray(args) || Object.keys(args).length) throw workspaceError("invalid_argument", "getApi expects an empty object");
+    const caller = invocation?.caller;
+    if (invocation?.signal?.aborted || !caller || typeof caller.pluginId !== "string" || !Number.isSafeInteger(caller.generation)) throw workspaceError("invalid_owner", "Workspace access requires a Core-authenticated caller");
+    for (const [key2, value] of tickets) if (value.expires < Date.now()) tickets.delete(key2);
+    if (tickets.size >= 64) throw workspaceError("resource_limit", "Too many pending workspace tickets");
+    const ticket = crypto.randomUUID();
+    tickets.set(ticket, { ...caller, expires: Date.now() + 15e3 });
+    return { api: 1, symbol: WORKSPACE_SYMBOL, ticket };
+  }
+  function connect(owner2, token) {
+    check();
+    const ticket = tickets.get(token);
+    if (!owner2 || owner2.world !== "main" || typeof owner2.onDeactivate !== "function" || typeof owner2.pluginId !== "string" || !Number.isSafeInteger(owner2.generation)) throw workspaceError("invalid_owner", "Workspace requires the live main-world consumer context");
+    if (!ticket || ticket.expires < Date.now() || ticket.pluginId !== owner2.pluginId || ticket.generation !== owner2.generation) throw workspaceError("api_ticket_retired", "Workspace ticket expired, was used or belongs to another owner");
+    tickets.delete(token);
+    if (sessions.size >= 64) throw workspaceError("resource_limit", "Too many workspace sessions");
+    const record = { listeners: /* @__PURE__ */ new Set(), handles: /* @__PURE__ */ new Map(), alive: true };
+    const ownerKey = owner2.pluginId + ":" + owner2.generation;
+    let release;
+    const live = () => {
+      check();
+      if (!record.alive) throw workspaceError("workspace_retired", "Workspace consumer retired");
+    };
+    function own(kind, limit, factory) {
+      live();
+      const entries = record.handles.get(kind) ?? /* @__PURE__ */ new Set();
+      record.handles.set(kind, entries);
+      if (entries.size >= limit) throw workspaceError("resource_limit", `Too many owned ${kind} handles`);
+      const value = factory();
+      const result = Object.freeze({ ...value, dispose() {
+        if (!entries.delete(result)) return;
+        value.dispose();
+      } });
+      entries.add(result);
+      return result;
+    }
+    const session = Object.freeze({
+      api: 1,
+      getSnapshot() {
+        live();
+        return snapshot;
+      },
+      subscribe(listener) {
+        live();
+        if (typeof listener !== "function" || record.listeners.size >= 32) throw workspaceError("invalid_argument", "Expected a workspace listener (at most 32)");
+        record.listeners.add(listener);
+        callback(listener, snapshot);
+        return () => record.listeners.delete(listener);
+      },
+      getSurface() {
+        live();
+        return publicSurface;
+      },
+      resolveThreadReference(element) {
+        live();
+        return resolveThreadReference(doc, element, (id) => {
+          try {
+            return !!discovery.connection?.().manager.getConversation(id);
+          } catch {
+            return false;
+          }
+        });
+      },
+      createSlot(name) {
+        if (name !== "activity.before") throw workspaceError("invalid_argument", "Unknown workspace slot");
+        return own("slot", 8, () => {
+          if (!activity?.isConnected && !host?.auxiliary) try {
+            activity = findActivity(doc);
+            features = { ...features, activitySlot: !!activity };
+          } catch (error) {
+            diagnostic = errorValue(error);
+            report(error);
+          }
+          const container = doc.createElement("span");
+          container.dataset.codletWorkspaceOwned = ownerKey;
+          const slot = { container };
+          slots.add(slot);
+          if (activity?.isConnected) activity.before(container);
+          schedule(true);
+          return { container, dispose() {
+            slots.delete(slot);
+            container.remove();
+            schedule(false);
+          } };
+        });
+      },
+      acquireSurface(options) {
+        return own("surface", 8, () => {
+          const lease = { options: surfaceOptions(options) };
+          control.leases.add(lease);
+          control.reconcile(surface);
+          let active2 = true;
+          return {
+            update(partial) {
+              live();
+              if (!active2) throw workspaceError("workspace_retired", "Surface lease retired");
+              lease.options = surfaceOptions(partial, lease.options);
+              control.reconcile(surface);
+            },
+            dispose() {
+              active2 = false;
+              control.leases.delete(lease);
+              control.reconcile(surface);
+            }
+          };
+        });
+      },
+      mountTranscript(container, options) {
+        return own("transcript", 16, () => {
+          if (host?.auxiliary) throw workspaceError("workspace_transcript_unavailable", "Auxiliary windows have no transcripts");
+          return transcripts.mount(container, options, ownerKey);
+        });
+      },
+      registerShortcut(options) {
+        return own("shortcut", 16, () => {
+          if (host?.auxiliary) throw workspaceError("workspace_shortcuts_unavailable", "Auxiliary windows have no shortcut workspace");
+          schedule(true);
+          return shortcuts.register(options, ownerKey);
+        });
+      },
+      dispose() {
+        if (!record.alive) return;
+        record.alive = false;
+        record.listeners.clear();
+        for (const entries of record.handles.values()) for (const handle of [...entries]) handle.dispose();
+        record.handles.clear();
+        sessions.delete(record);
+        release?.();
+        if (!sessions.size) stopObserving();
+      }
+    });
+    record.session = session;
+    sessions.add(record);
+    try {
+      release = owner2.onDeactivate(session.dispose);
+      if (!record.alive) throw workspaceError("workspace_retired", "The consumer is already retired");
+      observe();
+      structural = true;
+      reconcile();
+    } catch (error) {
+      session.dispose();
+      throw error;
+    }
+    return session;
+  }
+  const publicApi = Object.freeze({ api: 1, connect });
+  Object.defineProperty(globalThis, symbol, { value: publicApi, configurable: true });
+  context.rpc.provide(WORKSPACE_CAPABILITY, "getApi", issueTicket);
+  function dispose() {
+    if (!alive) return;
+    for (const record of [...sessions]) record.session.dispose();
+    alive = false;
+    tickets.clear();
+    stopObserving();
+    control.dispose();
+    transcripts.dispose();
+    shortcuts.dispose();
+    discovery.dispose();
+    if (globalThis[symbol] === publicApi) delete globalThis[symbol];
+  }
+  const releaseProvider = context.onDeactivate(dispose);
+  return { issueTicket, connect, refresh: () => schedule(true), dispose() {
+    dispose();
+    releaseProvider?.();
+  } };
+}
+
 // src/adapter/navigation.js
 function pageProfile(build, entries = Array.from(document.scripts, (script) => script.src), readyState = document.readyState) {
   const profile = clientProfile(build, entries);
@@ -6321,37 +7747,13 @@ var CAPABILITY = Object.freeze({ name: "codex.ui.navigation.page", api: 1, scope
 var fail5 = (code, message) => Object.assign(new Error(message), { code });
 var current2;
 function fibers() {
-  const root = document.getElementById("root");
-  const key2 = root && Object.keys(root).find((key3) => key3.startsWith("__reactContainer$"));
-  const container = key2 && root[key2], current3 = container?.stateNode?.current ?? container;
-  const rails = root ? [...root.querySelectorAll('nav[data-app-navigation-rail="true"]')] : [];
-  const landmarks = rails.length ? rails : root ? [...root.querySelectorAll("nav")].filter((nav) => [...nav.querySelectorAll("button.sidebar-item")].some((button) => !button.closest("[data-codlet-native-navigation]"))) : [];
-  if (landmarks.length > 1) throw fail5("ui_host_drift", "Native navigation ownership is ambiguous");
-  if (landmarks.length === 1) {
-    const landmark = landmarks[0], key3 = Object.keys(landmark).find((key4) => key4.startsWith("__reactFiber$"));
-    const attached = key3 && landmark[key3];
-    for (const start of [attached, attached?.alternate]) {
-      if (!start || start.stateNode !== landmark) continue;
-      const chain = /* @__PURE__ */ new Set();
-      let fiber = start;
-      while (fiber && !chain.has(fiber) && chain.size < 256) {
-        chain.add(fiber);
-        if (fiber === current3) return chain;
-        fiber = fiber.return;
-      }
-    }
-    throw fail5("ui_host_pending", "Waiting for the current native navigation tree");
+  try {
+    return hostFibers();
+  } catch (error) {
+    if (error.code === "desktop_host_pending") throw fail5("ui_host_pending", error.message);
+    if (error.code === "desktop_host_drift") throw fail5("ui_host_drift", error.message);
+    throw error;
   }
-  const pending = [current3], seen = /* @__PURE__ */ new Set();
-  while (pending.length && seen.size < 2e4) {
-    const fiber = pending.pop();
-    if (!fiber || seen.has(fiber)) continue;
-    seen.add(fiber);
-    if (fiber.sibling) pending.push(fiber.sibling);
-    if (fiber.child) pending.push(fiber.child);
-  }
-  if (pending.length) throw fail5("ui_host_drift", "The Desktop tree exceeded the reviewed probe boundary");
-  return seen;
 }
 function locateHost() {
   const navigators = /* @__PURE__ */ new Set(), routerContexts = /* @__PURE__ */ new Set(), trees = /* @__PURE__ */ new Set(), objectTrees = /* @__PURE__ */ new Set();
@@ -6377,17 +7779,17 @@ function locateHost() {
   if (navigator.location.pathname === "/avatar-overlay" || navigator.location.pathname.startsWith("/avatar-overlay/"))
     return { navigator, tree, rootNode: document.getElementById("root"), auxiliary: true };
   const candidates = [], objects = !tree.props;
-  const visit = (element) => {
+  const visit2 = (element) => {
     const props = objects ? element : element?.props;
     if (!props) return;
     const children = props.children;
     if (Array.isArray(children)) {
       const path2 = (child) => objects ? child?.path : child?.props?.path;
       if (children.some((child) => path2(child) === "/inbox") && children.some((child) => path2(child) === "/connector/oauth_callback")) candidates.push(children);
-      children.forEach(visit);
-    } else visit(children);
+      children.forEach(visit2);
+    } else visit2(children);
   };
-  visit(tree);
+  visit2(tree);
   if (candidates.length !== 1 || Object.isFrozen(candidates[0]) || !Object.isExtensible(candidates[0]))
     throw fail5("ui_host_drift", "The reviewed authenticated route collection is unavailable");
   return { navigator, routes: candidates[0], Route: tree.type, objects, tree, rootNode: document.getElementById("root") };
@@ -6712,7 +8114,7 @@ async function loadNative() {
   return native;
 }
 function deferredNavigation(context, load = loadNative) {
-  let alive = true, navigation, failure, cancelWait, independentActions;
+  let alive = true, navigation, failure, cancelWait, independentActions, native;
   const pending = /* @__PURE__ */ new Map(), pendingComposer = /* @__PURE__ */ new Map();
   const composer = () => {
     if (load !== loadNative) return null;
@@ -6729,7 +8131,7 @@ function deferredNavigation(context, load = loadNative) {
     return independentActions;
   };
   const ready = (async () => {
-    let native, delay = 50;
+    let delay = 50;
     while (alive) {
       try {
         if (load === loadNative) desktopDocument();
@@ -6800,6 +8202,7 @@ function deferredNavigation(context, load = loadNative) {
   });
   return {
     ready,
+    native: () => ready.then(() => native),
     register(args, invocation) {
       if (!alive || invocation?.signal?.aborted) throw fail5("ui_retired", "The page registration retired");
       if (failure) throw failure;
@@ -6875,12 +8278,19 @@ function deactivate() {
 async function activate(context) {
   deactivate();
   const session = deferredNavigation(context);
-  current2 = session;
   context.rpc.provide(CAPABILITY, "register", async (args, invocation) => session.register(args, invocation));
   context.rpc.provide(CAPABILITY, "newTaskDraft", async (args, invocation) => session.newTaskDraft(args, invocation));
   context.rpc.provide(COMPOSER_CAPABILITY, "register", async (args, invocation) => session.registerComposer(args, invocation));
   context.rpc.provide(COMPOSER_CAPABILITY, "unregister", async (args, invocation) => session.unregisterComposer(args, invocation));
   context.rpc.provide(COMPOSER_CAPABILITY, "status", async (args, invocation) => session.statusComposer(args, invocation));
+  const workspace = createWorkspace(context, { locate: locateHost, baseNative: session.native });
+  current2 = { dispose() {
+    workspace.dispose();
+    session.dispose();
+  } };
+  session.ready.then(() => workspace.refresh(), () => {
+  }).catch(() => {
+  });
 }
 
 /*

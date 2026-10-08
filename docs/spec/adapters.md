@@ -127,6 +127,8 @@ The Core UI SDK registers these leases and renders the plugin's complete React t
 
 The navigation observer ignores ordinary streaming-content mutations. Native navigation or lease changes still trigger reconciliation; removing this filtering requires a performance regression check.
 
+UI Adapter 0.1.11 adds the owner-scoped `codex.ui.workspace@1` session described in [workspace-api.md](../workspace-api.md). This contains semantic surface/slot discovery, composable temporary surface leases, native transcripts and shortcut settings integration. Native providers and managers stay private. Layout and persistence remain consumer policy. Features initialize lazily from the current client resource graph and share one discovery cache and existing local connection; no fixed resource hashes or background connections are added.
+
 ## Desktop adapter
 
 `codex.desktop.adapter` provides target-scoped API 1 capabilities from `frontend/src/desktop/entry.js`:
@@ -134,12 +136,14 @@ The navigation observer ignores ordinary streaming-content mutations. Native nav
 | Capability | Operations |
 | --- | --- |
 | `codex.desktop.compatibility` | `probe`, `waitReady`; report readiness, reviewed build and capability availability |
-| `codex.backend.read` | `selection.get`, `threads.list/get/configuration`, `turns.list`, `items.list`, `models.list`, `skills.list`, `providers.list`, `approvals.list` |
+| `codex.backend.read` | `selection.get`, `threads.list/loaded/get/configuration`, `turns.list`, `items.list`, `models.list`, `skills.list`, `providers.list`, `approvals.list` |
 | `codex.backend.write` | `threads.open`, `threads.reconfigure`, `turns.start/steer/interrupt`, `approvals.respond`, `getApi`, `configurations.list`; task-local model/provider configuration callback |
 | `codex.backend.events` | Cursor-based `read`, `getApi` for an owned callback |
 | `codex.ui.preSubmit` | `getApi`, `interceptors.list`; input rewrite/context injection before native `turn/start` |
 
 Read results are bounded DTOs. Provider results omit credentials, URLs, environment mappings and raw config. Writes to a task require its resumed state and owner stream in this Desktop window. Opening a task validates its identity and lets the native route own resume. Cancellation after a dispatched write may yield `outcome_unknown`; callers inspect state/events rather than blindly repeat the write.
+
+Desktop Adapter 0.2.16 adds `threads.loaded({limit?,cursor?,threadId?})`: at most 100 summaries per page, one bounded cached collection of at most 4096 local threads, no history or backend requests. Specific-thread queries do not enumerate the collection. Summary changes produce `thread.summary.changed` only for the affected thread; unchanged tokens produce no summary event. Cursors retain at most 32 snapshots for 15 seconds and are single-use. The detailed DTO is in [workspace-api.md](../workspace-api.md).
 
 Native JSON-RPC integer error codes become `desktop_request_failed` with the
 bounded original rejection message. Ordinary backend refusals must not produce
