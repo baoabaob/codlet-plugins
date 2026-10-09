@@ -626,6 +626,27 @@ test('opening a cold task navigates once and lets Native publish resume and foll
     f.dispose();
 });
 
+test('cached warm and cold task navigation returns through public RPC without a metadata round trip',async()=>{
+    const f=fixture(1,true,true);
+    f.threads.set('warm',{id:'warm',hostId:'local',resumeState:'resumed',requests:[],turns:[]});
+    f.threads.set('cached-cold',{id:'cached-cold',resumeState:'needs_resume',requests:[],turns:[]});
+    f.responses.set('thread/read',()=>assert.fail('cached navigation must not wait for metadata'));
+    const open=f.endpoints.get('codex.backend.write:threads.open');
+    const warm=await open({threadId:'warm'},{});assert.equal(warm.status,'opened');assert.equal(warm.threadId,'warm');
+    const cold=await open({threadId:'cached-cold'},{});assert.equal(cold.status,'opening');assert.equal(cold.threadId,'cached-cold');
+    assert.equal(f.requestCalls.length,0);assert.deepEqual(f.navigationCalls,[['push','/local/warm'],['push','/local/cached-cold']]);
+    const cancelled=new AbortController();cancelled.abort();await assert.rejects(open({threadId:'warm'},{signal:cancelled.signal}),{code:'invocation_cancelled'});
+    assert.equal(f.navigationCalls.length,2);f.dispose();
+});
+
+test('wrong-host or mismatched cached identities still require Native metadata confirmation',async()=>{
+    for(const thread of [{id:'requested',hostId:'remote'},{id:'different',hostId:'local'}]){
+        const f=fixture(1,true);f.threads.set('requested',thread);f.responses.set('thread/read',{thread:{id:'different'}});
+        await assert.rejects(f.api.write('threads.open',{threadId:'requested'}),{code:'desktop_navigation_unavailable'});
+        assert.equal(f.requestCalls.length,1);assert.equal(f.navigationCalls.length,0);f.dispose();
+    }
+});
+
 test('opening a cached local task avoids metadata requests and preserves the navigation receipt', async () => {
     const f=fixture(1,true,true);
     f.threads.set('thread-cached',{id:'thread-cached',hostId:'local',resumeState:'resumed',requests:[],turns:[]});

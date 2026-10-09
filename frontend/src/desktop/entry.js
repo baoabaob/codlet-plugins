@@ -3,6 +3,7 @@ import { createThreadConfiguration } from './thread-configuration.js';
 import { createThreadReconfiguration } from './thread-reconfiguration.js';
 import { createThreadRestoration } from './thread-restoration.js';
 import { createLoadedThreads } from './loaded-threads.js';
+import { createThreadOpener } from './thread-navigation.js';
 import { reviewedNavigator } from '../native-navigation.js';
 import { desktopDocument, hostFibers, createScopeLocator, loadedAsset, localConnection, uniqueExport } from '../host-discovery.js';
 'use strict';
@@ -308,7 +309,7 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
     let alive = true, sequence = 0, eventBytes = 0, hookSequence = 0, reloadReason = null, unavailable = null;
     const hooks = new Map(), pendingSubmits = new Set(), events = [], waiters = new Set(), listeners = new Set(), cleanups = [], approvals = new Map(), retiredApprovals = new Map(), tickets = new Map(), submissions = new Map();
     const loadedThreads = createLoadedThreads(manager, value => emit(value), instance);
-    let navigation = null, navigationFailure = null, lastSelection = null, opening = false;
+    let navigation = null, navigationFailure = null, lastSelection = null;
     const check = () => {
         if (!alive) throw fail('adapter_deactivated', 'Desktop adapter was deactivated');
         if (unavailable) throw fail('capability_unavailable', `${unavailable.code}: ${unavailable.message}`);
@@ -394,33 +395,7 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
             if (JSON.stringify(current) !== JSON.stringify(lastSelection)) { lastSelection = current; emit({ type: 'selection.changed', ...current }); }
         } catch (error) { navigationUnavailable(error); }
     }
-    async function openThread(args, signal) {
-        fields(args, ['threadId']);
-        const threadId = identity(args.threadId, 'threadId');
-        if (!/^[a-zA-Z0-9_-]+$/.test(threadId)) throw fail('invalid_argument', 'threadId must be a local task identity');
-        const before = selection();
-        if (signal?.aborted) throw fail('invocation_cancelled', 'Task navigation was cancelled before dispatch');
-        if (before.threadId === threadId) return { ...before, status: before.resumeState === 'resumed' ? 'opened' : 'opening', alreadySelected: true };
-        if (opening) throw fail('desktop_navigation_busy', 'Another task open request is still being validated');
-        opening = true;
-        try {
-            const stamp = navigation.stamp();
-            // The existing local manager has already validated cached identities.
-            // Navigating to those tasks needs no second metadata round trip.
-            const cached = manager.getConversation(threadId);
-            if (cached?.id !== threadId || cached.hostId != null && cached.hostId !== 'local') {
-                const metadata = await nativeRequest('thread/read', { threadId, includeTurns: false }, signal);
-                if (metadata?.thread?.id !== threadId) throw fail('desktop_navigation_unavailable', 'Desktop did not confirm the requested task identity');
-            }
-            selection();
-            if (navigation.stamp() !== stamp) throw fail('desktop_navigation_superseded', 'The user navigated while this task was being checked');
-            navigation.open(threadId);
-            const current = selection();
-            if (current.threadId !== threadId) throw fail('desktop_navigation_superseded', 'Desktop selected a different task during navigation');
-            // Native's mounted task route owns cold resume, settings and stream ownership.
-            return { ...current, status: current.resumeState === 'resumed' ? 'opened' : 'opening', alreadySelected: false };
-        } finally { opening = false; }
-    }
+    const openThread = createThreadOpener({ manager, selection, navigation: () => navigation, request: nativeRequest });
 
     const orderedHooks = () => [...hooks.values()].sort((a, b) => a.priority - b.priority || (a.pluginId < b.pluginId ? -1 : a.pluginId > b.pluginId ? 1 : 0) || a.order - b.order);
     const hookInfo = hook => ({ pluginId: hook.pluginId, generation: hook.generation, id: hook.name, priority: hook.priority, timeoutMs: hook.timeoutMs, enabled: hook.enabled, calls: hook.calls, failures: hook.failures, lastDurationMs: hook.lastDurationMs, totalDurationMs: hook.totalDurationMs, lastFailure: hook.lastFailure && { ...hook.lastFailure } });

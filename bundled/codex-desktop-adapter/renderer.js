@@ -853,6 +853,38 @@ function createLoadedThreads(manager, emit, instance) {
   } };
 }
 
+// src/desktop/thread-navigation.js
+var fail5 = (code, message) => Object.assign(new Error(message), { code });
+function createThreadOpener({ manager, selection, navigation, request }) {
+  let opening = false;
+  return async function openThread(args, signal) {
+    if (!args || typeof args !== "object" || Array.isArray(args) || Object.keys(args).some((key) => key !== "threadId")) throw fail5("invalid_argument", "Invalid task navigation arguments");
+    const threadId = args.threadId;
+    if (typeof threadId !== "string" || !/^[a-zA-Z0-9_-]{1,256}$/.test(threadId)) throw fail5("invalid_argument", "threadId must be a local task identity");
+    const before = selection();
+    if (signal?.aborted) throw fail5("invocation_cancelled", "Task navigation was cancelled before dispatch");
+    if (before.threadId === threadId) return { ...before, status: before.resumeState === "resumed" ? "opened" : "opening", alreadySelected: true };
+    if (opening) throw fail5("desktop_navigation_busy", "Another task open request is still being validated");
+    opening = true;
+    try {
+      const nav = navigation(), stamp = nav.stamp();
+      const cached = manager.getConversation(threadId);
+      if (cached?.id !== threadId || cached.hostId != null && cached.hostId !== "local") {
+        const metadata = await request("thread/read", { threadId, includeTurns: false }, signal);
+        if (metadata?.thread?.id !== threadId) throw fail5("desktop_navigation_unavailable", "Desktop did not confirm the requested task identity");
+      }
+      selection();
+      if (nav.stamp() !== stamp) throw fail5("desktop_navigation_superseded", "The user navigated while this task was being checked");
+      nav.open(threadId);
+      const current = selection();
+      if (current.threadId !== threadId) throw fail5("desktop_navigation_superseded", "Desktop selected a different task during navigation");
+      return { ...current, status: current.resumeState === "resumed" ? "opened" : "opening", alreadySelected: false };
+    } finally {
+      opening = false;
+    }
+  };
+}
+
 // src/native-navigation.js
 var bridges = /* @__PURE__ */ new WeakMap();
 var subscribable = /* @__PURE__ */ new WeakSet();
@@ -896,10 +928,10 @@ function reviewedNavigator(navigators, contexts) {
 }
 
 // src/host-discovery.js
-var fail5 = (code, message) => Object.assign(new Error(message), { code });
+var fail6 = (code, message) => Object.assign(new Error(message), { code });
 function desktopDocument() {
   if (location.origin !== "app://-" || location.pathname !== "/index.html")
-    throw fail5("desktop_document_unsupported", "This is not a Desktop document");
+    throw fail6("desktop_document_unsupported", "This is not a Desktop document");
 }
 function hostFibers(limit = 2e4) {
   const root = document.getElementById("root");
@@ -907,7 +939,7 @@ function hostFibers(limit = 2e4) {
   const container = key && root[key], current = container?.stateNode?.current ?? container;
   const rails = root ? [...root.querySelectorAll?.('nav[data-app-navigation-rail="true"]') ?? []] : [];
   const landmarks = rails.length ? rails : root ? [...root.querySelectorAll?.("nav") ?? []].filter((nav) => [...nav.querySelectorAll("button.sidebar-item")].some((button) => !button.closest("[data-codlet-native-navigation]"))) : [];
-  if (landmarks.length > 1) throw fail5("desktop_host_drift", "Native navigation ownership is ambiguous");
+  if (landmarks.length > 1) throw fail6("desktop_host_drift", "Native navigation ownership is ambiguous");
   if (landmarks.length === 1) {
     const landmark = landmarks[0], attachedKey = Object.keys(landmark).find((key2) => key2.startsWith("__reactFiber$"));
     const attached = attachedKey && landmark[attachedKey];
@@ -916,13 +948,13 @@ function hostFibers(limit = 2e4) {
       const chain = currentAncestry(start, current);
       if (chain) return chain;
     }
-    throw fail5("desktop_host_pending", "Waiting for the current native navigation tree");
+    throw fail6("desktop_host_pending", "Waiting for the current native navigation tree");
   }
   const pending = [current], seen = /* @__PURE__ */ new Set();
   while (pending.length) {
     const fiber = pending.pop();
     if (!fiber || seen.has(fiber)) continue;
-    if (seen.size >= limit) throw fail5("desktop_host_drift", "Desktop tree exceeds the discovery limit");
+    if (seen.size >= limit) throw fail6("desktop_host_drift", "Desktop tree exceeds the discovery limit");
     seen.add(fiber);
     if (fiber.sibling) pending.push(fiber.sibling);
     if (fiber.child) pending.push(fiber.child);
@@ -967,8 +999,8 @@ function createScopeLocator(token, fibers = hostFibers()) {
     return token && node2?.token === token && node2?.store && node2.familyBindings instanceof Map;
   });
   const nodes = new Set(owners.map((fiber) => fiber.memoizedProps.value.get(token.id)));
-  if (nodes.size > 1) throw fail5("desktop_scope_ambiguous", "Desktop AppScope has multiple owners");
-  if (!owners.length) throw fail5("desktop_scope_missing", "Desktop AppScope is not mounted; reload the adapter after Desktop is ready");
+  if (nodes.size > 1) throw fail6("desktop_scope_ambiguous", "Desktop AppScope has multiple owners");
+  if (!owners.length) throw fail6("desktop_scope_missing", "Desktop AppScope is not mounted; reload the adapter after Desktop is ready");
   const depth = (fiber) => {
     const seen = /* @__PURE__ */ new Set();
     while (fiber && !seen.has(fiber) && seen.size < 256) {
@@ -981,24 +1013,24 @@ function createScopeLocator(token, fibers = hostFibers()) {
   const node = [...nodes][0];
   return () => {
     if (document.getElementById("root") !== root || root[key] !== container)
-      throw fail5("desktop_scope_missing", "Desktop AppScope root was replaced");
+      throw fail6("desktop_scope_missing", "Desktop AppScope root was replaced");
     const current = container?.stateNode?.current ?? container;
     for (const owner of owners) for (const fiber of [owner, owner.alternate]) {
       if (!currentAncestry(fiber, current)) continue;
       const chain = fiber.memoizedProps?.value, present = chain instanceof Map && chain.get(token.id);
       if (present?.token !== token) continue;
-      if (present !== node) throw fail5("desktop_connection_replaced", "Desktop AppScope was replaced");
+      if (present !== node) throw fail6("desktop_connection_replaced", "Desktop AppScope was replaced");
       return { chain, node };
     }
-    throw fail5("desktop_scope_missing", "Desktop AppScope is no longer mounted");
+    throw fail6("desktop_scope_missing", "Desktop AppScope is no longer mounted");
   };
 }
 function loadedAsset(role) {
   desktopDocument();
-  if (!["shared", "initial"].includes(role)) throw fail5("desktop_asset_invalid", "Unknown native module role");
+  if (!["shared", "initial"].includes(role)) throw fail6("desktop_asset_invalid", "Unknown native module role");
   const pattern = new RegExp("^app://-/assets/app-" + role + "-[A-Za-z0-9_-]+\\.js$");
   const candidates = [...new Set(Array.from(document.querySelectorAll('link[rel="modulepreload"]'), (item) => item.href).filter((url) => pattern.test(url)))];
-  if (candidates.length !== 1) throw fail5(candidates.length ? "desktop_asset_ambiguous" : "ui_host_pending", `A unique loaded Desktop ${role} module is required`);
+  if (candidates.length !== 1) throw fail6(candidates.length ? "desktop_asset_ambiguous" : "ui_host_pending", `A unique loaded Desktop ${role} module is required`);
   return candidates[0];
 }
 function localConnection() {
@@ -1012,11 +1044,11 @@ function localConnection() {
     for (const node of chain.values()) {
       if (!node?.token || chain.get(node.token.id) !== node || !(node.familyBindings instanceof Map) || nodes.has(node)) continue;
       nodes.add(node);
-      if (nodes.size > 256 || (metadataEntries += node.familyBindings.size) > 32768) throw fail5("desktop_scope_drift", "Desktop scope exceeds the discovery limit");
+      if (nodes.size > 256 || (metadataEntries += node.familyBindings.size) > 32768) throw fail6("desktop_scope_drift", "Desktop scope exceeds the discovery limit");
       const bound = [];
       for (const [family, bindings] of node.familyBindings) {
         if (family?.scope !== node.token || typeof family.read !== "function" || !(bindings instanceof Map) || !bindings.has("local")) continue;
-        if (++localReads > 512) throw fail5("desktop_scope_drift", "Desktop local bindings exceed the discovery limit");
+        if (++localReads > 512) throw fail6("desktop_scope_drift", "Desktop local bindings exceed the discovery limit");
         const value = family.read(node, chain, "local");
         bound.push({ family, value });
       }
@@ -1027,18 +1059,18 @@ function localConnection() {
         if (clients.length !== 1) continue;
         const previous = matches.get(manager);
         if (previous && (previous.node !== node || previous.clientFamily !== clients[0].family))
-          throw fail5("desktop_scope_ambiguous", "Desktop connection has multiple owners");
+          throw fail6("desktop_scope_ambiguous", "Desktop connection has multiple owners");
         matches.set(manager, { node, chain, managerFamily, clientFamily: clients[0].family, manager, client });
       }
     }
   }
-  if (matches.size !== 1) throw fail5(matches.size ? "desktop_scope_ambiguous" : "desktop_connection_not_ready", "A unique existing local Desktop connection is required");
+  if (matches.size !== 1) throw fail6(matches.size ? "desktop_scope_ambiguous" : "desktop_connection_not_ready", "A unique existing local Desktop connection is required");
   const connection = [...matches.values()][0], locate = createScopeLocator(connection.node.token, fibers);
   connection.check = () => {
     desktopDocument();
     const { node, chain } = locate(), { managerFamily, clientFamily, manager, client } = connection;
     if (!node.familyBindings.get(managerFamily)?.has("local") || !node.familyBindings.get(clientFamily)?.has("local") || managerFamily.read(node, chain, "local") !== manager || clientFamily.read(node, chain, "local") !== client || manager.getHostId() !== "local" || manager.requestClient !== client)
-      throw fail5("desktop_connection_replaced", "The existing local Desktop connection was replaced");
+      throw fail6("desktop_connection_replaced", "The existing local Desktop connection was replaced");
     connection.chain = chain;
     return connection;
   };
@@ -1047,7 +1079,7 @@ function localConnection() {
 function uniqueExport(module2, predicate, role, optional2 = false) {
   const values = [...new Set(Object.values(module2).filter(predicate))];
   if (!values.length && optional2) return void 0;
-  if (values.length !== 1) throw fail5("desktop_contract_drift", `A unique native ${role} is required (found ${values.length})`);
+  if (values.length !== 1) throw fail6("desktop_contract_drift", `A unique native ${role} is required (found ${values.length})`);
   return values[0];
 }
 
@@ -1058,23 +1090,23 @@ var publicBuild = (build) => ({ appVersion: build.appVersion, buildNumber: build
 var API_SYMBOL = "codlet.codex.desktop.v1";
 var cap = (name) => Object.freeze({ name, api: 1, scope: "target" });
 var CAPS = Object.freeze({ compatibility: cap("codex.desktop.compatibility"), submit: cap("codex.ui.preSubmit"), read: cap("codex.backend.read"), write: cap("codex.backend.write"), events: cap("codex.backend.events") });
-var fail6 = (code, message) => Object.assign(new Error(message), { code });
+var fail7 = (code, message) => Object.assign(new Error(message), { code });
 var str = (value, name, max = 512) => {
-  if (typeof value !== "string" || !value.length || value.length > max) throw fail6("invalid_argument", `${name} must be a nonempty string of at most ${max} characters`);
+  if (typeof value !== "string" || !value.length || value.length > max) throw fail7("invalid_argument", `${name} must be a nonempty string of at most ${max} characters`);
   return value;
 };
 var obj = (value = {}) => {
-  if (!value || typeof value !== "object" || Array.isArray(value)) throw fail6("invalid_argument", "expected an object");
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw fail7("invalid_argument", "expected an object");
   return value;
 };
 var fields2 = (value, allowed) => {
   obj(value);
-  if (Object.keys(value).some((key) => !allowed.includes(key))) throw fail6("invalid_argument", "unsupported argument field");
+  if (Object.keys(value).some((key) => !allowed.includes(key))) throw fail7("invalid_argument", "unsupported argument field");
   return value;
 };
 var bounded = (value, fallback, max) => {
   value ??= fallback;
-  if (!Number.isSafeInteger(value) || value < 1 || value > max) throw fail6("invalid_argument", `value must be an integer in 1..${max}`);
+  if (!Number.isSafeInteger(value) || value < 1 || value > max) throw fail7("invalid_argument", `value must be an integer in 1..${max}`);
   return value;
 };
 var copy = (value) => JSON.parse(JSON.stringify(value));
@@ -1093,16 +1125,16 @@ function validateDesktopBuild(checkEntry = true, allowPending = false) {
   const build = clientProfile(detected, entries);
   const candidates = BUILDS.filter((profile) => profile.appVersion === detected?.appVersion && profile.buildNumber === String(detected?.buildNumber));
   if (allowPending && location.origin === "app://-" && location.pathname === "/index.html" && !build && candidates.length && !candidates.some((profile) => entries.includes(profile.entry)) && document.readyState !== "complete") {
-    throw fail6("desktop_entry_pending", "Waiting for the reviewed Desktop entry resource");
+    throw fail7("desktop_entry_pending", "Waiting for the reviewed Desktop entry resource");
   }
   if (location.origin !== "app://-" || location.pathname !== "/index.html" || !build || checkEntry && !entries.includes(build.entry)) {
-    throw fail6("desktop_build_drift", `Codex Desktop Adapter has no verified profile for ${optionalText(detected?.appVersion)} / ${optionalText(String(detected?.buildNumber))}`);
+    throw fail7("desktop_build_drift", `Codex Desktop Adapter has no verified profile for ${optionalText(detected?.appVersion)} / ${optionalText(String(detected?.buildNumber))}`);
   }
-  if (typeof globalThis.electronBridge?.sendMessageFromView !== "function") throw fail6("desktop_preload_missing", "Desktop preload bridge is unavailable");
+  if (typeof globalThis.electronBridge?.sendMessageFromView !== "function") throw fail7("desktop_preload_missing", "Desktop preload bridge is unavailable");
   return build;
 }
 function probeTick(signal, delay) {
-  if (signal?.aborted) return Promise.reject(fail6("adapter_deactivated", "Desktop adapter was deactivated during initialization"));
+  if (signal?.aborted) return Promise.reject(fail7("adapter_deactivated", "Desktop adapter was deactivated during initialization"));
   return new Promise((resolve, reject) => {
     let timer;
     const done = (error) => {
@@ -1110,7 +1142,7 @@ function probeTick(signal, delay) {
       signal?.removeEventListener("abort", abort);
       error ? reject(error) : resolve();
     };
-    const abort = () => done(fail6("adapter_deactivated", "Desktop adapter was deactivated during initialization"));
+    const abort = () => done(fail7("adapter_deactivated", "Desktop adapter was deactivated during initialization"));
     signal?.addEventListener("abort", abort, { once: true });
     timer = setTimeout(() => done(), delay);
   });
@@ -1130,12 +1162,12 @@ async function probeDesktop(loadModule = (source) => import(source), readyTimeou
       break;
     } catch (error) {
       if (error.code !== "desktop_entry_pending") throw error;
-      if (Date.now() >= readyDeadline) throw fail6("desktop_build_drift", "The Desktop entry resource does not match this adapter");
+      if (Date.now() >= readyDeadline) throw fail7("desktop_build_drift", "The Desktop entry resource does not match this adapter");
       await probeTick(signal, Math.min(50, readyDeadline - Date.now()));
     }
   }
   while (!Array.from(document.scripts).some((script) => script.src === build.entry)) {
-    if (document.readyState === "complete" || Date.now() >= readyDeadline) throw fail6("desktop_build_drift", "The Desktop entry resource does not match this adapter");
+    if (document.readyState === "complete" || Date.now() >= readyDeadline) throw fail7("desktop_build_drift", "The Desktop entry resource does not match this adapter");
     await probeTick(signal, Math.min(50, readyDeadline - Date.now()));
   }
   const module2 = await loadModule(build.module);
@@ -1148,7 +1180,7 @@ async function probeDesktop(loadModule = (source) => import(source), readyTimeou
   const transportModule = build.postboxModule ? await additional(build.postboxModule) : module2;
   let token, managerFamily, clientFamily, services, postbox, scope, locateScope, manager, client;
   for (; ; ) {
-    if (signal?.aborted) throw fail6("adapter_deactivated", "Desktop adapter was deactivated during initialization");
+    if (signal?.aborted) throw fail7("adapter_deactivated", "Desktop adapter was deactivated during initialization");
     try {
       token = scopeModule[build.exports.scope];
       managerFamily = module2[build.exports.manager];
@@ -1157,21 +1189,21 @@ async function probeDesktop(loadModule = (source) => import(source), readyTimeou
       postbox = transportModule[build.exports.postbox];
       locateScope = createScopeLocator(token);
       scope = locateScope();
-      if (!scope.node.familyBindings.get(managerFamily)?.has("local") || !scope.node.familyBindings.get(clientFamily)?.has("local")) throw fail6("desktop_connection_not_ready", "Desktop has not initialized its own local connection");
+      if (!scope.node.familyBindings.get(managerFamily)?.has("local") || !scope.node.familyBindings.get(clientFamily)?.has("local")) throw fail7("desktop_connection_not_ready", "Desktop has not initialized its own local connection");
       manager = managerFamily.read(scope.node, scope.chain, "local");
       client = clientFamily.read(scope.node, scope.chain, "local");
-      if (!services || !manager || !client || !postbox || client.getAppServerVersion?.() == null) throw fail6("desktop_connection_not_ready", "Desktop connection is still initializing");
+      if (!services || !manager || !client || !postbox || client.getAppServerVersion?.() == null) throw fail7("desktop_connection_not_ready", "Desktop connection is still initializing");
       break;
     } catch (error) {
       if (!["desktop_scope_missing", "desktop_host_pending", "desktop_connection_not_ready"].includes(error.code) || Date.now() >= readyDeadline) throw error;
       await probeTick(signal, Math.min(50, readyDeadline - Date.now()));
     }
   }
-  if (manager.requestClient !== client || manager.getHostId?.() !== "local") throw fail6("desktop_connection_drift", "Existing Desktop connection identity does not match this adapter");
+  if (manager.requestClient !== client || manager.getHostId?.() !== "local") throw fail7("desktop_connection_drift", "Existing Desktop connection identity does not match this adapter");
   for (const method of ["sendRequest", "getConversation", "getStreamRole", "addNotificationCallback", "addConversationStateCallback", "replyWithCommandExecutionApprovalDecision", "replyWithFileChangeApprovalDecision", "replyWithPermissionsRequestApprovalResponse", "replyWithUserInputResponse"]) {
-    if (typeof manager[method] !== "function") throw fail6("desktop_manager_drift", `Desktop manager lacks ${method}`);
+    if (typeof manager[method] !== "function") throw fail7("desktop_manager_drift", `Desktop manager lacks ${method}`);
   }
-  if (typeof client.onError !== "function" || !(client.requestPromises instanceof Map) || Object.getOwnPropertyDescriptor(postbox ?? {}, "postMessage")?.writable !== true) throw fail6("desktop_transport_drift", "Desktop request transport cannot be safely intercepted");
+  if (typeof client.onError !== "function" || !(client.requestPromises instanceof Map) || Object.getOwnPropertyDescriptor(postbox ?? {}, "postMessage")?.writable !== true) throw fail7("desktop_transport_drift", "Desktop request transport cannot be safely intercepted");
   const observedVersion = client.getAppServerVersion();
   const verifiedBuild = observedVersion === build.appServerVersion ? build : { ...build, appServerVersion: observedVersion, compatibility: "profile-contract" };
   if (verifiedBuild !== build) discoveredBuilds.add(verifiedBuild);
@@ -1181,9 +1213,9 @@ async function probeDesktop(loadModule = (source) => import(source), readyTimeou
     postbox,
     build: verifiedBuild,
     check() {
-      if (validateDesktopBuild() !== build) throw fail6("desktop_build_drift", "Desktop build changed after adapter initialization");
+      if (validateDesktopBuild() !== build) throw fail7("desktop_build_drift", "Desktop build changed after adapter initialization");
       const current = locateScope();
-      if (current.node !== scope.node || scopeModule[build.exports.scope] !== token || module2[build.exports.manager] !== managerFamily || module2[build.exports.client] !== clientFamily || module2[build.exports.services] !== services || transportModule[build.exports.postbox] !== postbox || !current.node.familyBindings.get(managerFamily)?.has("local") || !current.node.familyBindings.get(clientFamily)?.has("local") || managerFamily.read(current.node, current.chain, "local") !== manager || clientFamily.read(current.node, current.chain, "local") !== client || manager.requestClient !== client || client.getAppServerVersion() !== observedVersion) throw fail6("desktop_connection_replaced", "Desktop connection changed; reload the adapter");
+      if (current.node !== scope.node || scopeModule[build.exports.scope] !== token || module2[build.exports.manager] !== managerFamily || module2[build.exports.client] !== clientFamily || module2[build.exports.services] !== services || transportModule[build.exports.postbox] !== postbox || !current.node.familyBindings.get(managerFamily)?.has("local") || !current.node.familyBindings.get(clientFamily)?.has("local") || managerFamily.read(current.node, current.chain, "local") !== manager || clientFamily.read(current.node, current.chain, "local") !== client || manager.requestClient !== client || client.getAppServerVersion() !== observedVersion) throw fail7("desktop_connection_replaced", "Desktop connection changed; reload the adapter");
     }
   };
 }
@@ -1194,7 +1226,7 @@ async function probeDiscoveredDesktop(loadModule, readyTimeoutMs, signal) {
     try {
       connection = localConnection();
       sharedUrl = loadedAsset("shared");
-      if (!connection.client.getAppServerVersion()) throw fail6("desktop_connection_not_ready", "Waiting for the local App Server");
+      if (!connection.client.getAppServerVersion()) throw fail7("desktop_connection_not_ready", "Waiting for the local App Server");
       break;
     } catch (error) {
       if (!["desktop_connection_not_ready", "desktop_host_pending", "ui_host_pending"].includes(error.code) || Date.now() >= deadline) throw error;
@@ -1202,13 +1234,13 @@ async function probeDiscoveredDesktop(loadModule, readyTimeoutMs, signal) {
     }
   }
   const module2 = await loadModule(sharedUrl);
-  if (signal?.aborted) throw fail6("adapter_deactivated", "Desktop adapter retired during discovery");
+  if (signal?.aborted) throw fail7("adapter_deactivated", "Desktop adapter retired during discovery");
   const postbox = uniqueExport(module2, (value) => value && typeof value.postMessage === "function" && typeof value.getState === "function" && typeof value.setState === "function" && Object.getOwnPropertyDescriptor(value, "postMessage")?.writable === true, "message transport");
   const postboxExports = Object.keys(module2).filter((key) => module2[key] === postbox);
   const { manager, client } = connection;
   for (const method of ["sendRequest", "getConversation", "getStreamRole", "addNotificationCallback", "addConversationStateCallback", "replyWithCommandExecutionApprovalDecision", "replyWithFileChangeApprovalDecision", "replyWithPermissionsRequestApprovalResponse", "replyWithUserInputResponse"])
-    if (typeof manager[method] !== "function") throw fail6("desktop_manager_drift", `Desktop manager lacks ${method}`);
-  if (typeof client.onError !== "function") throw fail6("desktop_transport_drift", "Native request error handling is unavailable");
+    if (typeof manager[method] !== "function") throw fail7("desktop_manager_drift", `Desktop manager lacks ${method}`);
+  if (typeof client.onError !== "function") throw fail7("desktop_transport_drift", "Native request error handling is unavailable");
   const detected = globalThis.electronBridge?.getSentryInitOptions?.();
   const build = {
     appVersion: detected?.appVersion,
@@ -1223,7 +1255,7 @@ async function probeDiscoveredDesktop(loadModule, readyTimeoutMs, signal) {
   return { manager, client, postbox, build, check() {
     connection.check();
     if (loadedAsset("shared") !== sharedUrl || postboxExports.some((key) => module2[key] !== postbox) || client.getAppServerVersion() !== build.appServerVersion)
-      throw fail6("desktop_connection_replaced", "Desktop connection changed; reload the adapter");
+      throw fail7("desktop_connection_replaced", "Desktop connection changed; reload the adapter");
   } };
 }
 function itemDto(item) {
@@ -1270,10 +1302,10 @@ function locateNavigator() {
       if (value.router) routerContexts.add(value);
     }
   }
-  if (candidates.size !== 1) throw fail6("desktop_navigation_unavailable", "A unique Desktop memory router is required");
+  if (candidates.size !== 1) throw fail7("desktop_navigation_unavailable", "A unique Desktop memory router is required");
   const navigator = reviewedNavigator(candidates, routerContexts);
-  if (!navigator) throw fail6("desktop_navigation_unavailable", "The reviewed Desktop router is unavailable");
-  if (typeof navigator.location?.pathname !== "string" || !navigator.location.pathname.startsWith("/") || navigator.location.pathname.startsWith("/avatar-overlay") || typeof navigator.listen !== "function") throw fail6("desktop_navigation_unavailable", "Task navigation is unavailable in this Desktop window");
+  if (!navigator) throw fail7("desktop_navigation_unavailable", "The reviewed Desktop router is unavailable");
+  if (typeof navigator.location?.pathname !== "string" || !navigator.location.pathname.startsWith("/") || navigator.location.pathname.startsWith("/avatar-overlay") || typeof navigator.listen !== "function") throw fail7("desktop_navigation_unavailable", "Task navigation is unavailable in this Desktop window");
   return navigator;
 }
 function activeTurnState(thread) {
@@ -1317,8 +1349,8 @@ function createNavigation(manager, changed, locate = locateNavigator) {
   const navigator = locate(), originals = /* @__PURE__ */ new Map(), wrappers = /* @__PURE__ */ new Map();
   let alive = true;
   const check = () => {
-    if (!alive) throw fail6("desktop_navigation_unavailable", "Desktop navigation has retired");
-    if (locate() !== navigator || [...wrappers].some(([method, wrapper]) => navigator[method] !== wrapper)) throw fail6("desktop_navigation_drift", "Desktop navigation ownership changed; reload the adapter");
+    if (!alive) throw fail7("desktop_navigation_unavailable", "Desktop navigation has retired");
+    if (locate() !== navigator || [...wrappers].some(([method, wrapper]) => navigator[method] !== wrapper)) throw fail7("desktop_navigation_drift", "Desktop navigation ownership changed; reload the adapter");
   };
   const snapshot = () => {
     check();
@@ -1341,11 +1373,11 @@ function createNavigation(manager, changed, locate = locateNavigator) {
       if (navigator[method] === wrapper) navigator[method] = originals.get(method);
       else lost = true;
     }
-    if (lost) throw fail6("desktop_navigation_drift", "Another page patch replaced Desktop navigation");
+    if (lost) throw fail7("desktop_navigation_drift", "Another page patch replaced Desktop navigation");
   };
   try {
     for (const method of ["push", "replace", "go"]) {
-      if (typeof navigator[method] !== "function" || Object.getOwnPropertyDescriptor(navigator, method)?.writable !== true) throw fail6("desktop_navigation_unavailable", "Desktop memory router cannot be observed safely");
+      if (typeof navigator[method] !== "function" || Object.getOwnPropertyDescriptor(navigator, method)?.writable !== true) throw fail7("desktop_navigation_unavailable", "Desktop memory router cannot be observed safely");
       const original = navigator[method];
       originals.set(method, original);
       const wrapper = function(...args) {
@@ -1371,21 +1403,21 @@ function createNavigation(manager, changed, locate = locateNavigator) {
 }
 function createAdapter(connection, context, { compatibilityProvided = false } = {}) {
   const { manager, client, postbox, build } = connection;
-  if (!BUILDS.includes(build) && !discoveredBuilds.has(build)) throw fail6("desktop_build_drift", "Connection has not passed Desktop contract probes");
+  if (!BUILDS.includes(build) && !discoveredBuilds.has(build)) throw fail7("desktop_build_drift", "Connection has not passed Desktop contract probes");
   const originalPost = postbox.postMessage;
   const symbol = Symbol.for(API_SYMBOL);
-  if (globalThis[symbol] !== void 0) throw fail6("desktop_adapter_conflict", "Another Desktop adapter already owns this API");
+  if (globalThis[symbol] !== void 0) throw fail7("desktop_adapter_conflict", "Another Desktop adapter already owns this API");
   const instance = crypto.randomUUID();
   let alive = true, sequence = 0, eventBytes = 0, hookSequence = 0, reloadReason = null, unavailable = null;
   const hooks = /* @__PURE__ */ new Map(), pendingSubmits = /* @__PURE__ */ new Set(), events = [], waiters = /* @__PURE__ */ new Set(), listeners = /* @__PURE__ */ new Set(), cleanups = [], approvals = /* @__PURE__ */ new Map(), retiredApprovals = /* @__PURE__ */ new Map(), tickets = /* @__PURE__ */ new Map(), submissions = /* @__PURE__ */ new Map();
   const loadedThreads = createLoadedThreads(manager, (value) => emit(value), instance);
-  let navigation = null, navigationFailure = null, lastSelection = null, opening = false;
+  let navigation = null, navigationFailure = null, lastSelection = null;
   const check = () => {
-    if (!alive) throw fail6("adapter_deactivated", "Desktop adapter was deactivated");
-    if (unavailable) throw fail6("capability_unavailable", `${unavailable.code}: ${unavailable.message}`);
+    if (!alive) throw fail7("adapter_deactivated", "Desktop adapter was deactivated");
+    if (unavailable) throw fail7("capability_unavailable", `${unavailable.code}: ${unavailable.message}`);
     try {
       connection.check();
-      if (postbox.postMessage !== intercept) throw fail6("desktop_patch_drift", "Desktop request patch ownership changed; renderer reload required");
+      if (postbox.postMessage !== intercept) throw fail7("desktop_patch_drift", "Desktop request patch ownership changed; renderer reload required");
     } catch (error) {
       markUnavailable(error);
       throw error;
@@ -1416,22 +1448,22 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
       context.reportDiagnostic({ code: unavailable.code, message: unavailable.message });
     } catch {
     }
-    for (const pending of pendingSubmits) pending.controller.abort(fail6("capability_unavailable", unavailable.message));
-    threadConfiguration.cancel(fail6("capability_unavailable", unavailable.message));
+    for (const pending of pendingSubmits) pending.controller.abort(fail7("capability_unavailable", unavailable.message));
+    threadConfiguration.cancel(fail7("capability_unavailable", unavailable.message));
     emit({ type: "adapter.drift", ...unavailable });
   }
   function mapped(convert) {
     try {
       return convert();
     } catch (error) {
-      const drift = fail6("desktop_schema_drift", `Desktop response does not match the adapter schema: ${error.message}`);
+      const drift = fail7("desktop_schema_drift", `Desktop response does not match the adapter schema: ${error.message}`);
       markUnavailable(drift);
       throw drift;
     }
   }
   const nativeRequest = async (method, params, signal) => {
     check();
-    if (signal?.aborted) throw fail6("invocation_cancelled", "Request was cancelled before dispatch");
+    if (signal?.aborted) throw fail7("invocation_cancelled", "Request was cancelled before dispatch");
     const submissionId = method === "turn/start" ? crypto.randomUUID() : null;
     if (submissionId) {
       params = { ...params, clientUserMessageId: submissionId };
@@ -1440,10 +1472,10 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
     try {
       const result = await manager.sendRequest(method, params, { timeoutMs: 1e4 });
       check();
-      if (signal?.aborted) throw fail6("outcome_unknown", "Caller retired after dispatch; inspect the Desktop event stream before retrying a write");
+      if (signal?.aborted) throw fail7("outcome_unknown", "Caller retired after dispatch; inspect the Desktop event stream before retrying a write");
       return result;
     } catch (error) {
-      if (typeof error?.code === "number") throw fail6(
+      if (typeof error?.code === "number") throw fail7(
         "desktop_request_failed",
         `Desktop rejected ${method} (${error.code}): ${optionalText(error.message, 2048) ?? "Request failed"}`
       );
@@ -1456,13 +1488,13 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
     identity(id, "threadId");
     check();
     const thread = manager.getConversation(id);
-    if (!thread || thread.resumeState !== "resumed") throw fail6("desktop_thread_not_loaded", "Open this task in the current Desktop window before writing");
+    if (!thread || thread.resumeState !== "resumed") throw fail7("desktop_thread_not_loaded", "Open this task in the current Desktop window before writing");
     const role = manager.getStreamRole(id)?.role;
-    if (role !== "owner") throw fail6(role === "follower" ? "desktop_thread_follower" : "desktop_stream_unavailable", "Use the Desktop window that currently owns this task stream for writes");
+    if (role !== "owner") throw fail7(role === "follower" ? "desktop_thread_follower" : "desktop_stream_unavailable", "Use the Desktop window that currently owns this task stream for writes");
     return thread;
   };
   const owner = (ctx, capability) => {
-    if (!ctx || ctx.world !== "main" || typeof ctx.onDeactivate !== "function" || typeof ctx.pluginId !== "string" || !Number.isSafeInteger(ctx.generation)) throw fail6("invalid_owner", "Callback registration requires its live main-world RendererContext");
+    if (!ctx || ctx.world !== "main" || typeof ctx.onDeactivate !== "function" || typeof ctx.pluginId !== "string" || !Number.isSafeInteger(ctx.generation)) throw fail7("invalid_owner", "Callback registration requires its live main-world RendererContext");
     return { pluginId: ctx.pluginId, generation: ctx.generation, capability };
   };
   const threadReconfiguration = createThreadReconfiguration({
@@ -1487,7 +1519,7 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
     emit({ type: "selection.unavailable", ...navigationFailure });
   }
   function selection() {
-    if (!navigation || navigationFailure) throw fail6(navigationFailure?.code ?? "desktop_navigation_unavailable", navigationFailure?.message ?? "Desktop navigation is unavailable");
+    if (!navigation || navigationFailure) throw fail7(navigationFailure?.code ?? "desktop_navigation_unavailable", navigationFailure?.message ?? "Desktop navigation is unavailable");
     try {
       return navigation.snapshot();
     } catch (error) {
@@ -1507,32 +1539,7 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
       navigationUnavailable(error);
     }
   }
-  async function openThread(args, signal) {
-    fields2(args, ["threadId"]);
-    const threadId = identity(args.threadId, "threadId");
-    if (!/^[a-zA-Z0-9_-]+$/.test(threadId)) throw fail6("invalid_argument", "threadId must be a local task identity");
-    const before = selection();
-    if (signal?.aborted) throw fail6("invocation_cancelled", "Task navigation was cancelled before dispatch");
-    if (before.threadId === threadId) return { ...before, status: before.resumeState === "resumed" ? "opened" : "opening", alreadySelected: true };
-    if (opening) throw fail6("desktop_navigation_busy", "Another task open request is still being validated");
-    opening = true;
-    try {
-      const stamp = navigation.stamp();
-      const cached = manager.getConversation(threadId);
-      if (cached?.id !== threadId || cached.hostId != null && cached.hostId !== "local") {
-        const metadata = await nativeRequest("thread/read", { threadId, includeTurns: false }, signal);
-        if (metadata?.thread?.id !== threadId) throw fail6("desktop_navigation_unavailable", "Desktop did not confirm the requested task identity");
-      }
-      selection();
-      if (navigation.stamp() !== stamp) throw fail6("desktop_navigation_superseded", "The user navigated while this task was being checked");
-      navigation.open(threadId);
-      const current = selection();
-      if (current.threadId !== threadId) throw fail6("desktop_navigation_superseded", "Desktop selected a different task during navigation");
-      return { ...current, status: current.resumeState === "resumed" ? "opened" : "opening", alreadySelected: false };
-    } finally {
-      opening = false;
-    }
-  }
+  const openThread = createThreadOpener({ manager, selection, navigation: () => navigation, request: nativeRequest });
   const orderedHooks = () => [...hooks.values()].sort((a, b) => a.priority - b.priority || (a.pluginId < b.pluginId ? -1 : a.pluginId > b.pluginId ? 1 : 0) || a.order - b.order);
   const hookInfo = (hook) => ({ pluginId: hook.pluginId, generation: hook.generation, id: hook.name, priority: hook.priority, timeoutMs: hook.timeoutMs, enabled: hook.enabled, calls: hook.calls, failures: hook.failures, lastDurationMs: hook.lastDurationMs, totalDurationMs: hook.totalDurationMs, lastFailure: hook.lastFailure && { ...hook.lastFailure } });
   const listInterceptors = (args) => {
@@ -1545,11 +1552,11 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
     fields2(options, ["id", "priority", "timeoutMs", "enabled"]);
     const principal = owner(ctx, CAPS.submit);
     const name = str(options.id, "interceptor id", 128), key = `${principal.pluginId}:${principal.generation}:${name}`;
-    if (hooks.has(key)) throw fail6("duplicate_interceptor", "Interceptor is already registered");
-    if (hooks.size >= 32 || typeof handler !== "function") throw fail6("interceptor_limit", "Expected a function and at most 32 interceptors");
+    if (hooks.has(key)) throw fail7("duplicate_interceptor", "Interceptor is already registered");
+    if (hooks.size >= 32 || typeof handler !== "function") throw fail7("interceptor_limit", "Expected a function and at most 32 interceptors");
     const priority = options.priority ?? 0;
-    if (!Number.isSafeInteger(priority) || Math.abs(priority) > 1e3) throw fail6("invalid_argument", "priority must be -1000..1000");
-    if (options.enabled != null && typeof options.enabled !== "boolean") throw fail6("invalid_argument", "enabled must be a boolean");
+    if (!Number.isSafeInteger(priority) || Math.abs(priority) > 1e3) throw fail7("invalid_argument", "priority must be -1000..1000");
+    if (options.enabled != null && typeof options.enabled !== "boolean") throw fail7("invalid_argument", "enabled must be a boolean");
     const hook = { ...principal, key, name, handler, priority, order: ++hookSequence, timeoutMs: bounded(options.timeoutMs, 1e3, 2e3), active: true, enabled: options.enabled !== false, calls: 0, failures: 0, totalDurationMs: 0, lastDurationMs: null, lastFailure: null };
     hooks.set(key, hook);
     let release;
@@ -1558,7 +1565,7 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
       hook.active = false;
       hooks.delete(key);
       release?.();
-      for (const pending of pendingSubmits) if (pending.hooks.includes(hook)) pending.controller.abort(fail6("interceptor_deactivated", `${hook.pluginId}: interceptor was deactivated`));
+      for (const pending of pendingSubmits) if (pending.hooks.includes(hook)) pending.controller.abort(fail7("interceptor_deactivated", `${hook.pluginId}: interceptor was deactivated`));
     };
     try {
       release = ctx.onDeactivate(dispose2);
@@ -1569,23 +1576,23 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
     return Object.freeze(Object.assign(dispose2, {
       setEnabled(enabled) {
         check();
-        if (!hook.active) throw fail6("interceptor_retired", "Interceptor has retired");
-        if (typeof enabled !== "boolean") throw fail6("invalid_argument", "enabled must be a boolean");
+        if (!hook.active) throw fail7("interceptor_retired", "Interceptor has retired");
+        if (typeof enabled !== "boolean") throw fail7("invalid_argument", "enabled must be a boolean");
         hook.enabled = enabled;
         if (!enabled) {
-          for (const pending of pendingSubmits) if (pending.hooks.includes(hook)) pending.controller.abort(Object.assign(fail6("interceptor_disabled", "Interceptor was disabled before dispatch"), { pluginId: hook.pluginId, interceptorId: hook.name }));
+          for (const pending of pendingSubmits) if (pending.hooks.includes(hook)) pending.controller.abort(Object.assign(fail7("interceptor_disabled", "Interceptor was disabled before dispatch"), { pluginId: hook.pluginId, interceptorId: hook.name }));
         }
       },
       inspect() {
         check();
-        if (!hook.active) throw fail6("interceptor_retired", "Interceptor has retired");
+        if (!hook.active) throw fail7("interceptor_retired", "Interceptor has retired");
         return hookInfo(hook);
       }
     }));
   }
   function intercept(message, ...rest) {
     if (alive && message?.type === "mcp-request" && message.hostId === "local" && ["turn/start", "turn/steer"].includes(message.request?.method) && threadReconfiguration.busy(message.request.params?.threadId)) {
-      client.onError(message.request.id, fail6("desktop_thread_busy", "This task is applying a provider configuration"));
+      client.onError(message.request.id, fail7("desktop_thread_busy", "This task is applying a provider configuration"));
       return;
     }
     if (alive && message?.type === "mcp-request" && message.hostId === "local" && ["thread/start", "thread/resume"].includes(message.request?.method)) return threadConfiguration.intercept(message, (next) => originalPost.call(this, next, ...rest));
@@ -1596,7 +1603,7 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
     if (!alive || message?.type !== "mcp-request" || message.hostId !== "local" || message.request?.method !== "turn/start") return originalPost.call(this, message, ...rest);
     const submission = submissions.get(message.request.params?.clientUserMessageId);
     if (submission?.signal?.aborted || pendingSubmits.size >= 16) {
-      client.onError(message.request.id, fail6("submission_rejected", submission?.signal?.aborted ? "Codlet submission was cancelled before dispatch" : "Codlet has 16 pending submission interceptors"));
+      client.onError(message.request.id, fail7("submission_rejected", submission?.signal?.aborted ? "Codlet submission was cancelled before dispatch" : "Codlet has 16 pending submission interceptors"));
       return;
     }
     const selected = orderedHooks().filter((hook) => hook.enabled);
@@ -1604,14 +1611,14 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
     const receiver = this;
     const pending = { hooks: selected, controller: new AbortController() };
     pendingSubmits.add(pending);
-    const cancelSubmission = () => pending.controller.abort(fail6("submission_cancelled", "The calling plugin retired before dispatch"));
+    const cancelSubmission = () => pending.controller.abort(fail7("submission_cancelled", "The calling plugin retired before dispatch"));
     submission?.signal?.addEventListener("abort", cancelSubmission, { once: true });
     runInterceptors(message, pending).then((next) => {
       check();
-      if (pending.controller.signal.aborted || !client.requestPromises.has(message.request.id)) throw fail6("submission_retired", "Desktop submission retired before dispatch");
+      if (pending.controller.signal.aborted || !client.requestPromises.has(message.request.id)) throw fail7("submission_retired", "Desktop submission retired before dispatch");
       originalPost.call(receiver, next, ...rest);
     }).catch((error) => {
-      if (client.requestPromises.has(message.request.id)) client.onError(message.request.id, fail6(error.code ?? "interceptor_failed", `Codlet: ${error.message ?? String(error)}`));
+      if (client.requestPromises.has(message.request.id)) client.onError(message.request.id, fail7(error.code ?? "interceptor_failed", `Codlet: ${error.message ?? String(error)}`));
       emit({ type: "submission.blocked", threadId: optionalText(message.request.params?.threadId, 256), pluginId: error.pluginId ?? null, message: optionalText(error.message) });
     }).finally(() => {
       pendingSubmits.delete(pending);
@@ -1622,18 +1629,18 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
   async function runInterceptors(message, pending) {
     check();
     const params = obj(message.request.params);
-    if (!Array.isArray(params.input)) throw fail6("desktop_input_drift", "Desktop turn input is not an array");
+    if (!Array.isArray(params.input)) throw fail7("desktop_input_drift", "Desktop turn input is not an array");
     const next = { ...message, request: { ...message.request, params: { ...params, input: copy(params.input), additionalContext: { ...params.additionalContext ?? {} } } } };
     const deadline = Math.min(Date.now() + 5e3, Number.isFinite(message.expiresAtMs) ? message.expiresAtMs : Infinity);
     for (const hook of pending.hooks) {
       let started = null;
       try {
         check();
-        if (!hook.active || pending.controller.signal.aborted) throw pending.controller.signal.reason ?? fail6("interceptor_deactivated", "Interceptor was deactivated");
+        if (!hook.active || pending.controller.signal.aborted) throw pending.controller.signal.reason ?? fail7("interceptor_deactivated", "Interceptor was deactivated");
         const budget = Math.min(hook.timeoutMs, deadline - Date.now());
-        if (budget < 1) throw fail6("interceptor_timeout", "Submission interceptor deadline expired");
+        if (budget < 1) throw fail7("interceptor_timeout", "Submission interceptor deadline expired");
         const texts = next.request.params.input.filter((part) => part.type === "text").map((part) => {
-          if (typeof part.text !== "string" || part.text.length > 524288) throw fail6("desktop_input_drift", "Desktop text input is invalid or too large");
+          if (typeof part.text !== "string" || part.text.length > 524288) throw fail7("desktop_input_drift", "Desktop text input is invalid or too large");
           return part.text;
         });
         const draft = freeze2({ threadId: identity(params.threadId, "threadId"), text: texts.join("\n"), contextSources: Object.keys(next.request.params.additionalContext), source: "turn.start" });
@@ -1642,15 +1649,15 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
         started = Date.now();
         hook.calls += 1;
         const result = await new Promise((resolve, reject) => {
-          onAbort = () => reject(signal.reason ?? fail6("interceptor_deactivated", "Interceptor was deactivated"));
+          onAbort = () => reject(signal.reason ?? fail7("interceptor_deactivated", "Interceptor was deactivated"));
           signal.addEventListener("abort", onAbort, { once: true });
-          timer = setTimeout(() => reject(fail6("interceptor_timeout", `Interceptor exceeded ${budget} ms`)), budget);
+          timer = setTimeout(() => reject(fail7("interceptor_timeout", `Interceptor exceeded ${budget} ms`)), budget);
           Promise.resolve().then(() => hook.handler(draft, Object.freeze({ signal }))).then(resolve, reject);
         }).finally(() => {
           clearTimeout(timer);
           signal.removeEventListener("abort", onAbort);
         });
-        if (!hook.active || signal.aborted) throw signal.reason ?? fail6("interceptor_deactivated", "Interceptor was deactivated");
+        if (!hook.active || signal.aborted) throw signal.reason ?? fail7("interceptor_deactivated", "Interceptor was deactivated");
         if (result == null) continue;
         fields2(result, ["text", "context"]);
         if (result.text !== void 0) {
@@ -1660,22 +1667,22 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
           next.request.params.input.splice(index < 0 ? 0 : index, 0, { type: "text", text: text3, text_elements: [] });
         }
         if (result.context !== void 0) {
-          if (!Array.isArray(result.context) || result.context.length > 16) throw fail6("invalid_argument", "context must have at most 16 entries");
+          if (!Array.isArray(result.context) || result.context.length > 16) throw fail7("invalid_argument", "context must have at most 16 entries");
           result.context.forEach((entry, index) => {
             fields2(entry, ["text", "kind"]);
             const kind = entry.kind ?? "untrusted";
-            if (kind !== "untrusted" && kind !== "application") throw fail6("invalid_argument", "unknown context kind");
+            if (kind !== "untrusted" && kind !== "application") throw fail7("invalid_argument", "unknown context kind");
             next.request.params.additionalContext[`codlet:${hook.key}:${index}`] = { kind, value: str(entry.text, "context text", 65536) };
           });
         }
-        if (JSON.stringify(next.request.params).length > 524288) throw fail6("submission_too_large", "Transformed submission exceeds the adapter limit");
+        if (JSON.stringify(next.request.params).length > 524288) throw fail7("submission_too_large", "Transformed submission exceeds the adapter limit");
       } catch (error) {
         if (started !== null) {
           hook.failures += 1;
           hook.lastFailure = { code: ["interceptor_timeout", "interceptor_disabled", "interceptor_deactivated", "adapter_deactivated", "submission_cancelled", "invocation_cancelled", "invalid_argument", "desktop_input_drift", "submission_too_large", "desktop_build_drift", "desktop_connection_replaced", "capability_unavailable"].includes(error.code) ? error.code : "interceptor_failed", at: Date.now() };
         }
         pending.controller.abort(error);
-        throw Object.assign(fail6(error.code ?? "interceptor_failed", `${error.pluginId ?? hook.pluginId}/${error.interceptorId ?? hook.name}: ${error.message ?? String(error)}`), { pluginId: error.pluginId ?? hook.pluginId });
+        throw Object.assign(fail7(error.code ?? "interceptor_failed", `${error.pluginId ?? hook.pluginId}/${error.interceptorId ?? hook.name}: ${error.message ?? String(error)}`), { pluginId: error.pluginId ?? hook.pluginId });
       } finally {
         if (started !== null) {
           hook.lastDurationMs = Math.max(0, Date.now() - started);
@@ -1699,14 +1706,14 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
         fields2(args, ["threadId"]);
         const id = identity(args.threadId, "threadId");
         const current = manager.getConversation(id);
-        if (!current || current.resumeState !== "resumed") throw fail6("desktop_thread_not_loaded", "Task configuration requires a loaded task");
+        if (!current || current.resumeState !== "resumed") throw fail7("desktop_thread_not_loaded", "Task configuration requires a loaded task");
         const result = await nativeRequest("thread/read", { threadId: id, includeTurns: false }, signal);
-        if (manager.getConversation(id) !== current || current.resumeState !== "resumed") throw fail6("desktop_configuration_drift", "Task changed while reading configuration");
+        if (manager.getConversation(id) !== current || current.resumeState !== "resumed") throw fail7("desktop_configuration_drift", "Task changed while reading configuration");
         return { threadId: id, modelProvider: optionalText(result.thread?.modelProvider, 128), model: optionalText(current.latestModel, 256) };
       }
       case "threads.list": {
         fields2(args, ["cursor", "limit", "archived"]);
-        if (args.archived !== void 0 && typeof args.archived !== "boolean") throw fail6("invalid_argument", "archived must be boolean");
+        if (args.archived !== void 0 && typeof args.archived !== "boolean") throw fail7("invalid_argument", "archived must be boolean");
         const result = await nativeRequest("thread/list", { ...pagination(), archived: args.archived ?? false, sortKey: "updated_at" }, signal);
         return mapped(() => ({ threads: result.data.map(threadDto), cursor: optionalText(result.nextCursor, 4096) }));
       }
@@ -1750,7 +1757,7 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
         return { requests: [...approvals.values()].filter((entry) => entry.dto.threadId === args.threadId).map((entry) => copy(entry.dto)) };
       }
       default:
-        throw fail6("method_not_found", "Unknown Desktop read method");
+        throw fail7("method_not_found", "Unknown Desktop read method");
     }
   };
   const write = async (method, args = {}, signal) => {
@@ -1774,7 +1781,7 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
       await nativeRequest("turn/interrupt", { threadId: args.threadId, turnId: identity(args.turnId, "turnId") }, signal);
       return { threadId: args.threadId, turnId: args.turnId, status: "submitted" };
     }
-    throw fail6("method_not_found", "Unknown Desktop write method");
+    throw fail7("method_not_found", "Unknown Desktop write method");
   };
   function approvalDto(threadId, request, token) {
     const params = obj(request.params);
@@ -1821,7 +1828,7 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
   }
   function resolveApproval(params) {
     const threadId = identity(params.threadId, "threadId");
-    if (!(typeof params.requestId === "string" || Number.isSafeInteger(params.requestId))) throw fail6("desktop_event_schema_drift", "Invalid server-request resolution identity");
+    if (!(typeof params.requestId === "string" || Number.isSafeInteger(params.requestId))) throw fail7("desktop_event_schema_drift", "Invalid server-request resolution identity");
     const key = `${threadId}:${typeof params.requestId}:${params.requestId}`;
     const entry = approvals.get(key) ?? retiredApprovals.get(key);
     if (entry && !entry.resolved) {
@@ -1834,30 +1841,30 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
     fields2(args, ["token", "decision", "answers"]);
     str(args.token, "approval token", 128);
     const entry = [...approvals.values()].find((entry2) => entry2.dto.token === args.token);
-    if (!entry || entry.submitted) throw fail6("approval_retired", "Approval token is no longer pending");
+    if (!entry || entry.submitted) throw fail7("approval_retired", "Approval token is no longer pending");
     const thread = loadedThread(entry.dto.threadId);
     const request = thread.requests?.find((request2) => request2.id === entry.id && request2.method === entry.method);
     if (!request) {
       syncApprovals(entry.dto.threadId);
-      throw fail6("approval_retired", "Desktop already resolved this request");
+      throw fail7("approval_retired", "Desktop already resolved this request");
     }
-    if (signal?.aborted) throw fail6("invocation_cancelled", "Approval reply was cancelled before dispatch");
+    if (signal?.aborted) throw fail7("invocation_cancelled", "Approval reply was cancelled before dispatch");
     const { kind, threadId } = entry.dto;
     if (kind === "userInput") {
-      if (args.decision !== void 0) throw fail6("invalid_argument", "User input requires answers");
+      if (args.decision !== void 0) throw fail7("invalid_argument", "User input requires answers");
       obj(args.answers);
       const answers = {};
       for (const [id, answer] of Object.entries(args.answers)) {
-        if (!entry.dto.questions.some((question) => question.id === id) || !Array.isArray(answer) || answer.length > 32 || answer.some((value) => typeof value !== "string" || value.length > 65536)) throw fail6("invalid_argument", "Invalid answer");
+        if (!entry.dto.questions.some((question) => question.id === id) || !Array.isArray(answer) || answer.length > 32 || answer.some((value) => typeof value !== "string" || value.length > 65536)) throw fail7("invalid_argument", "Invalid answer");
         answers[id] = { answers: [...answer] };
       }
       entry.submitted = true;
       manager.replyWithUserInputResponse(threadId, entry.id, { answers });
     } else {
-      if (!["approve", "decline"].includes(args.decision) || args.answers !== void 0) throw fail6("invalid_argument", "Expected approve or decline");
-      if (kind === "permissions" && args.decision === "approve" && !approvalDto(threadId, request, entry.dto.token).canApprove) throw fail6("unsupported_permissions", "This request includes permission paths that require the Desktop approval UI");
+      if (!["approve", "decline"].includes(args.decision) || args.answers !== void 0) throw fail7("invalid_argument", "Expected approve or decline");
+      if (kind === "permissions" && args.decision === "approve" && !approvalDto(threadId, request, entry.dto.token).canApprove) throw fail7("unsupported_permissions", "This request includes permission paths that require the Desktop approval UI");
       const choices = request.params.availableDecisions;
-      if (kind === "command" && args.decision === "approve" && Array.isArray(choices) && !choices.includes("accept")) throw fail6("approval_decision_unavailable", "Desktop did not offer a one-time approval for this request");
+      if (kind === "command" && args.decision === "approve" && Array.isArray(choices) && !choices.includes("accept")) throw fail7("approval_decision_unavailable", "Desktop did not offer a one-time approval for this request");
       const nativeDecision = args.decision === "approve" ? "accept" : Array.isArray(choices) && !choices.includes("decline") && choices.includes("cancel") ? "cancel" : "decline";
       entry.submitted = true;
       if (kind === "command") manager.replyWithCommandExecutionApprovalDecision(threadId, entry.id, nativeDecision);
@@ -1872,16 +1879,16 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
     if (args.cursor != null) {
       str(args.cursor, "cursor", 128);
       const prefix = `${instance}:`;
-      if (!args.cursor.startsWith(prefix) || !/^\d+$/.test(args.cursor.slice(prefix.length))) throw fail6("event_cursor_retired", "Event cursor belongs to another adapter instance");
+      if (!args.cursor.startsWith(prefix) || !/^\d+$/.test(args.cursor.slice(prefix.length))) throw fail7("event_cursor_retired", "Event cursor belongs to another adapter instance");
       after = Number(args.cursor.slice(prefix.length));
-      if (!Number.isSafeInteger(after) || after < 0 || after > sequence) throw fail6("invalid_argument", "Invalid event cursor");
+      if (!Number.isSafeInteger(after) || after < 0 || after > sequence) throw fail7("invalid_argument", "Invalid event cursor");
     }
     const earliest = events.length ? Number(events[0].value.cursor.split(":").at(-1)) : sequence + 1;
     const values = events.filter((entry) => Number(entry.value.cursor.split(":").at(-1)) > after && (args.threadId == null || (entry.value.threadId ?? entry.value.request?.threadId ?? entry.value.thread?.id) === args.threadId)).slice(0, limit).map((entry) => entry.value);
     return { events: copy(values), cursor: values.at(-1)?.cursor ?? `${instance}:${sequence}`, gap: after < earliest - 1 };
   }
   async function readEvents(args = {}, signal) {
-    if (!alive) throw fail6("adapter_deactivated", "Desktop adapter was deactivated");
+    if (!alive) throw fail7("adapter_deactivated", "Desktop adapter was deactivated");
     if (!unavailable) {
       try {
         check();
@@ -1893,8 +1900,8 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
     const batch = eventBatch(args);
     if (unavailable || args.waitMs === void 0 || args.waitMs === 0 || batch.events.length || batch.gap) return batch;
     const waitMs = bounded(args.waitMs, 1e3, 1e4);
-    if (waiters.size >= 16) throw fail6("event_wait_limit", "At most 16 event waits are supported");
-    if (signal?.aborted) throw fail6("invocation_cancelled", "Event wait was cancelled");
+    if (waiters.size >= 16) throw fail7("event_wait_limit", "At most 16 event waits are supported");
+    if (signal?.aborted) throw fail7("invocation_cancelled", "Event wait was cancelled");
     await new Promise((resolve, reject) => {
       let timer;
       const finish = (error) => {
@@ -1903,19 +1910,19 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
         signal?.removeEventListener("abort", abort);
         error ? reject(error) : resolve();
       };
-      const wake = () => alive ? finish() : finish(fail6("adapter_deactivated", "Desktop adapter was deactivated"));
-      const abort = () => finish(fail6("invocation_cancelled", "Event wait was cancelled"));
+      const wake = () => alive ? finish() : finish(fail7("adapter_deactivated", "Desktop adapter was deactivated"));
+      const abort = () => finish(fail7("invocation_cancelled", "Event wait was cancelled"));
       waiters.add(wake);
       signal?.addEventListener("abort", abort, { once: true });
       timer = setTimeout(() => finish(), waitMs);
     });
-    if (!alive) throw fail6("adapter_deactivated", "Desktop adapter was deactivated");
+    if (!alive) throw fail7("adapter_deactivated", "Desktop adapter was deactivated");
     return eventBatch({ ...args, cursor: args.cursor ?? batch.cursor });
   }
   function onEvent(ctx, handler) {
     check();
     owner(ctx, CAPS.events);
-    if (typeof handler !== "function" || listeners.size >= 64) throw fail6("event_listener_limit", "Expected a function and at most 64 listeners");
+    if (typeof handler !== "function" || listeners.size >= 64) throw fail7("event_listener_limit", "Expected a function and at most 64 listeners");
     listeners.add(handler);
     let release;
     const dispose2 = () => {
@@ -1942,15 +1949,15 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
         emit({ type: type === "item/agentMessage/delta" ? "item.text.delta" : "item.output.delta", threadId: identity(p.threadId, "threadId"), turnId: identity(p.turnId, "turnId"), itemId: identity(p.itemId, "itemId"), delta: str(p.delta, "delta", 262144) });
       } else if (type === "serverRequest/resolved") resolveApproval(p);
     } catch (error) {
-      markUnavailable(fail6(error.code ?? "desktop_event_schema_drift", error.message));
+      markUnavailable(fail7(error.code ?? "desktop_event_schema_drift", error.message));
     }
   }
   function issueTicket(capability, invocation) {
     check();
     const caller = invocation.caller;
-    if (!caller || typeof caller.pluginId !== "string" || !Number.isSafeInteger(caller.generation)) throw fail6("invalid_owner", "API access requires a Core-authenticated caller");
+    if (!caller || typeof caller.pluginId !== "string" || !Number.isSafeInteger(caller.generation)) throw fail7("invalid_owner", "API access requires a Core-authenticated caller");
     for (const [token2, ticket] of tickets) if (ticket.expires < Date.now()) tickets.delete(token2);
-    if (tickets.size >= 64) throw fail6("api_ticket_limit", "At most 64 unclaimed API tickets are supported");
+    if (tickets.size >= 64) throw fail7("api_ticket_limit", "At most 64 unclaimed API tickets are supported");
     const token = crypto.randomUUID();
     tickets.set(token, { capability, pluginId: caller.pluginId, generation: caller.generation, expires: Date.now() + 15e3 });
     return { symbol: API_SYMBOL, api: 1, ticket: token };
@@ -1959,7 +1966,7 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
     check();
     owner(ctx, capability);
     const ticket = tickets.get(token);
-    if (!ticket || ticket.expires < Date.now() || ticket.pluginId !== ctx.pluginId || ticket.generation !== ctx.generation || ticket.capability !== capability) throw fail6("api_ticket_retired", "API ticket is expired, already used, or belongs to another plugin/capability");
+    if (!ticket || ticket.expires < Date.now() || ticket.pluginId !== ctx.pluginId || ticket.generation !== ctx.generation || ticket.capability !== capability) throw fail7("api_ticket_retired", "API ticket is expired, already used, or belongs to another plugin/capability");
     tickets.delete(token);
   }
   const publicApi = Object.freeze({
@@ -1986,7 +1993,7 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
     alive = false;
     const restoration = threadConfiguration.dispose();
     if (restoration?.reloadRequired) reloadReason ??= restoration.reason;
-    for (const pending of pendingSubmits) pending.controller.abort(fail6("adapter_deactivated", "Desktop adapter was deactivated"));
+    for (const pending of pendingSubmits) pending.controller.abort(fail7("adapter_deactivated", "Desktop adapter was deactivated"));
     for (const hook of hooks.values()) hook.active = false;
     hooks.clear();
     listeners.clear();
@@ -2021,7 +2028,7 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
         loadedThreads.refresh(threadId);
         refreshSelection(threadId);
       } catch (error) {
-        markUnavailable(fail6(error.code ?? "desktop_approval_schema_drift", error.message));
+        markUnavailable(fail7(error.code ?? "desktop_approval_schema_drift", error.message));
       }
     }));
     if (typeof manager.addConversationRemovedCallback === "function") cleanups.push(manager.addConversationRemovedCallback((threadId) => {
@@ -2033,7 +2040,7 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
       }
     }));
     try {
-      if (!build.navigation) throw fail6("desktop_navigation_unavailable", "Task navigation has not been verified for this Desktop build");
+      if (!build.navigation) throw fail7("desktop_navigation_unavailable", "Task navigation has not been verified for this Desktop build");
       navigation = createNavigation(manager, () => refreshSelection(), connection.locateNavigator);
       cleanups.push(() => navigation.dispose());
     } catch (error) {
@@ -2041,7 +2048,7 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
     }
     cleanups.push(context.onDeactivate(dispose));
     const inspect = () => {
-      if (!alive) throw fail6("adapter_deactivated", "Desktop adapter was deactivated");
+      if (!alive) throw fail7("adapter_deactivated", "Desktop adapter was deactivated");
       try {
         check();
       } catch {
@@ -2070,7 +2077,7 @@ function startAdapter(context, probe = (signal) => probeDesktop(void 0, 3e4, sig
   const controller = new AbortController(), waits = /* @__PURE__ */ new Set();
   for (const capability of [CAPS.submit, CAPS.read, CAPS.write, CAPS.events]) context.rpc.unavailable(capability, "Desktop adapter is waiting for the existing app-host services");
   const status = () => {
-    if (!alive) throw fail6("adapter_deactivated", "Desktop adapter was deactivated");
+    if (!alive) throw fail7("adapter_deactivated", "Desktop adapter was deactivated");
     if (inner) return inner.probe();
     const detected = globalThis.electronBridge?.getSentryInitOptions?.();
     return { api: 1, initializing: !settled, available: false, unavailable: failure ?? { code: "desktop_initializing", message: "Waiting for the existing Desktop app-host services" }, build: { appVersion: optionalText(detected?.appVersion), buildNumber: optionalText(String(detected?.buildNumber ?? "")), appServerVersion: null }, connection: null, transport: null, inputRewrite: true, contextInjection: true, presentationTransform: false, historyMutation: false, hooks: 0, pendingSubmits: 0, navigation: { available: false, unavailable: failure } };
@@ -2080,8 +2087,8 @@ function startAdapter(context, probe = (signal) => probeDesktop(void 0, 3e4, sig
     fields2(args ?? {}, ["timeoutMs"]);
     if (settled) return status();
     const timeout = bounded(args?.timeoutMs, 1e3, 1e4);
-    if (waits.size >= 16) throw fail6("readiness_wait_limit", "At most 16 readiness waits are supported");
-    if (invocation.signal.aborted) throw fail6("invocation_cancelled", "Readiness wait was cancelled");
+    if (waits.size >= 16) throw fail7("readiness_wait_limit", "At most 16 readiness waits are supported");
+    if (invocation.signal.aborted) throw fail7("invocation_cancelled", "Readiness wait was cancelled");
     await new Promise((resolve, reject) => {
       let timer;
       const done = (error) => {
@@ -2090,8 +2097,8 @@ function startAdapter(context, probe = (signal) => probeDesktop(void 0, 3e4, sig
         invocation.signal.removeEventListener("abort", abort);
         error ? reject(error) : resolve();
       };
-      const wake = () => alive ? done() : done(fail6("adapter_deactivated", "Desktop adapter was deactivated"));
-      const abort = () => done(fail6("invocation_cancelled", "Readiness wait was cancelled"));
+      const wake = () => alive ? done() : done(fail7("adapter_deactivated", "Desktop adapter was deactivated"));
+      const abort = () => done(fail7("invocation_cancelled", "Readiness wait was cancelled"));
       waits.add(wake);
       invocation.signal.addEventListener("abort", abort, { once: true });
       timer = setTimeout(() => done(), timeout);
@@ -2130,8 +2137,8 @@ function startAdapter(context, probe = (signal) => probeDesktop(void 0, 3e4, sig
 }
 var active;
 function activate(context) {
-  if (context.world !== "main") throw fail6("main_world_required", "Codex Desktop Adapter requires the managed main-world ABI");
-  if (typeof context.rpc.unavailable !== "function" || typeof context.reportDiagnostic !== "function") throw fail6("renderer_abi_update_required", "Update the Codlet managed renderer runtime before loading this adapter");
+  if (context.world !== "main") throw fail7("main_world_required", "Codex Desktop Adapter requires the managed main-world ABI");
+  if (typeof context.rpc.unavailable !== "function" || typeof context.reportDiagnostic !== "function") throw fail7("renderer_abi_update_required", "Update the Codlet managed renderer runtime before loading this adapter");
   desktopDocument();
   active = startAdapter(context);
 }
