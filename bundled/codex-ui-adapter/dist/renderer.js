@@ -300,8 +300,8 @@ var COMPOSER_EVENT = "codlet:composer-action";
 var fail = (code, message) => Object.assign(new Error(message), { code });
 var TOKEN = /^[a-zA-Z0-9-]{16,80}$/;
 var PLACEMENT = /^[a-zA-Z0-9_-]{1,40}$/;
-function owner(args, invocation) {
-  const caller = invocation?.caller;
+function owner(args, invocation2) {
+  const caller = invocation2?.caller;
   if (!caller || typeof caller.pluginId !== "string" || !Number.isSafeInteger(caller.generation))
     throw fail("invalid_owner", "Composer action registration requires a Core-authenticated caller");
   if (!args || Object.keys(args).some((key2) => !["label", "token"].includes(key2)) || typeof args.label !== "string" || !args.label.trim() || args.label.length > 48 || typeof args.token !== "string" || !TOKEN.test(args.token))
@@ -432,9 +432,9 @@ function createComposerActions(context, host, profile) {
     attributeFilter: [.../* @__PURE__ */ new Set(["data-composer-placement", "role", profile.rootAttribute, profile.scrollAreaAttribute])]
   });
   return {
-    register(args, invocation) {
-      if (!alive || invocation?.signal?.aborted) throw fail("ui_retired", "Composer action provider retired");
-      const { caller, lease } = owner(args, invocation);
+    register(args, invocation2) {
+      if (!alive || invocation2?.signal?.aborted) throw fail("ui_retired", "Composer action provider retired");
+      const { caller, lease } = owner(args, invocation2);
       if (!supported) {
         lease.remove();
         return { api: 1, token: args.token, available: false, reason: "unsupported_build" };
@@ -455,8 +455,8 @@ function createComposerActions(context, host, profile) {
       reconcile();
       return { api: 1, token: entry.token, available: true, mounted: [...instances.values()].filter((record) => record.entry === entry).length };
     },
-    unregister(args, invocation) {
-      const caller = invocation?.caller;
+    unregister(args, invocation2) {
+      const caller = invocation2?.caller;
       if (!caller || typeof caller.pluginId !== "string" || !Number.isSafeInteger(caller.generation) || !args || Object.keys(args).some((key2) => key2 !== "token") || typeof args.token !== "string" || !TOKEN.test(args.token))
         throw fail("invalid_argument", "Invalid composer action removal");
       const entry = entries.get(key(caller, args.token));
@@ -465,8 +465,8 @@ function createComposerActions(context, host, profile) {
       reconcile();
       return { removed: true };
     },
-    status(args, invocation) {
-      const caller = invocation?.caller;
+    status(args, invocation2) {
+      const caller = invocation2?.caller;
       if (!caller || typeof caller.pluginId !== "string" || !Number.isSafeInteger(caller.generation) || !args || Object.keys(args).some((key2) => key2 !== "token") || typeof args.token !== "string" || !TOKEN.test(args.token))
         throw fail("invalid_argument", "Invalid composer action status");
       const entry = entries.get(key(caller, args.token));
@@ -484,8 +484,8 @@ function createComposerActions(context, host, profile) {
     }
   };
 }
-function composerLease(args, invocation) {
-  return owner(args, invocation);
+function composerLease(args, invocation2) {
+  return owner(args, invocation2);
 }
 
 // src/native-navigation.js
@@ -593,6 +593,18 @@ function currentAncestry(fiber, current3) {
         candidate = candidate.sibling;
       }
     }
+  }
+  return null;
+}
+function currentElementAncestry(element, root = document.getElementById("root")) {
+  const key2 = root && Object.keys(root).find((key3) => key3.startsWith("__reactContainer$"));
+  const container = key2 && root[key2], current3 = container?.stateNode?.current ?? container;
+  const attachedKey = element && Object.keys(element).find((key3) => key3.startsWith("__reactFiber$"));
+  const attached = attachedKey && element[attachedKey];
+  if (!current3) return null;
+  for (const fiber of [attached, attached?.alternate]) if (fiber?.stateNode === element) {
+    const chain = currentAncestry(fiber, current3);
+    if (chain) return [...chain].reverse();
   }
   return null;
 }
@@ -806,10 +818,10 @@ function binop(name, prec) {
 var beforeExpr = { beforeExpr: true };
 var startsExpr = { startsExpr: true };
 var keywords = {};
-function kw(name, options) {
-  if (options === void 0) options = {};
-  options.keyword = name;
-  return keywords[name] = new TokenType(name, options);
+function kw(name, options3) {
+  if (options3 === void 0) options3 = {};
+  options3.keyword = name;
+  return keywords[name] = new TokenType(name, options3);
 }
 var types$1 = {
   num: new TokenType("num", startsExpr),
@@ -1066,39 +1078,39 @@ var defaultOptions = {
 };
 var warnedAboutEcmaVersion = false;
 function getOptions(opts) {
-  var options = {};
+  var options3 = {};
   for (var opt in defaultOptions) {
-    options[opt] = opts && hasOwn(opts, opt) ? opts[opt] : defaultOptions[opt];
+    options3[opt] = opts && hasOwn(opts, opt) ? opts[opt] : defaultOptions[opt];
   }
-  if (options.ecmaVersion === "latest") {
-    options.ecmaVersion = 1e8;
-  } else if (options.ecmaVersion == null) {
+  if (options3.ecmaVersion === "latest") {
+    options3.ecmaVersion = 1e8;
+  } else if (options3.ecmaVersion == null) {
     if (!warnedAboutEcmaVersion && typeof console === "object" && console.warn) {
       warnedAboutEcmaVersion = true;
       console.warn("Since Acorn 8.0.0, options.ecmaVersion is required.\nDefaulting to 2020, but this will stop working in the future.");
     }
-    options.ecmaVersion = 11;
-  } else if (options.ecmaVersion >= 2015) {
-    options.ecmaVersion -= 2009;
+    options3.ecmaVersion = 11;
+  } else if (options3.ecmaVersion >= 2015) {
+    options3.ecmaVersion -= 2009;
   }
-  if (options.allowReserved == null) {
-    options.allowReserved = options.ecmaVersion < 5;
+  if (options3.allowReserved == null) {
+    options3.allowReserved = options3.ecmaVersion < 5;
   }
   if (!opts || opts.allowHashBang == null) {
-    options.allowHashBang = options.ecmaVersion >= 14;
+    options3.allowHashBang = options3.ecmaVersion >= 14;
   }
-  if (isArray(options.onToken)) {
-    var tokens = options.onToken;
-    options.onToken = function(token) {
+  if (isArray(options3.onToken)) {
+    var tokens = options3.onToken;
+    options3.onToken = function(token) {
       return tokens.push(token);
     };
   }
-  if (isArray(options.onComment)) {
-    options.onComment = pushComment(options, options.onComment);
+  if (isArray(options3.onComment)) {
+    options3.onComment = pushComment(options3, options3.onComment);
   }
-  return options;
+  return options3;
 }
-function pushComment(options, array) {
+function pushComment(options3, array) {
   return function(block, text, start, end, startLoc, endLoc) {
     var comment = {
       type: block ? "Block" : "Line",
@@ -1106,10 +1118,10 @@ function pushComment(options, array) {
       start,
       end
     };
-    if (options.locations) {
+    if (options3.locations) {
       comment.loc = new SourceLocation(this, startLoc, endLoc);
     }
-    if (options.ranges) {
+    if (options3.ranges) {
       comment.range = [start, end];
     }
     array.push(comment);
@@ -1135,14 +1147,14 @@ var BIND_LEXICAL = 2;
 var BIND_FUNCTION = 3;
 var BIND_SIMPLE_CATCH = 4;
 var BIND_OUTSIDE = 5;
-var Parser = function Parser2(options, input, startPos) {
-  this.options = options = getOptions(options);
-  this.sourceFile = options.sourceFile;
-  this.keywords = wordsRegexp(keywords$1[options.ecmaVersion >= 6 ? 6 : options.sourceType === "module" ? "5module" : 5]);
+var Parser = function Parser2(options3, input, startPos) {
+  this.options = options3 = getOptions(options3);
+  this.sourceFile = options3.sourceFile;
+  this.keywords = wordsRegexp(keywords$1[options3.ecmaVersion >= 6 ? 6 : options3.sourceType === "module" ? "5module" : 5]);
   var reserved = "";
-  if (options.allowReserved !== true) {
-    reserved = reservedWords[options.ecmaVersion >= 6 ? 6 : options.ecmaVersion === 5 ? 5 : 3];
-    if (options.sourceType === "module") {
+  if (options3.allowReserved !== true) {
+    reserved = reservedWords[options3.ecmaVersion >= 6 ? 6 : options3.ecmaVersion === 5 ? 5 : 3];
+    if (options3.sourceType === "module") {
       reserved += " await";
     }
   }
@@ -1168,14 +1180,14 @@ var Parser = function Parser2(options, input, startPos) {
   this.lastTokStart = this.lastTokEnd = this.pos;
   this.context = this.initialContext();
   this.exprAllowed = true;
-  this.inModule = options.sourceType === "module";
+  this.inModule = options3.sourceType === "module";
   this.strict = this.inModule || this.strictDirective(this.pos);
   this.potentialArrowAt = -1;
   this.potentialArrowInForAwait = false;
   this.yieldPos = this.awaitPos = this.awaitIdentPos = 0;
   this.labels = [];
   this.undefinedExports = /* @__PURE__ */ Object.create(null);
-  if (this.pos === 0 && options.allowHashBang && this.input.slice(0, 2) === "#!") {
+  if (this.pos === 0 && options3.allowHashBang && this.input.slice(0, 2) === "#!") {
     this.skipLineComment(2);
   }
   this.scopeStack = [];
@@ -1244,16 +1256,16 @@ Parser.extend = function extend() {
   }
   return cls;
 };
-Parser.parse = function parse2(input, options) {
-  return new this(options, input).parse();
+Parser.parse = function parse2(input, options3) {
+  return new this(options3, input).parse();
 };
-Parser.parseExpressionAt = function parseExpressionAt(input, pos, options) {
-  var parser = new this(options, input, pos);
+Parser.parseExpressionAt = function parseExpressionAt(input, pos, options3) {
+  var parser = new this(options3, input, pos);
   parser.nextToken();
   return parser.parseExpression();
 };
-Parser.tokenizer = function tokenizer(input, options) {
-  return new this(options, input);
+Parser.tokenizer = function tokenizer(input, options3) {
+  return new this(options3, input);
 };
 Object.defineProperties(Parser.prototype, prototypeAccessors);
 var pp$9 = Parser.prototype;
@@ -6312,14 +6324,14 @@ Parser.acorn = {
   lineBreakG,
   nonASCIIwhitespace
 };
-function parse3(input, options) {
-  return Parser.parse(input, options);
+function parse3(input, options3) {
+  return Parser.parse(input, options3);
 }
-function parseExpressionAt2(input, pos, options) {
-  return Parser.parseExpressionAt(input, pos, options);
+function parseExpressionAt2(input, pos, options3) {
+  return Parser.parseExpressionAt(input, pos, options3);
 }
-function tokenizer2(input, options) {
-  return Parser.tokenizer(input, options);
+function tokenizer2(input, options3) {
+  return Parser.tokenizer(input, options3);
 }
 
 // src/adapter/react-factories.js
@@ -6555,6 +6567,38 @@ function findActivity(document2) {
   }
   return one(matches, "activity control", true);
 }
+function activityPlacement(button) {
+  if (!button?.isConnected) return null;
+  const chain = currentElementAncestry(button) ?? ancestry(button, 48);
+  const owner2 = chain.find((fiber) => {
+    const source = componentSource(fiber.type);
+    return source.includes("sidebarElectron.priorityThreads.coachmark.description") && source.includes("onActivate") && source.includes("needsAttention");
+  });
+  if (!owner2) throw workspaceError("workspace_host_drift", "Native activity ownership changed");
+  let anchor = button;
+  for (const fiber of chain) {
+    if (fiber === owner2) break;
+    const node = fiber.stateNode;
+    if (node?.nodeType === 1 && node.contains(button)) anchor = node;
+  }
+  return { button, anchor, parent: anchor.parentElement };
+}
+function composerBinding(document2, composer) {
+  if (!composer?.isConnected || composer.closest(OWNED)) return null;
+  return nativeComposerBinding(composer, document2.getElementById("root"));
+}
+function nativeComposerBinding(composer, root) {
+  if (!composer?.isConnected) return null;
+  const chain = currentElementAncestry(composer, root);
+  if (!chain) return null;
+  for (const fiber of chain) {
+    const props = fiber.memoizedProps ?? {}, source = componentSource(fiber.type);
+    if (!Object.hasOwn(props, "composerSubmitDisabled") || !Object.hasOwn(props, "composerPresentation") || !source.includes("composerSubmitDisabled") || !source.includes("isThreadHistoryLoading")) continue;
+    if (props.hostId !== "local" || typeof props.conversationId !== "string") return null;
+    return { threadId: props.conversationId, hostId: "local", submitDisabled: !!props.composerSubmitDisabled || !!props.isResuming || !!props.isThreadHistoryLoading };
+  }
+  return null;
+}
 function resolveThreadReference(document2, element, isCachedLocal = () => false) {
   if (!(element instanceof document2.defaultView.Element) || element.ownerDocument !== document2 || !active(element) || element.closest("main")) return null;
   const title = element.closest("[data-thread-title]");
@@ -6581,10 +6625,10 @@ function geometry(element) {
   return Object.freeze({ element, rect: Object.freeze(Object.fromEntries(["x", "y", "width", "height", "top", "right", "bottom", "left"].map((key2) => [key2, rect[key2]]))) });
 }
 var optionDefaults = Object.freeze({ hideBody: false, hideHeader: false, hideComposer: false, composerEnabled: true, rightPanelEnabled: true });
-function surfaceOptions(options, previous = optionDefaults) {
-  if (!options || typeof options !== "object" || Array.isArray(options) || Object.keys(options).some((key2) => !(key2 in optionDefaults) || typeof options[key2] !== "boolean"))
+function surfaceOptions(options3, previous = optionDefaults) {
+  if (!options3 || typeof options3 !== "object" || Array.isArray(options3) || Object.keys(options3).some((key2) => !(key2 in optionDefaults) || typeof options3[key2] !== "boolean"))
     throw workspaceError("invalid_argument", "Invalid surface lease options");
-  return { ...previous, ...options };
+  return { ...previous, ...options3 };
 }
 function createSurfaceControl() {
   const leases = /* @__PURE__ */ new Set(), journal = /* @__PURE__ */ new Map();
@@ -6711,7 +6755,7 @@ var markers = (value, list) => {
 };
 function createWorkspaceDiscovery(baseNative, { load = (url) => import(url), read = readWorkspaceAsset, connect = localConnection } = {}) {
   const controller = new AbortController(), sources = /* @__PURE__ */ new Map(), modules = /* @__PURE__ */ new Map();
-  let common, transcript, shortcuts, connection;
+  let common, transcript, shortcuts, connection, threadModule, composer, primaryModule, composerParts;
   const source = (url) => {
     if (!sources.has(url)) sources.set(url, read(url, controller.signal));
     return sources.get(url);
@@ -6734,8 +6778,22 @@ function createWorkspaceDiscovery(baseNative, { load = (url) => import(url), rea
     const [shared, initial] = await Promise.all([module2(sharedUrl), module2(initialUrl)]);
     return { ...native, shared, initial, sharedUrl, initialUrl };
   })();
-  return {
+  const api = {
     connection: existing,
+    // Finding a component alone cannot establish live-main draft handoff or
+    // persistent cleanup. No archived Native profile has passed those checks.
+    // A future reviewed profile can prepare its driver here, before any mount.
+    composerCapabilities: async () => ({ rebind: false }),
+    navigation: async () => {
+      await getCommon();
+      const connection2 = existing();
+      return { manager: connection2.manager, check: () => existing() };
+    },
+    action: async () => {
+      const native = await getCommon();
+      if (!native.RailButton || !native.RailTooltip) throw workspaceError("workspace_action_unavailable", "Native toolbar button or tooltip is unavailable");
+      return { ...native, Button: native.RailButton, Tooltip: native.RailTooltip };
+    },
     transcript: () => transcript ??= (async () => {
       const native = await getCommon(), graph = await source(native.initialUrl), urls = assetReferences(graph, native.initialUrl, "local-conversation-thread");
       if (!urls.length || urls.length > 8) throw workspaceError("workspace_transcript_unavailable", "Native transcript modules are missing or ambiguous");
@@ -6745,18 +6803,35 @@ function createWorkspaceDiscovery(baseNative, { load = (url) => import(url), rea
       if (wrappers.length !== 1 || implementations.length !== 1) throw workspaceError("workspace_transcript_unavailable", "The native transcript entry contract changed");
       await module2(wrappers[0].url);
       const thread = await module2(implementations[0].url);
+      threadModule = thread;
       const Content = uniqueExport(thread, (value) => markers(value, ["trackReadState", "retainActiveInterest", "contentSearchOrchestrationId", "enableMcpApps"]), "transcript content");
       const Scope3 = uniqueExport(native.shared, (value) => markers(value, ["Missing parent scope", "providedValue"]), "scope provider");
       const composerScope = uniqueExport(native.shared, (value) => value?.__scopeBrand === "ComposerScope" && typeof value.id === "symbol", "composer scope");
       const composerValue = uniqueExport(native.shared, (value) => markers(value, ["routeKind", "local-thread", "client-local-thread", "browserTabMentionConversationId"]), "composer scope value");
+      const ThreadScope = uniqueExport(native.shared, (value) => value?.__scopeBrand === "ThreadScope", "thread scope");
+      const RouteScope = uniqueExport(native.shared, (value) => value?.__scopeBrand === "RouteScope", "route scope");
+      const routeDescription = uniqueExport(native.shared, (value) => typeof value === "function" && value.length === 1 && markers(value, ["pathname", "routeTemplate", "local-thread", "client-local-thread", "routeKind", "/extension/panel/new", "new URLSearchParams"]), "route description");
       const primaryUrls = assetReferences(graph, native.initialUrl, "app-primary");
       if (primaryUrls.length !== 1) throw workspaceError("workspace_transcript_unavailable", "A unique native thread subscription module is required");
       const primary = await module2(primaryUrls[0]);
+      primaryModule = primary;
       const ThreadSubscription = uniqueExport(primary, (value) => markers(value, ["threadKey", "cancelRelease", "useSyncExternalStore", "hostId", "threadId"]), "thread subscription");
       const manager = existing().manager;
       for (const method of ["getConversation", "loadBackgroundThreadHistoryPage", "loadRemainingTurnItems", "addConversationStateCallback"])
         if (typeof manager[method] !== "function") throw workspaceError("workspace_transcript_unavailable", `Native transcript manager lacks ${method}`);
-      return { ...native, Content, ThreadSubscription, Scope: Scope3, composerScope, composerValue, manager };
+      return { ...native, Content, ThreadSubscription, Scope: Scope3, composerScope, composerValue, manager, ThreadScope, RouteScope, routeDescription };
+    })(),
+    composerParts: () => composerParts ??= (async () => {
+      const native = await api.transcript();
+      const Composer = uniqueExport(primaryModule, (value) => markers(value, ["useAsbDirect", "runtime", "account"]), "composer component");
+      const ComposerSurface = uniqueExport(primaryModule, (value) => markers(value, ["isWorkHome", "isCodexHome", "cloneElement", "surfacePlacement"]), "composer surface");
+      return { ...native, Composer, ComposerSurface, check: existing };
+    })(),
+    composer: () => composer ??= (async () => {
+      const native = await api.transcript();
+      if (typeof native.manager.getStreamRole !== "function") throw workspaceError("workspace_composer_unavailable", "Native stream identity is unavailable");
+      const Frame = uniqueExport(threadModule, (value) => markers(value, ["hideThreadContent", "canInteract", "shouldResume", "threadAccess", "hostMcpApps"]), "composer frame");
+      return { ...native, Frame, check: existing };
     })(),
     shortcuts: () => shortcuts ??= (async () => {
       const native = await getCommon(), graph = await source(native.initialUrl), urls = assetReferences(graph, native.initialUrl, "app-primary");
@@ -6777,8 +6852,8 @@ function createWorkspaceDiscovery(baseNative, { load = (url) => import(url), rea
       const commands = uniqueExport(native.initial, (value) => Array.isArray(value) && value.some((command) => command?.id === "newTask") && value.some((command) => command?.id === "keyboardShortcuts"), "command definitions");
       const keymap = native.initial[keymapExport(native.initial, graph)], connection2 = existing();
       if (keymap?.scope !== connection2.node.token || typeof keymap.resolve !== "function" || typeof connection2.node.store?.get !== "function") throw workspaceError("workspace_shortcuts_unavailable", "Native shortcut keymap ownership or signal contract changed");
-      const identity = globalThis.navigator?.userAgentData?.platform ?? globalThis.navigator?.platform ?? "";
-      const platform = /^(Win|Windows)/.test(identity) ? "windows" : /^(Mac|macOS)/.test(identity) ? "macOS" : /^(Linux|linux)/.test(identity) ? "linux" : null;
+      const identity2 = globalThis.navigator?.userAgentData?.platform ?? globalThis.navigator?.platform ?? "";
+      const platform = /^(Win|Windows)/.test(identity2) ? "windows" : /^(Mac|macOS)/.test(identity2) ? "macOS" : /^(Linux|linux)/.test(identity2) ? "linux" : null;
       if (!["windows", "macOS", "linux"].includes(platform)) throw workspaceError("workspace_shortcuts_unavailable", "The native shortcut platform is unknown");
       return {
         ...native,
@@ -6801,21 +6876,113 @@ function createWorkspaceDiscovery(baseNative, { load = (url) => import(url), rea
       sources.clear();
       modules.clear();
       connection = null;
-      common = transcript = shortcuts = null;
+      common = transcript = shortcuts = composer = threadModule = primaryModule = composerParts = null;
     }
   };
+  return api;
+}
+
+// src/adapter/workspace-shadow.js
+function createTranscriptIsolation({ document: document2, report }) {
+  const records = /* @__PURE__ */ new Set();
+  let observer;
+  const links = () => [...document2.head.querySelectorAll('link[rel~="stylesheet"]')].filter((link) => /^app:\/\/-\/assets\/[A-Za-z0-9_-]+\.css$/.test(link.href));
+  function sync(record) {
+    const sources = new Set(links());
+    for (const [source, entry] of record.links) if (!sources.has(source)) {
+      entry.dispose();
+      record.links.delete(source);
+    }
+    for (const source of sources) {
+      let entry = record.links.get(source);
+      if (!entry) {
+        let finish = function(error) {
+          clearTimeout(timer);
+          clone.removeEventListener("load", loaded);
+          clone.removeEventListener("error", failed);
+          if (error) reject(error);
+          else resolve();
+        };
+        const clone = source.cloneNode(false);
+        let timer, resolve, reject;
+        const ready = new Promise((yes, no) => {
+          resolve = yes;
+          reject = no;
+        });
+        ready.catch(() => {
+        });
+        const loaded = () => finish(), failed = () => finish(workspaceError("workspace_transcript_styles_unavailable", "A loaded Native stylesheet could not be reused"));
+        clone.addEventListener("load", loaded, { once: true });
+        clone.addEventListener("error", failed, { once: true });
+        timer = setTimeout(failed, 1e4);
+        record.shadow.insertBefore(clone, record.container);
+        entry = { clone, ready, dispose() {
+          finish(workspaceError("workspace_retired", "Native transcript styles retired"));
+          clone.remove();
+        } };
+        record.links.set(source, entry);
+      }
+      for (const attr of [...entry.clone.attributes]) if (!source.hasAttribute(attr.name)) entry.clone.removeAttribute(attr.name);
+      for (const attr of source.attributes) if (entry.clone.getAttribute(attr.name) !== attr.value) entry.clone.setAttribute(attr.name, attr.value);
+      entry.clone.disabled = source.disabled;
+    }
+    if (document2.adoptedStyleSheets) record.shadow.adoptedStyleSheets = document2.adoptedStyleSheets;
+  }
+  function refresh() {
+    for (const record of records) try {
+      sync(record);
+    } catch (error) {
+      report(error);
+    }
+  }
+  function create(wrapper) {
+    const shadow = wrapper.attachShadow({ mode: "open" }), container = document2.createElement("div");
+    container.dataset.codletWorkspaceTranscriptRoot = "";
+    container.style.cssText = "display:flex;flex-direction:column;min-width:0;min-height:0;width:100%;height:100%;overflow:hidden;position:relative;";
+    shadow.append(container);
+    const record = { shadow, container, links: /* @__PURE__ */ new Map() };
+    records.add(record);
+    function release() {
+      if (!records.delete(record)) return;
+      for (const entry of record.links.values()) entry.dispose();
+      record.links.clear();
+      if (!records.size) {
+        observer?.disconnect();
+        observer = null;
+      }
+    }
+    try {
+      sync(record);
+      if (!record.links.size && !shadow.adoptedStyleSheets?.length) throw workspaceError("workspace_transcript_styles_unavailable", "Native transcript styles are not loaded");
+      if (!observer) {
+        observer = new document2.defaultView.MutationObserver(refresh);
+        observer.observe(document2.head, { childList: true, subtree: true, attributes: true, attributeFilter: ["href", "rel", "media", "disabled", "integrity", "crossorigin", "nonce"] });
+      }
+    } catch (error) {
+      release();
+      throw error;
+    }
+    return { container, ready: Promise.all([...record.links.values()].map((entry) => entry.ready)), dispose: release };
+  }
+  return { create, dispose() {
+    observer?.disconnect();
+    observer = null;
+    for (const record of records) for (const entry of record.links.values()) entry.dispose();
+    records.clear();
+  } };
 }
 
 // src/adapter/workspace-transcript.js
-function transcriptOptions(options, previous = { hostId: "local", readOnly: true, trackReadState: false }) {
-  if (!options || typeof options !== "object" || Array.isArray(options) || Object.keys(options).some((key2) => !["threadId", "hostId", "readOnly", "trackReadState", "onState"].includes(key2)))
+function transcriptOptions(options3, previous = { hostId: "local", readOnly: true, trackReadState: false }) {
+  if (!options3 || typeof options3 !== "object" || Array.isArray(options3) || Object.keys(options3).some((key2) => !["threadId", "hostId", "readOnly", "trackReadState", "onState"].includes(key2)))
     throw workspaceError("invalid_argument", "Invalid transcript options");
-  const result = { ...previous, ...options };
+  const result = { ...previous, ...options3 };
   if (!/^[\w-]{8,256}$/.test(result.threadId ?? "") || result.hostId !== "local" || typeof result.readOnly !== "boolean" || typeof result.trackReadState !== "boolean" || result.onState != null && typeof result.onState !== "function")
     throw workspaceError("invalid_argument", "Invalid local transcript identity or flags");
   return result;
 }
-function createTranscripts({ document: document2, load, surface, check, report }) {
+function createTranscripts({ document: document2, load, surface, check, report, isolate = false, metrics }) {
+  const isolation = isolate ? createTranscriptIsolation({ document: document2, report }) : null;
   const records = /* @__PURE__ */ new Set(), containers = /* @__PURE__ */ new WeakSet(), histories = /* @__PURE__ */ new Map(), queue = [], updates = /* @__PURE__ */ new Set();
   let updateScheduled = false;
   let native, loading, unlisten, disposed = false, running = 0;
@@ -6871,6 +7038,7 @@ function createTranscripts({ document: document2, load, surface, check, report }
     if (record.disposed && phase !== "disposed") return;
     if (record.phase === phase && !error) return;
     record.phase = phase;
+    metrics?.add("transcript.state", { viewId: record.viewId, threadAlias: record.epoch });
     const value = Object.freeze({ phase, threadId: record.options.threadId, hostId: "local", diagnostic: error ? Object.freeze({ code: error.code ?? "workspace_transcript_unavailable", message: error.message }) : null });
     try {
       Promise.resolve(record.options.onState?.(value)).catch(report);
@@ -6878,12 +7046,12 @@ function createTranscripts({ document: document2, load, surface, check, report }
       report(error2);
     }
   }
-  function mount(container, options, owned) {
+  function mount(container, options3, owned) {
     check();
     if (records.size >= 32) throw workspaceError("resource_limit", "At most 32 native transcripts per Target are supported");
     if (!(container instanceof document2.defaultView.HTMLElement) || container.ownerDocument !== document2 || !container.isConnected || container.childNodes.length || containers.has(container) || container.matches("main,[data-codex-composer-root],.thread-scroll-container") || container.closest("[data-codex-composer-root]"))
       throw workspaceError("invalid_argument", "Transcript requires a connected empty consumer container");
-    const record = { container, options: transcriptOptions(options), disposed: false, epoch: 0, phase: null, root: null };
+    const record = { container, options: transcriptOptions(options3), disposed: false, epoch: 0, phase: null, root: null, viewId: metrics?.nextView() };
     let resolveReady, rejectReady;
     const ready = new Promise((resolve, reject) => {
       resolveReady = resolve;
@@ -6899,7 +7067,7 @@ function createTranscripts({ document: document2, load, surface, check, report }
     records.add(record);
     containers.add(container);
     let scroll, settled = false, readyObserver;
-    const fail6 = (error) => {
+    const fail7 = (error) => {
       if (record.disposed) return;
       state(record, "error", error);
       report(error);
@@ -6910,9 +7078,9 @@ function createTranscripts({ document: document2, load, surface, check, report }
     };
     function tryReady() {
       if (record.disposed || !record.committed || record.bindingThread !== record.options.threadId || record.phase !== "loading") return;
-      const scroller = wrapper.querySelector(".thread-scroll-container");
+      const scroller = record.mount.querySelector(".thread-scroll-container");
       if (!scroller) {
-        fail6(workspaceError("workspace_transcript_unavailable", "The native transcript has no independent scroller"));
+        fail7(workspaceError("workspace_transcript_unavailable", "The native transcript has no independent scroller"));
         return;
       }
       const conversation = native.manager.getConversation(record.options.threadId);
@@ -6923,6 +7091,7 @@ function createTranscripts({ document: document2, load, surface, check, report }
       scroll = scroller;
       readyObserver?.disconnect();
       state(record, "ready");
+      if (metrics) metrics.end("transcript.ready", record.started, { viewId: record.viewId, threadAlias: record.epoch });
       if (!settled) {
         settled = true;
         resolveReady();
@@ -6932,7 +7101,7 @@ function createTranscripts({ document: document2, load, surface, check, report }
     function render(sync = false) {
       if (record.disposed || !record.root || record.bindingThread !== record.options.threadId) return;
       const N = native, R = N.React, h = R.createElement, opts = record.options;
-      const child = h(record.Boundary, { key: opts.threadId }, h(
+      let child = h(record.Boundary, { key: opts.threadId }, h(
         R.Suspense,
         { fallback: null },
         h(
@@ -6950,9 +7119,11 @@ function createTranscripts({ document: document2, load, surface, check, report }
           h(record.Commit, { epoch: record.epoch })
         )
       ));
+      if (record.threadValue) child = h(N.Scope, { scope: N.ThreadScope, value: record.threadValue }, h(N.Scope, { scope: N.RouteScope, value: record.routeValue }, child));
       if (opts.readOnly) wrapper.setAttribute("inert", "");
       else wrapper.removeAttribute("inert");
       const tree = wrapProviders(N, record.providers, child);
+      metrics?.add(sync ? "transcript.render.sync" : "transcript.render", { viewId: record.viewId, threadAlias: record.epoch });
       if (sync) N.DOM.flushSync(() => record.root.render(tree));
       else record.root.render(tree);
     }
@@ -6975,6 +7146,7 @@ function createTranscripts({ document: document2, load, surface, check, report }
     async function bind(reload = true) {
       const epoch = ++record.epoch;
       state(record, "loading");
+      record.started = metrics?.start();
       record.committed = false;
       scroll = null;
       try {
@@ -6989,7 +7161,12 @@ function createTranscripts({ document: document2, load, surface, check, report }
         if (!providers.length) throw workspaceError("workspace_transcript_unavailable", "Native transcript providers are unavailable");
         const R = N.React, h = R.createElement;
         if (!record.root) {
-          record.root = N.Client.createRoot(wrapper, { onUncaughtError: fail6, onCaughtError: fail6 });
+          record.isolation ??= isolation?.create(wrapper);
+          record.mount = record.isolation?.container ?? wrapper;
+          if (record.isolation) await record.isolation.ready;
+          if (record.disposed || epoch !== record.epoch) return;
+          record.root = N.Client.createRoot(record.mount, { onUncaughtError: fail7, onCaughtError: fail7 });
+          metrics?.add("transcript.root.create", { viewId: record.viewId, threadAlias: epoch });
           record.Boundary = class extends R.Component {
             constructor(props) {
               super(props);
@@ -6999,7 +7176,7 @@ function createTranscripts({ document: document2, load, surface, check, report }
               return { failed: true };
             }
             componentDidCatch(error) {
-              fail6(error);
+              fail7(error);
             }
             render() {
               return this.state.failed ? null : this.props.children;
@@ -7019,15 +7196,21 @@ function createTranscripts({ document: document2, load, surface, check, report }
         const opts = record.options;
         record.providers = providers;
         if (record.bindingThread !== opts.threadId) {
-          record.scopeValue = N.composerValue({ routeKind: "local-thread", conversationId: opts.threadId, pathname: "/local/" + opts.threadId, hostId: "local" }, void 0, opts.threadId);
+          record.routeValue = N.routeDescription ? N.routeDescription({ pathname: "/local/" + opts.threadId, search: "?codletTranscript=" + encodeURIComponent(owned + ":" + crypto.randomUUID()) }) : { routeKind: "local-thread", conversationId: opts.threadId, pathname: "/local/" + opts.threadId, hostId: "local" };
+          record.scopeValue = N.composerValue(record.routeValue);
+          if (N.ThreadScope && N.RouteScope) {
+            if (!record.scopeValue?.clientThreadId || record.routeValue?.conversationId !== opts.threadId || record.routeValue.routeKind !== "local-thread")
+              throw workspaceError("workspace_transcript_unavailable", "Native transcript scopes do not match the requested identity");
+            record.threadValue = { clientThreadId: record.scopeValue.clientThreadId };
+          }
           record.threadKey = { hostId: "local", threadId: opts.threadId };
         }
         record.bindingThread = opts.threadId;
         readyObserver ??= new document2.defaultView.MutationObserver(tryReady);
-        readyObserver.observe(wrapper, { childList: true, subtree: true, characterData: true });
+        readyObserver.observe(record.mount, { childList: true, subtree: true, characterData: true });
         render(true);
       } catch (error) {
-        if (!record.disposed && epoch === record.epoch) fail6(error);
+        if (!record.disposed && epoch === record.epoch) fail7(error);
       }
     }
     const handle = Object.freeze({
@@ -7072,8 +7255,10 @@ function createTranscripts({ document: document2, load, surface, check, report }
           rejectReady(workspaceError("workspace_retired", "Transcript retired before readiness"));
         }
         if (record.root) native.DOM.flushSync(() => record.root.unmount());
+        record.isolation?.dispose();
         wrapper.remove();
         scroll = null;
+        metrics?.add("transcript.root.dispose", { viewId: record.viewId, threadAlias: record.epoch });
         if (!records.size) {
           unlisten?.();
           unlisten = null;
@@ -7081,13 +7266,10 @@ function createTranscripts({ document: document2, load, surface, check, report }
       }
     });
     record.handle = handle;
-    record.rebind = () => void bind(false);
     void bind();
     return handle;
   }
-  return { mount, rebind() {
-    for (const record of records) record.rebind();
-  }, dispose() {
+  return { mount, dispose() {
     if (disposed) return;
     disposed = true;
     for (const record of [...records]) record.handle.dispose();
@@ -7095,17 +7277,18 @@ function createTranscripts({ document: document2, load, surface, check, report }
     for (const job of queue.splice(0)) job.reject(workspaceError("workspace_retired", "Queued history retired"));
     histories.clear();
     updates.clear();
+    isolation?.dispose();
   } };
 }
 
 // src/adapter/workspace-shortcuts.js
 var allowed = ["id", "label", "description", "accelerator", "defaultAccelerator", "onInvoke", "onChange"];
-function shortcutOptions(options, previous) {
-  if (!options || typeof options !== "object" || Array.isArray(options) || Object.keys(options).some((key2) => !allowed.includes(key2) || previous && key2 === "id")) throw workspaceError("invalid_argument", "Invalid shortcut options");
-  const next = { description: "", accelerator: null, ...previous, ...options };
+function shortcutOptions(options3, previous) {
+  if (!options3 || typeof options3 !== "object" || Array.isArray(options3) || Object.keys(options3).some((key2) => !allowed.includes(key2) || previous && key2 === "id")) throw workspaceError("invalid_argument", "Invalid shortcut options");
+  const next = { description: "", accelerator: null, ...previous, ...options3 };
   if (!/^[\w.-]{1,64}$/.test(next.id ?? "") || typeof next.label !== "string" || !next.label.trim() || next.label.length > 128 || typeof next.description !== "string" || next.description.length > 512 || typeof next.onInvoke !== "function" || next.onChange != null && typeof next.onChange !== "function")
     throw workspaceError("invalid_argument", "Invalid shortcut identity, text or callbacks");
-  if (!previous && !Object.hasOwn(options, "defaultAccelerator")) next.defaultAccelerator = next.accelerator;
+  if (!previous && !Object.hasOwn(options3, "defaultAccelerator")) next.defaultAccelerator = next.accelerator;
   for (const value of [next.accelerator, next.defaultAccelerator]) if (value !== null && (typeof value !== "string" || !value.trim() || value.length > 128 || /\s/.test(value) || !normalizeAccelerator(value, "windows"))) throw workspaceError("invalid_argument", "Expected a single accelerator or null");
   return next;
 }
@@ -7144,13 +7327,13 @@ function createShortcuts({ document: document2, load, surface, activity, check, 
   }
   function capture(record, value) {
     try {
-      const options = shortcutOptions({ accelerator: value }, record.options), found = conflict(value, record);
+      const options3 = shortcutOptions({ accelerator: value }, record.options), found = conflict(value, record);
       if (found) {
         record.conflict = found;
         notify(record);
         return false;
       }
-      record.options = options;
+      record.options = options3;
       record.conflict = null;
       notify(record);
       callback(record.options.onChange, value);
@@ -7317,12 +7500,12 @@ function createShortcuts({ document: document2, load, surface, activity, check, 
       return value;
     });
   }
-  function register(options, owner2) {
+  function register(options3, owner2) {
     check();
-    options = shortcutOptions(options);
+    options3 = shortcutOptions(options3);
     if (records.size >= 64) throw workspaceError("resource_limit", "At most 64 workspace shortcuts per Target are supported");
-    if ([...records].some((record2) => record2.owner === owner2 && record2.options.id === options.id)) throw workspaceError("invalid_argument", "Shortcut ID already registered by this owner");
-    const record = { owner: owner2, options, nativeId: "codlet." + owner2.replace(/[^\w.-]/g, "_") + "." + options.id, disposed: false, listeners: /* @__PURE__ */ new Set() };
+    if ([...records].some((record2) => record2.owner === owner2 && record2.options.id === options3.id)) throw workspaceError("invalid_argument", "Shortcut ID already registered by this owner");
+    const record = { owner: owner2, options: options3, nativeId: "codlet." + owner2.replace(/[^\w.-]/g, "_") + "." + options3.id, disposed: false, listeners: /* @__PURE__ */ new Set() };
     record.subscribe = (listener) => {
       record.listeners.add(listener);
       return () => record.listeners.delete(listener);
@@ -7397,10 +7580,1066 @@ function createShortcuts({ document: document2, load, surface, activity, check, 
   } };
 }
 
+// src/desktop/thread-navigation.js
+var fail5 = (code, message) => Object.assign(new Error(message), { code });
+function createThreadOpener({ manager, selection, navigation, request }) {
+  let opening = false;
+  return async function openThread(args, signal) {
+    if (!args || typeof args !== "object" || Array.isArray(args) || Object.keys(args).some((key2) => key2 !== "threadId")) throw fail5("invalid_argument", "Invalid task navigation arguments");
+    const threadId = args.threadId;
+    if (typeof threadId !== "string" || !/^[a-zA-Z0-9_-]{1,256}$/.test(threadId)) throw fail5("invalid_argument", "threadId must be a local task identity");
+    const before = selection();
+    if (signal?.aborted) throw fail5("invocation_cancelled", "Task navigation was cancelled before dispatch");
+    if (before.threadId === threadId) return { ...before, status: before.resumeState === "resumed" ? "opened" : "opening", alreadySelected: true };
+    if (opening) throw fail5("desktop_navigation_busy", "Another task open request is still being validated");
+    opening = true;
+    try {
+      const nav = navigation(), stamp = nav.stamp();
+      const cached = manager.getConversation(threadId);
+      if (cached?.id !== threadId || cached.hostId != null && cached.hostId !== "local") {
+        const metadata = await request("thread/read", { threadId, includeTurns: false }, signal);
+        if (metadata?.thread?.id !== threadId) throw fail5("desktop_navigation_unavailable", "Desktop did not confirm the requested task identity");
+      }
+      if (signal?.aborted) throw fail5("invocation_cancelled", "Task navigation was cancelled during validation");
+      selection();
+      if (nav.stamp() !== stamp) throw fail5("desktop_navigation_superseded", "The user navigated while this task was being checked");
+      if (signal?.aborted) throw fail5("invocation_cancelled", "Task navigation was cancelled before routing");
+      nav.open(threadId);
+      const current3 = selection();
+      if (current3.threadId !== threadId) throw fail5("desktop_navigation_superseded", "Desktop selected a different task during navigation");
+      return { ...current3, status: current3.resumeState === "resumed" ? "opened" : "opening", alreadySelected: false };
+    } finally {
+      opening = false;
+    }
+  };
+}
+
+// src/adapter/workspace-navigation.js
+function createWorkspaceNavigation({ document: document2, load, host, check, changed, readBinding = () => composerBinding(document2, findWorkspaceSurface(document2)?.composer) }) {
+  const sessions = /* @__PURE__ */ new Set();
+  let native, prepared, current3, sequence = 0, observer, frame, microtask = false, queueEpoch = 0, disposed = false;
+  function stop() {
+    observer?.disconnect();
+    observer = null;
+    if (frame != null) document2.defaultView.cancelAnimationFrame?.(frame);
+    frame = null;
+    microtask = false;
+    queueEpoch++;
+  }
+  function pulse() {
+    const op = current3;
+    if (!op || op.settled || !op.didExecute) return;
+    try {
+      check();
+      const route = host().navigator.location.pathname;
+      if (route !== "/local/" + op.threadId) {
+        finish(op, "workspace_navigation_superseded", "Native selected another task");
+        return;
+      }
+      const binding = readBinding();
+      if (binding?.threadId !== op.threadId || binding.hostId !== "local") return;
+      op.settled = true;
+      stop();
+      changed();
+      clearTimeout(op.timer);
+      op.removeAbort?.();
+      op.session.operations.delete(op);
+      op.resolveCommitted(Object.freeze({ threadId: op.threadId, hostId: "local", inputConfirmed: true, submitDisabled: binding.submitDisabled, revision: op.sequence }));
+    } catch (error) {
+      if (!["workspace_host_pending", "ui_host_pending"].includes(error.code)) finish(op, error.code ?? "workspace_navigation_unavailable", error.message);
+    }
+  }
+  function schedule() {
+    if (disposed || !current3 || current3.settled || !current3.didExecute) return;
+    if (!microtask) {
+      microtask = true;
+      const epoch = queueEpoch;
+      queueMicrotask(() => {
+        if (epoch !== queueEpoch) return;
+        microtask = false;
+        pulse();
+      });
+    }
+    if (frame == null && document2.visibilityState !== "hidden" && document2.defaultView.requestAnimationFrame) frame = document2.defaultView.requestAnimationFrame(() => {
+      frame = null;
+      pulse();
+    });
+  }
+  function observe() {
+    if (observer) return;
+    observer = new document2.defaultView.MutationObserver(schedule);
+    observer.observe(document2.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-codex-composer-root", "data-app-shell-active-page"] });
+  }
+  function finish(op, code, message) {
+    if (op.settled) return;
+    op.settled = true;
+    if (current3 === op) stop();
+    op.session.operations.delete(op);
+    clearTimeout(op.timer);
+    op.removeAbort?.();
+    const error = workspaceError(code, message);
+    op.controller.abort(error);
+    if (!op.didExecute) op.rejectExecuted(error);
+    op.rejectCommitted(error);
+  }
+  function ensure() {
+    return prepared ??= Promise.resolve().then(load).then((value) => {
+      if (disposed) throw workspaceError("workspace_retired", "Navigation provider retired");
+      native = value;
+      return value;
+    });
+  }
+  function create(live) {
+    const session = { alive: true, operations: /* @__PURE__ */ new Set() };
+    sessions.add(session);
+    const valid = () => {
+      check();
+      live();
+      if (!session.alive) throw workspaceError("workspace_retired", "Navigation session retired");
+    };
+    const ready = ensure();
+    ready.catch(() => {
+    });
+    const makeOpener = () => createThreadOpener({ manager: { getConversation: (id) => native.manager.getConversation(id) }, selection: () => {
+      valid();
+      native.check?.();
+      const match = /^\/local\/([\w-]+)\/?$/.exec(host().navigator.location.pathname), threadId = match?.[1] ?? null, thread = native.manager.getConversation(threadId);
+      return { threadId, resumeState: thread?.resumeState === "resumed" ? "resumed" : "loading", streamRole: native.manager.getStreamRole?.(threadId)?.role ?? "none" };
+    }, navigation: () => {
+      const navigator = host().navigator;
+      return { stamp: () => JSON.stringify(navigator.location), open: (id) => navigator.push("/local/" + id) };
+    }, request: async (method, args, signal) => {
+      const value = await native.manager.sendRequest(method, args, { timeoutMs: 1e4 });
+      if (signal?.aborted) throw workspaceError("invocation_cancelled", "Navigation validation was cancelled");
+      return value;
+    } });
+    return Object.freeze({
+      ready,
+      open(args, options3 = {}) {
+        valid();
+        if (!args || typeof args !== "object" || Array.isArray(args) || Object.keys(args).some((key2) => key2 !== "threadId") || typeof args.threadId !== "string" || !/^[\w-]{1,256}$/.test(args.threadId)) throw workspaceError("invalid_argument", "Invalid local navigation identity");
+        if (!options3 || typeof options3 !== "object" || Array.isArray(options3) || Object.keys(options3).some((key2) => key2 !== "signal")) throw workspaceError("invalid_argument", "Invalid navigation options");
+        const signal = options3.signal;
+        if (signal != null && (typeof signal.aborted !== "boolean" || typeof signal.addEventListener !== "function" || typeof signal.removeEventListener !== "function")) throw workspaceError("invalid_argument", "Invalid navigation signal");
+        const op = { threadId: args.threadId, sequence: ++sequence, settled: false, didExecute: false, session, controller: new document2.defaultView.AbortController() };
+        session.operations.add(op);
+        const executed = new Promise((resolve, reject) => {
+          op.resolveExecuted = resolve;
+          op.rejectExecuted = reject;
+        });
+        const committed = new Promise((resolve, reject) => {
+          op.resolveCommitted = resolve;
+          op.rejectCommitted = reject;
+        });
+        executed.catch(() => {
+        });
+        committed.catch(() => {
+        });
+        const abort = () => finish(op, "invocation_cancelled", "Navigation confirmation was cancelled");
+        if (signal?.aborted) abort();
+        else if (signal) {
+          signal.addEventListener("abort", abort, { once: true });
+          op.removeAbort = () => signal.removeEventListener("abort", abort);
+        }
+        if (!op.settled) {
+          if (current3 && !current3.settled) finish(current3, "workspace_navigation_superseded", "A newer navigation replaced this operation");
+          current3 = op;
+        }
+        function run() {
+          if (op.settled) return;
+          const start = performance.now();
+          const result = makeOpener()(args, op.controller.signal), synchronousMs = performance.now() - start;
+          Promise.resolve(result).then((receipt) => {
+            if (op.settled) return;
+            valid();
+            op.didExecute = true;
+            changed();
+            op.resolveExecuted(Object.freeze({ ...receipt, synchronousMs, revision: op.sequence }));
+            op.timer = setTimeout(() => finish(op, "workspace_navigation_commit_timeout", "Native composer did not confirm the selected task"), 5e3);
+            observe();
+            schedule();
+          }, (error) => finish(op, error.code ?? "workspace_navigation_unavailable", error.message)).catch((error) => finish(op, error.code ?? "workspace_retired", error.message));
+        }
+        if (native) run();
+        else ready.then(run, (error) => finish(op, error.code ?? "workspace_navigation_unavailable", error.message));
+        return Object.freeze({ executed, committed, dispose() {
+          finish(op, "invocation_cancelled", "Navigation operation retired");
+          session.operations.delete(op);
+        } });
+      },
+      dispose() {
+        if (!session.alive) return;
+        session.alive = false;
+        for (const op of session.operations) finish(op, "workspace_retired", "Navigation consumer retired");
+        session.operations.clear();
+        sessions.delete(session);
+      }
+    });
+  }
+  return { create, pulse: schedule, dispose() {
+    if (disposed) return;
+    disposed = true;
+    for (const session of sessions) {
+      session.alive = false;
+      for (const op of session.operations) finish(op, "workspace_retired", "Navigation provider retired");
+    }
+    sessions.clear();
+    stop();
+  } };
+}
+
+// src/adapter/workspace-actions.js
+function options(value, previous = { pressed: false, disabled: false, shortcut: null }) {
+  if (!value || typeof value !== "object" || Object.keys(value).some((key2) => !["id", "label", "icon", "shortcut", "pressed", "disabled", "onInvoke"].includes(key2))) throw workspaceError("invalid_argument", "Invalid native action options");
+  const next = { ...previous, ...value };
+  if (!/^[\w.-]{1,64}$/.test(next.id ?? "") || typeof next.label !== "string" || !next.label || next.label.length > 128 || typeof next.onInvoke !== "function" || typeof next.pressed !== "boolean" || typeof next.disabled !== "boolean" || next.shortcut != null && (typeof next.shortcut !== "string" || next.shortcut.length > 128)) throw workspaceError("invalid_argument", "Invalid native action identity or state");
+  if (!next.icon || !Array.isArray(next.icon.paths) || !next.icon.paths.length || next.icon.paths.length > 16 || next.icon.paths.some((path2) => typeof path2 !== "string" || path2.length > 8192 || !/^[\w\s.,+\-]+$/.test(path2)) || typeof (next.icon.viewBox ?? "0 0 24 24") !== "string") throw workspaceError("invalid_argument", "Native action requires filled SVG paths");
+  return next;
+}
+function createWorkspaceActions({ document: document2, load, activity, check, report }) {
+  const records = /* @__PURE__ */ new Set();
+  let native, prepared, disposed = false;
+  function ensure() {
+    return prepared ??= Promise.resolve().then(load).then((value) => {
+      if (disposed) throw workspaceError("workspace_retired", "Native action provider retired");
+      native = value;
+      return value;
+    });
+  }
+  function render(record) {
+    if (record.disposed || record.failed || !native) return;
+    const N = native, R = N.React, h = R.createElement, opts = record.options, placement = activityPlacement(activity());
+    if (!placement) return;
+    if (!record.root) {
+      check();
+      record.live();
+      record.providers = providersFor(placement.button);
+      record.Commit = function() {
+        R.useLayoutEffect(() => record.resolve());
+        return null;
+      };
+      record.root = N.Client.createRoot(record.container, { onUncaughtError: record.fail, onCaughtError: record.fail });
+    }
+    let sibling2 = record.container.nextSibling;
+    while (sibling2?.nodeType === 1 && sibling2.matches("[data-codlet-workspace-owned]")) sibling2 = sibling2.nextSibling;
+    if (record.container.parentElement !== placement.parent || sibling2 !== placement.anchor) placement.anchor.before(record.container);
+    if (!record.dirty) return;
+    record.dirty = false;
+    const reference = placement.button.querySelector("svg"), computed = reference && document2.defaultView.getComputedStyle(reference);
+    const icon = h("svg", { "aria-hidden": true, "data-no-autosize": true, viewBox: opts.icon.viewBox ?? "0 0 24 24", width: computed?.width ?? "16px", height: computed?.height ?? "16px", fill: "currentColor", className: reference?.getAttribute("class")?.split(/\s+/).filter((name) => name.startsWith("_Icon_")).join(" ") }, ...opts.icon.paths.map((path2, index) => h("path", { key: index, d: path2 })));
+    const control = h(N.Button, { "aria-label": opts.label, "aria-pressed": opts.pressed, "data-codlet-workspace-action": opts.id, color: placement.button.getAttribute("data-color") ?? "secondary", variant: "ghost", pill: false, uniform: true, size: "md", iconSize: "sm", selected: opts.pressed, disabled: opts.disabled, onClick: () => {
+      check();
+      if (record.disposed || record.options.disabled) return;
+      try {
+        Promise.resolve(record.options.onInvoke()).catch(report);
+      } catch (error) {
+        report(error);
+      }
+    } }, icon);
+    const tree = h(N.Tooltip, { tooltipContent: opts.label, shortcut: opts.shortcut, side: "bottom", variant: "tooltip", cloneCustomTrigger: false, closeOnTriggerClick: true }, control);
+    record.root.render(wrapProviders(N, record.providers, h(R.Fragment, null, tree, h(record.Commit))));
+  }
+  function attempt(record) {
+    try {
+      render(record);
+    } catch (error) {
+      if (["workspace_host_pending", "ui_host_pending"].includes(error.code)) return;
+      record.fail(error);
+    }
+  }
+  function register(value, owner2, live) {
+    check();
+    if (records.size >= 64) throw workspaceError("resource_limit", "Too many native actions");
+    const record = { options: options(value), disposed: false, dirty: true, live };
+    if ([...records].some((other) => other.owner === owner2 && other.options.id === record.options.id)) throw workspaceError("duplicate_action", "Native action already registered");
+    record.owner = owner2;
+    let resolve, reject;
+    const ready = new Promise((yes, no) => {
+      resolve = yes;
+      reject = no;
+    });
+    ready.catch(() => {
+    });
+    record.resolve = resolve;
+    record.reject = reject;
+    record.fail = (error) => {
+      record.failed = true;
+      reject(error);
+      report(error);
+    };
+    record.container = document2.createElement("span");
+    record.container.dataset.codletWorkspaceOwned = owner2;
+    record.container.style.display = "contents";
+    records.add(record);
+    ensure().then(() => {
+      if (!record.disposed) attempt(record);
+    }, record.fail).catch(record.fail);
+    return Object.freeze({
+      ready,
+      update(partial) {
+        live();
+        if (record.disposed) throw workspaceError("workspace_retired", "Native action retired");
+        if (partial?.id != null && partial.id !== record.options.id) throw workspaceError("invalid_argument", "Native action identity cannot change");
+        record.options = options(partial, record.options);
+        record.dirty = true;
+        queueMicrotask(() => attempt(record));
+      },
+      dispose() {
+        if (record.disposed) return;
+        record.disposed = true;
+        records.delete(record);
+        reject(workspaceError("workspace_retired", "Native action retired before readiness"));
+        if (record.root) native.DOM.flushSync(() => record.root.unmount());
+        record.container.remove();
+      }
+    });
+  }
+  return { register, reconcile() {
+    if (native) for (const record of records) attempt(record);
+  }, dispose() {
+    disposed = true;
+    for (const record of records) {
+      record.disposed = true;
+      record.reject(workspaceError("workspace_retired", "Native action provider retired"));
+      if (record.root) native.DOM.flushSync(() => record.root.unmount());
+      record.container.remove();
+    }
+    records.clear();
+  } };
+}
+
+// src/adapter/workspace-composer-binding.js
+var identityKeys = ["threadId", "hostId"];
+function identity(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value) || Object.keys(value).some((key2) => !identityKeys.includes(key2)) || !/^[\w-]{8,256}$/.test(value.threadId ?? "") || (value.hostId ?? "local") !== "local")
+    throw workspaceError("invalid_argument", "Invalid local composer identity");
+  return Object.freeze({ threadId: value.threadId, hostId: "local" });
+}
+function invocation(value, revision = false) {
+  if (!value || typeof value !== "object" || Array.isArray(value) || Object.keys(value).some((key2) => key2 !== "signal" && (!revision || key2 !== "bindingRevision")))
+    throw workspaceError("invalid_argument", "Invalid composer invocation");
+  const signal = value.signal;
+  if (signal != null && (typeof signal.aborted !== "boolean" || typeof signal.addEventListener !== "function" || typeof signal.removeEventListener !== "function"))
+    throw workspaceError("invalid_argument", "Invalid composer signal");
+  if (value.bindingRevision != null && (!Number.isSafeInteger(value.bindingRevision) || value.bindingRevision < 1))
+    throw workspaceError("invalid_argument", "Invalid composer binding revision");
+  return value;
+}
+var deferred = () => {
+  let resolve, reject;
+  const promise = new Promise((yes, no) => {
+    resolve = yes;
+    reject = no;
+  });
+  promise.catch(() => {
+  });
+  return { promise, resolve, reject };
+};
+var cancelled = () => workspaceError("invocation_cancelled", "Composer operation was cancelled");
+function createComposerBinding({ driver, initialIdentity, onState, check, report, metrics, timeoutMs = 1e4, released = () => {
+} }) {
+  for (const method of ["bind", "activate", "block", "readBinding", "focus", "isComposing", "close"])
+    if (typeof driver?.[method] !== "function") throw workspaceError("workspace_composer_unsupported", "Native composer driver is incomplete");
+  let requested = identity(initialIdentity), revision = 0, phase, bindingOp, activationOp, active2 = false, retired = false, closing, closeController, closeDone = false;
+  const closeListeners = /* @__PURE__ */ new Map();
+  const first = deferred(), viewId = metrics?.nextView();
+  const valid = () => {
+    check();
+    if (retired) throw workspaceError("workspace_retired", "Composer handle retired");
+  };
+  const matches = (value) => value?.inputConfirmed === true && value.threadId === requested.threadId && value.hostId === "local" && value.bindingRevision === revision;
+  function expected(options3) {
+    if (options3.bindingRevision != null && options3.bindingRevision !== revision)
+      throw workspaceError("workspace_composer_superseded", "The composer binding was replaced");
+  }
+  function state(next, error) {
+    if (phase === next && !error) return;
+    phase = next;
+    metrics?.add("composer.state", { viewId, threadAlias: revision });
+    const value = Object.freeze({
+      phase,
+      ...requested,
+      bindingRevision: revision,
+      diagnostic: error ? Object.freeze({ code: error.code ?? "workspace_composer_unavailable", message: error.message }) : null
+    });
+    try {
+      Promise.resolve(onState?.(value)).catch(report);
+    } catch (error2) {
+      report(error2);
+    }
+  }
+  function block() {
+    active2 = false;
+    driver.block();
+  }
+  function finish(op, error, receipt2) {
+    if (op.done) return;
+    op.done = true;
+    clearTimeout(op.timer);
+    op.unsubscribe?.();
+    if (bindingOp === op) bindingOp = null;
+    if (activationOp === op) activationOp = null;
+    if (error) {
+      op.controller.abort(error);
+      op.reject(error);
+    } else op.resolve(receipt2);
+  }
+  function cancel(op, code, message) {
+    if (op) finish(op, workspaceError(code, message));
+  }
+  function operation(kind, signal) {
+    const op = {
+      ...deferred(),
+      kind,
+      revision,
+      controller: new AbortController(),
+      done: false,
+      operationId: metrics?.nextOperation(),
+      started: metrics?.start()
+    };
+    const abort = () => {
+      if (op.done) return;
+      const current4 = kind === "bind" ? bindingOp === op : activationOp === op;
+      finish(op, cancelled());
+      if (current4 && !retired && op.revision === revision) {
+        block();
+        state("inactive", cancelled());
+      }
+    };
+    if (signal) {
+      signal.addEventListener("abort", abort, { once: true });
+      op.unsubscribe = () => signal.removeEventListener("abort", abort);
+    }
+    op.timer = setTimeout(() => {
+      if (op.done) return;
+      finish(op, workspaceError(`workspace_composer_${kind}_timeout`, "Native composer did not complete " + kind));
+      if (!retired && op.revision === revision) {
+        block();
+        state("error", workspaceError(`workspace_composer_${kind}_timeout`, "Native composer timed out"));
+      }
+    }, timeoutMs);
+    return op;
+  }
+  function current3(op) {
+    return !op.done && !retired && op.revision === revision;
+  }
+  function receipt() {
+    return Object.freeze({ ...requested, bindingRevision: revision, inputConfirmed: true, submitDisabled: !active2 });
+  }
+  function failure(op, error) {
+    if (!current3(op)) return;
+    finish(op, error);
+    block();
+    state("error", error);
+    report(error);
+  }
+  function beginBind(target, options3 = {}) {
+    valid();
+    const next = identity(target), opts = invocation(options3);
+    if (opts.signal?.aborted) {
+      const failed = deferred();
+      failed.reject(cancelled());
+      return failed.promise;
+    }
+    if (driver.isComposing()) throw workspaceError("workspace_composer_busy", "Finish composition before rebinding the composer");
+    cancel(bindingOp, "workspace_composer_superseded", "A newer composer binding replaced this operation");
+    cancel(activationOp, "workspace_composer_superseded", "The composer binding was replaced");
+    block();
+    requested = next;
+    revision++;
+    const op = operation("bind", opts.signal);
+    bindingOp = op;
+    if (revision === 1) op.promise.then(first.resolve, first.reject);
+    metrics?.add("composer.bind.begin", { viewId, operationId: op.operationId, threadAlias: revision });
+    state(revision === 1 ? "preparing" : "binding");
+    if (current3(op)) Promise.resolve().then(() => {
+      if (current3(op)) return driver.bind({ ...next, bindingRevision: op.revision }, { signal: op.controller.signal });
+    }).then(() => {
+      if (!current3(op)) return;
+      check();
+      if (!matches(driver.readBinding())) throw workspaceError("workspace_composer_binding_drift", "Native input or submit target does not match the requested binding");
+      const value = receipt();
+      finish(op, null, value);
+      if (metrics) metrics.end("composer.bind.complete", op.started, { viewId, operationId: op.operationId, threadAlias: op.revision });
+      state(activationOp ? "activating" : "ready");
+    }).catch((error) => failure(op, error));
+    return op.promise;
+  }
+  function activate2(options3 = {}) {
+    valid();
+    const opts = invocation(options3, true);
+    expected(opts);
+    if (opts.signal?.aborted) {
+      const failed = deferred();
+      failed.reject(cancelled());
+      return failed.promise;
+    }
+    const existing = active2 && driver.readBinding();
+    if (active2 && matches(existing) && existing.submitDisabled === false)
+      return Promise.resolve(Object.freeze({ ...receipt(), submitDisabled: false }));
+    cancel(activationOp, "workspace_composer_superseded", "A newer activation replaced this operation");
+    block();
+    const op = operation("activate", opts.signal);
+    activationOp = op;
+    const bound = bindingOp?.promise ?? Promise.resolve();
+    state("activating");
+    Promise.resolve(bound).then(() => {
+      if (current3(op)) return driver.activate({ bindingRevision: op.revision, signal: op.controller.signal });
+    }).then(() => {
+      if (!current3(op)) return;
+      check();
+      const value = driver.readBinding();
+      if (!matches(value) || value.submitDisabled !== false) throw workspaceError("workspace_composer_binding_drift", "Native composer did not confirm an editable binding");
+      active2 = true;
+      finish(op, null, Object.freeze({ ...receipt(), submitDisabled: false }));
+      if (metrics) metrics.end("composer.activate.complete", op.started, { viewId, operationId: op.operationId, threadAlias: op.revision });
+      state("active");
+    }).catch((error) => failure(op, error));
+    return op.promise;
+  }
+  function deactivate2() {
+    valid();
+    block();
+    cancel(activationOp, "workspace_composer_deactivated", "Composer activation was cancelled");
+    if (!bindingOp) state("inactive");
+  }
+  function startClose(options3 = {}) {
+    const opts = invocation(options3);
+    if (!closing) {
+      retired = true;
+      block();
+      cancel(bindingOp, "workspace_retired", "Composer retired before binding");
+      cancel(activationOp, "workspace_retired", "Composer retired before activation");
+      first.reject(workspaceError("workspace_retired", "Composer retired before readiness"));
+      const completion = deferred();
+      closing = completion.promise;
+      closeController = new AbortController();
+      state("closing");
+      const started = metrics?.start();
+      let closeError;
+      const aborted = deferred();
+      const abort = () => aborted.reject(closeController.signal.reason ?? cancelled());
+      closeController.signal.addEventListener("abort", abort, { once: true });
+      if (closeController.signal.aborted) abort();
+      const timer = setTimeout(() => closeController.abort(workspaceError("workspace_composer_cleanup_incomplete", "Native composer cleanup did not finish")), timeoutMs);
+      Promise.race([Promise.resolve().then(() => driver.close({ signal: closeController.signal })), aborted.promise]).then(() => {
+        closeController.signal.throwIfAborted();
+        if (metrics) metrics.end("composer.close.complete", started, { viewId, threadAlias: revision });
+        state("disposed");
+      }).catch((error) => {
+        closeError = error;
+        state("error", error);
+        throw error;
+      }).finally(() => {
+        closeDone = true;
+        clearTimeout(timer);
+        closeController.signal.removeEventListener("abort", abort);
+        for (const [signal, listener] of closeListeners) signal.removeEventListener("abort", listener);
+        closeListeners.clear();
+        released(closeError);
+      }).then(completion.resolve, completion.reject);
+      closing.catch(report);
+    }
+    if (opts.signal && !closeDone && !closeListeners.has(opts.signal)) {
+      const abort = () => closeController.abort(cancelled());
+      if (opts.signal.aborted) abort();
+      else {
+        closeListeners.set(opts.signal, abort);
+        opts.signal.addEventListener("abort", abort, { once: true });
+      }
+    }
+    return closing;
+  }
+  const handle = Object.freeze({
+    get threadId() {
+      return requested.threadId;
+    },
+    get hostId() {
+      return "local";
+    },
+    ready: first.promise,
+    bind: beginBind,
+    activate: activate2,
+    deactivate: deactivate2,
+    focus(options3 = {}) {
+      valid();
+      const opts = invocation(options3, true);
+      if (opts.signal != null) throw workspaceError("invalid_argument", "Focus accepts only a binding revision");
+      expected(opts);
+      const value = driver.readBinding();
+      if (active2 && !matches(value)) {
+        block();
+        const error = workspaceError("workspace_composer_binding_drift", "The active Native input changed its binding");
+        state("error", error);
+        throw error;
+      }
+      if (!active2 || value?.submitDisabled !== false)
+        throw workspaceError("workspace_composer_inactive", "Activate the current binding before focusing it");
+      return driver.focus() === true;
+    },
+    close: startClose,
+    dispose() {
+      void startClose();
+    }
+  });
+  queueMicrotask(() => {
+    if (retired || revision) return;
+    try {
+      beginBind(requested);
+    } catch (error) {
+      first.reject(error);
+    }
+  });
+  return handle;
+}
+
+// src/adapter/workspace-composer.js
+function options2(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value) || Object.keys(value).some((key2) => !["threadId", "hostId", "onState"].includes(key2)) || !/^[\w-]{8,256}$/.test(value.threadId ?? "") || (value.hostId ?? "local") !== "local" || value.onState != null && typeof value.onState !== "function")
+    throw workspaceError("invalid_argument", "Invalid local composer identity");
+  return { ...value, hostId: "local" };
+}
+function createComposers({ document: document2, load, surface, check, report, metrics }) {
+  const records = /* @__PURE__ */ new Set(), containers = /* @__PURE__ */ new WeakSet();
+  let native, prepared, disposed = false;
+  const boundRecords = /* @__PURE__ */ new Set(), pendingReleases = /* @__PURE__ */ new Set();
+  let cleanupFailure;
+  function releaseFailed(error) {
+    cleanupFailure ??= error;
+  }
+  function releaseIncomplete(driver) {
+    const controller = new AbortController();
+    let timer;
+    const timeout = new Promise((_, reject) => {
+      timer = setTimeout(() => {
+        const error = workspaceError("workspace_composer_cleanup_incomplete", "Incomplete Native driver did not release its resources");
+        controller.abort(error);
+        reject(error);
+      }, 1e4);
+    });
+    const pending = Promise.race([Promise.resolve().then(() => {
+      if (typeof driver?.close !== "function") throw workspaceError("workspace_composer_cleanup_incomplete", "Incomplete Native driver cannot release its resources");
+      return driver.close({ signal: controller.signal });
+    }), timeout]).finally(() => clearTimeout(timer));
+    pendingReleases.add(pending);
+    pending.then(() => pendingReleases.delete(pending), (error) => {
+      pendingReleases.delete(pending);
+      releaseFailed(error);
+      report(error);
+    });
+  }
+  function ensure() {
+    return prepared ??= Promise.resolve().then(load).then((value) => {
+      if (disposed) throw workspaceError("workspace_retired", "Composer provider retired");
+      native = value;
+      return value;
+    });
+  }
+  function binding(record) {
+    const input = record.mount.querySelector("[data-codex-composer-root]");
+    const value = nativeComposerBinding(input, record.mount);
+    return value && { ...value, disabled: value.submitDisabled, input, editable: input.querySelector('[contenteditable="true"]') };
+  }
+  function state(record, phase, error) {
+    if (record.phase === phase && !error) return;
+    record.phase = phase;
+    const value = Object.freeze({ phase, threadId: record.options.threadId, hostId: "local", diagnostic: error ? Object.freeze({ code: error.code ?? "workspace_composer_unavailable", message: error.message }) : null });
+    try {
+      Promise.resolve(record.options.onState?.(value)).catch(report);
+    } catch (error2) {
+      report(error2);
+    }
+  }
+  function stopPending(record) {
+    if (record.frame != null) document2.defaultView.cancelAnimationFrame?.(record.frame);
+    record.frame = null;
+    clearTimeout(record.retry);
+    record.retry = null;
+  }
+  function rejectActivation(record, code, message) {
+    const op = record.activation;
+    if (!op) return;
+    record.activation = null;
+    clearTimeout(op.timer);
+    op.reject(workspaceError(code, message));
+    stopPending(record);
+  }
+  function deactivate2(record) {
+    if (record.disposed) return;
+    record.epoch++;
+    record.active = false;
+    record.wrapper.setAttribute("inert", "");
+    if (record.wrapper.contains(document2.activeElement)) document2.activeElement.blur?.();
+    rejectActivation(record, "workspace_composer_deactivated", "Composer activation was cancelled");
+    if (record.readyDone) state(record, "inactive");
+    if (record.resume) {
+      record.resume = false;
+      render(record);
+    }
+  }
+  function size(record) {
+    if (record.disposed || !record.footer?.isConnected) return;
+    const rect = record.footer.getBoundingClientRect(), bottom = record.mount.getBoundingClientRect().bottom;
+    const height = Math.ceil(rect.height + Math.max(0, bottom - rect.bottom));
+    if (height > 0 && Number.isFinite(height) && height !== record.height) {
+      record.height = height;
+      record.sizer.style.height = height + "px";
+    }
+  }
+  function footer(record, value) {
+    const next = value.input.closest("[data-thread-scroll-footer]") ?? value.input.closest("[data-thread-find-composer]");
+    if (!next || !record.mount.contains(next)) throw workspaceError("workspace_composer_unavailable", "Native composer footer is unavailable");
+    if (record.footer !== next) {
+      record.resize?.disconnect();
+      record.footer = next;
+      record.resize?.observe(next);
+      size(record);
+    }
+  }
+  function receipt(record, value) {
+    return Object.freeze({ threadId: record.options.threadId, hostId: "local", inputConfirmed: true, submitDisabled: !!value.disabled });
+  }
+  function pulse(record) {
+    if (record.disposed || !record.root) return;
+    try {
+      const value = binding(record);
+      if (!value?.editable) return;
+      if (value.threadId !== record.options.threadId || value.hostId !== "local") throw workspaceError("workspace_composer_binding_drift", "Native composer changed its immutable conversation");
+      footer(record, value);
+      if (!record.readyDone) {
+        record.readyDone = true;
+        clearTimeout(record.readyTimer);
+        state(record, "ready");
+        record.resolveReady(receipt(record, value));
+      }
+      const op = record.activation;
+      if (op && op.epoch === record.epoch && !value.disabled && native.manager.getConversation(record.options.threadId)?.resumeState === "resumed" && native.manager.getStreamRole(record.options.threadId)?.role === "owner") {
+        record.activation = null;
+        clearTimeout(op.timer);
+        record.active = true;
+        record.wrapper.removeAttribute("inert");
+        stopPending(record);
+        state(record, "active");
+        op.resolve(receipt(record, value));
+      } else if (!op) stopPending(record);
+    } catch (error) {
+      fail7(record, error);
+    }
+  }
+  function schedule(record) {
+    if (record.disposed || record.readyDone && !record.activation) return;
+    if (record.frame != null || record.retry != null) return;
+    const tick = () => {
+      record.frame = null;
+      record.retry = null;
+      pulse(record);
+      if (!record.readyDone || record.activation) schedule(record);
+    };
+    if (document2.visibilityState !== "hidden" && document2.defaultView.requestAnimationFrame) record.frame = document2.defaultView.requestAnimationFrame(tick);
+    else record.retry = setTimeout(tick, 50);
+  }
+  function fail7(record, error) {
+    if (record.disposed || record.failed) return;
+    record.failed = true;
+    record.active = false;
+    record.wrapper.setAttribute("inert", "");
+    stopPending(record);
+    clearTimeout(record.readyTimer);
+    if (!record.readyDone) record.rejectReady(error);
+    rejectActivation(record, error.code ?? "workspace_composer_unavailable", error.message);
+    state(record, "error", error);
+    report(error);
+  }
+  function render(record) {
+    if (record.disposed || record.failed || !record.root) return;
+    const N = native, R = N.React, h = R.createElement;
+    record.root.render(wrapProviders(N, record.providers, h(record.Boundary, null, h(
+      R.Suspense,
+      { fallback: null },
+      h(N.Scope, { scope: N.ThreadScope, value: record.threadValue }, h(
+        N.Scope,
+        { scope: N.RouteScope, value: record.routeValue },
+        h(N.Frame, { conversationId: record.options.threadId, hostId: "local", canInteract: true, shouldResume: record.resume, composerSubmitDisabled: false, hideThreadContent: true, hostMcpApps: false, disableScrollToTop: true }),
+        h(record.Commit)
+      ))
+    ))));
+  }
+  function mount(container, value, owner2, live) {
+    check();
+    const opts = options2(value);
+    if (records.size + boundRecords.size >= 32) throw workspaceError("resource_limit", "At most 32 owned native composers are supported");
+    if (!(container instanceof document2.defaultView.HTMLElement) || container.ownerDocument !== document2 || !container.isConnected || container.childNodes.length || containers.has(container) || container.closest("[data-codex-composer-root]") || container.matches("main,.thread-scroll-container"))
+      throw workspaceError("invalid_argument", "Composer requires a connected empty consumer container");
+    if (native?.composerRebind?.supported === true && typeof native.composerRebind.mount === "function") {
+      const source = surface()?.content ?? surface()?.main;
+      if (!source?.isConnected) throw workspaceError("workspace_host_pending", "Native application context is unavailable");
+      const providers = providersFor(source);
+      if (!providers.length) throw workspaceError("workspace_composer_unavailable", "Native composer context is unavailable");
+      const mount3 = document2.createElement("div");
+      mount3.dataset.codletWorkspaceOwned = owner2;
+      mount3.dataset.codletWorkspaceComposer = "";
+      mount3.setAttribute("inert", "");
+      mount3.style.cssText = "min-width:0;width:100%;";
+      container.append(mount3);
+      containers.add(container);
+      const record2 = {};
+      let driver;
+      boundRecords.add(record2);
+      try {
+        driver = native.composerRebind.mount({ document: document2, container: mount3, providers, owner: owner2, check, metrics });
+        const controlled = Object.fromEntries(["bind", "activate", "block", "readBinding", "focus", "isComposing", "close"].map((method) => {
+          if (typeof driver?.[method] !== "function") throw workspaceError("workspace_composer_unsupported", "Native composer driver is incomplete");
+          return [method, driver[method].bind(driver)];
+        }));
+        const block = controlled.block;
+        controlled.block = () => {
+          mount3.setAttribute("inert", "");
+          block();
+        };
+        record2.handle = createComposerBinding({
+          driver: controlled,
+          initialIdentity: { threadId: opts.threadId, hostId: "local" },
+          onState: (state2) => {
+            if (state2.phase === "active") mount3.removeAttribute("inert");
+            else mount3.setAttribute("inert", "");
+            return opts.onState?.(state2);
+          },
+          check() {
+            check();
+            live();
+          },
+          report,
+          metrics,
+          released(error) {
+            if (error) releaseFailed(error);
+            mount3.remove();
+            boundRecords.delete(record2);
+            containers.delete(container);
+          }
+        });
+        return record2.handle;
+      } catch (error) {
+        try {
+          driver?.block?.();
+        } catch (failure) {
+          report(failure);
+        }
+        if (driver) releaseIncomplete(driver);
+        boundRecords.delete(record2);
+        containers.delete(container);
+        mount3.remove();
+        throw error;
+      }
+    }
+    const wrapper = document2.createElement("div"), sizer = document2.createElement("div"), mount2 = document2.createElement("div");
+    wrapper.dataset.codletWorkspaceOwned = owner2;
+    wrapper.dataset.codletWorkspaceComposer = "";
+    wrapper.setAttribute("inert", "");
+    wrapper.style.cssText = "position:relative;min-width:0;width:100%;overflow:hidden;";
+    sizer.setAttribute("aria-hidden", "true");
+    sizer.dataset.codletWorkspaceComposerSize = "";
+    sizer.style.cssText = "height:0;pointer-events:none;visibility:hidden;";
+    mount2.style.cssText = "position:absolute;left:0;bottom:0;width:100%;height:100vh;min-width:0;";
+    wrapper.append(sizer, mount2);
+    container.append(wrapper);
+    const record = { owner: owner2, options: opts, wrapper, sizer, mount: mount2, epoch: 0, resume: false, active: false, disposed: false, failed: false, readyDone: false, live };
+    records.add(record);
+    containers.add(container);
+    const ready = new Promise((resolve, reject) => {
+      record.resolveReady = resolve;
+      record.rejectReady = reject;
+    });
+    ready.catch(() => {
+    });
+    const valid = () => {
+      check();
+      live();
+      if (record.disposed || record.failed) throw workspaceError("workspace_retired", "Composer handle retired");
+    };
+    function dispose() {
+      if (record.disposed) return;
+      deactivate2(record);
+      record.disposed = true;
+      record.epoch++;
+      stopPending(record);
+      clearTimeout(record.readyTimer);
+      record.observer?.disconnect();
+      record.resize?.disconnect();
+      if (!record.readyDone) record.rejectReady(workspaceError("workspace_retired", "Composer retired before readiness"));
+      if (record.root) native.DOM.flushSync(() => record.root.unmount());
+      wrapper.remove();
+      records.delete(record);
+      containers.delete(container);
+      state(record, "disposed");
+    }
+    record.dispose = dispose;
+    state(record, "preparing");
+    ensure().then((N) => {
+      if (record.disposed) return;
+      valid();
+      N.check?.();
+      const source = surface()?.content ?? surface()?.main ?? document2.querySelector('nav[data-app-navigation-rail="true"]');
+      if (!source?.isConnected) throw workspaceError("workspace_host_pending", "Native application context is unavailable");
+      record.providers = providersFor(source);
+      if (!record.providers.length) throw workspaceError("workspace_composer_unavailable", "Native composer context is unavailable");
+      const route = N.routeDescription({ pathname: "/local/" + opts.threadId, search: "?codletComposer=" + encodeURIComponent(owner2 + ":" + crypto.randomUUID()) });
+      if (route?.routeKind !== "local-thread" || route.conversationId !== opts.threadId) throw workspaceError("workspace_composer_unavailable", "Native rejected the local composer route");
+      record.routeValue = route;
+      record.threadValue = { clientThreadId: N.composerValue(route).clientThreadId };
+      const R = N.React;
+      record.Boundary = class extends R.Component {
+        constructor(props) {
+          super(props);
+          this.state = { failed: false };
+        }
+        static getDerivedStateFromError() {
+          return { failed: true };
+        }
+        componentDidCatch(error) {
+          fail7(record, error);
+        }
+        render() {
+          return this.state.failed ? null : this.props.children;
+        }
+      };
+      record.Commit = function() {
+        R.useLayoutEffect(() => pulse(record));
+        return null;
+      };
+      record.root = N.Client.createRoot(mount2, { onUncaughtError: (error) => fail7(record, error), onCaughtError: (error) => fail7(record, error) });
+      if (document2.defaultView.ResizeObserver) record.resize = new document2.defaultView.ResizeObserver(() => size(record));
+      record.observer = new document2.defaultView.MutationObserver(() => {
+        if (!record.footer?.isConnected || !record.readyDone || record.activation) pulse(record);
+      });
+      record.observer.observe(mount2, { childList: true, subtree: true, attributes: true, attributeFilter: ["disabled", "contenteditable", "data-codex-composer-root"] });
+      record.readyTimer = setTimeout(() => fail7(record, workspaceError("workspace_composer_ready_timeout", "Native composer did not confirm its requested conversation")), 1e4);
+      render(record);
+      schedule(record);
+    }).catch((error) => fail7(record, error));
+    return Object.freeze({
+      threadId: opts.threadId,
+      hostId: "local",
+      ready,
+      activate() {
+        valid();
+        if (record.active) {
+          const current3 = binding(record);
+          if (current3?.threadId === opts.threadId && !current3.disabled) return Promise.resolve(receipt(record, current3));
+        }
+        deactivate2(record);
+        const epoch = ++record.epoch;
+        let resolve, reject;
+        const result = new Promise((yes, no) => {
+          resolve = yes;
+          reject = no;
+        });
+        result.catch(() => {
+        });
+        const op = { epoch, resolve, reject };
+        record.activation = op;
+        op.timer = setTimeout(() => {
+          if (record.activation === op) rejectActivation(record, "workspace_composer_activation_timeout", "Native composer is not ready to edit");
+        }, 1e4);
+        state(record, "activating");
+        ready.then(() => {
+          if (record.disposed || record.activation !== op) return;
+          valid();
+          native.check?.();
+          if (native.manager.getConversation(opts.threadId)?.resumeState !== "resumed" || native.manager.getStreamRole(opts.threadId)?.role !== "owner") {
+            record.resume = true;
+            render(record);
+          }
+          pulse(record);
+          schedule(record);
+        }).catch((error) => {
+          if (record.activation === op) rejectActivation(record, error.code ?? "workspace_composer_unavailable", error.message);
+        });
+        return result;
+      },
+      deactivate() {
+        valid();
+        deactivate2(record);
+      },
+      focus() {
+        valid();
+        if (!record.active) throw workspaceError("workspace_composer_inactive", "Activate the composer before focusing it");
+        const value2 = binding(record);
+        if (!value2?.editable || value2.threadId !== opts.threadId || value2.disabled) throw workspaceError("workspace_composer_not_ready", "Native composer is not ready to focus");
+        value2.editable.focus({ preventScroll: true });
+        return document2.activeElement === value2.editable || value2.editable.contains(document2.activeElement);
+      },
+      dispose
+    });
+  }
+  return {
+    mount,
+    prepare: ensure,
+    supportsRebind: () => native?.composerRebind?.supported === true && typeof native.composerRebind.mount === "function",
+    async cleanup({ signal } = {}) {
+      const results = await Promise.allSettled([...pendingReleases, ...[...boundRecords].map((record) => record.handle.close({ signal }))]);
+      for (const result of results) if (result.status === "rejected") releaseFailed(result.reason);
+      if (cleanupFailure) throw cleanupFailure;
+    },
+    dispose() {
+      if (disposed) return;
+      for (const record of [...records]) record.dispose();
+      for (const record of [...boundRecords]) record.handle.dispose();
+      disposed = true;
+    }
+  };
+}
+
+// src/adapter/workspace-metrics.js
+function createWorkspaceMetrics(options3) {
+  if (options3 == null || options3.enabled !== true) return null;
+  const { runId, capacity = 1024, now = () => performance.now() } = options3;
+  if (typeof runId !== "string" || !/^[\w.-]{1,96}$/.test(runId) || !Number.isSafeInteger(capacity) || capacity < 1 || capacity > 4096 || typeof now !== "function")
+    throw new TypeError("Invalid workspace test points");
+  const samples = new Array(capacity), counts = /* @__PURE__ */ new Map();
+  let written = 0, operation = 0, view = 0;
+  const alias = (value) => Number.isSafeInteger(value) && value >= 0 ? value : null;
+  function add(phase, detail = {}) {
+    if (!/^[a-z][a-z0-9.]{1,64}$/.test(phase)) throw new TypeError("Invalid workspace measurement phase");
+    const sample = Object.freeze({
+      runId,
+      layer: "adapter",
+      phase,
+      timestamp: now(),
+      operationId: alias(detail.operationId),
+      viewId: alias(detail.viewId),
+      threadAlias: alias(detail.threadAlias),
+      duration: Number.isFinite(detail.duration) ? detail.duration : null
+    });
+    samples[written++ % capacity] = sample;
+    const key2 = counts.has(phase) || counts.size < 128 ? phase : "other";
+    counts.set(key2, (counts.get(key2) ?? 0) + 1);
+  }
+  return Object.freeze({
+    add,
+    nextOperation: () => ++operation,
+    nextView: () => ++view,
+    start: () => now(),
+    end(phase, start, detail) {
+      add(phase, { ...detail, duration: now() - start });
+    },
+    report() {
+      const count = Math.min(written, capacity), first = Math.max(0, written - capacity);
+      return Object.freeze({
+        runId,
+        layer: "adapter",
+        capacity,
+        written,
+        counts: Object.freeze(Object.fromEntries(counts)),
+        samples: Object.freeze(Array.from({ length: count }, (_, i) => samples[(first + i) % capacity]))
+      });
+    }
+  });
+}
+
 // src/adapter/workspace.js
 var WORKSPACE_CAPABILITY = Object.freeze({ name: "codex.ui.workspace", api: 1, scope: "target" });
 var WORKSPACE_SYMBOL = "codlet.codex.ui.workspace.v1";
-var emptyFeatures = () => ({ surface: false, activitySlot: false, transcript: false, shortcuts: false });
+var emptyFeatures = () => ({ surface: false, activitySlot: false, transcript: false, shortcuts: false, navigation: false, action: false, composer: false, composerRebind: false });
 var roleNames = ["main", "content", "scroller", "composer", "footer", "header", "rightPanel"];
 var errorValue = (error) => ({ code: typeof error?.code === "string" ? error.code : "workspace_host_drift", message: String(error?.message ?? error) });
 function createWorkspace(context, {
@@ -7410,9 +8649,14 @@ function createWorkspace(context, {
   document: doc = document,
   requestFrame = (callback) => requestAnimationFrame(callback),
   cancelFrame = (id) => cancelAnimationFrame(id),
-  validateDocument = desktopDocument
+  validateDocument = desktopDocument,
+  apiSymbol = WORKSPACE_SYMBOL,
+  capability = WORKSPACE_CAPABILITY,
+  navigationBinding,
+  transcriptIsolation = false,
+  testPoints
 } = {}) {
-  const symbol = Symbol.for(WORKSPACE_SYMBOL), tickets = /* @__PURE__ */ new Map(), sessions = /* @__PURE__ */ new Set(), slots = /* @__PURE__ */ new Set(), control = createSurfaceControl();
+  const symbol = Symbol.for(apiSymbol), tickets = /* @__PURE__ */ new Map(), sessions = /* @__PURE__ */ new Set(), slots = /* @__PURE__ */ new Set(), control = createSurfaceControl();
   if (globalThis[symbol] !== void 0) throw workspaceError("workspace_host_drift", "Another workspace provider owns this document");
   let alive = true, frame = null, observer, resize, host, root, unroute, structural = true, surface, activity, features = emptyFeatures(), diagnostic = null, surfaceFailure = null, revision = 0;
   let snapshot = Object.freeze({ api: 1, revision, route: null, threadId: null, hostId: null, auxiliary: false, available: false, features: Object.freeze(features), diagnostic: null });
@@ -7423,6 +8667,9 @@ function createWorkspace(context, {
     } catch {
     }
   };
+  const metrics = createWorkspaceMetrics(testPoints);
+  const observedNodes = /* @__PURE__ */ new Set();
+  let surfaceRevision = 0, publishedSurfaceRevision = -1, geometryDirty = true;
   const check = () => {
     if (!alive) throw workspaceError("workspace_retired", "Workspace provider retired");
   };
@@ -7439,8 +8686,25 @@ function createWorkspace(context, {
     schedule(false);
     throw error;
   });
-  const transcripts = createTranscripts({ document: doc, load: () => featureLoad("transcript", discovery.transcript), surface: () => surface, check, report });
+  const transcripts = createTranscripts({ document: doc, load: () => featureLoad("transcript", discovery.transcript), surface: () => surface, check, report, isolate: transcriptIsolation, metrics });
   const shortcuts = createShortcuts({ document: doc, load: () => featureLoad("shortcuts", discovery.shortcuts), surface: () => surface, activity: () => activity, check, report, changed: () => schedule(false) });
+  const navigation = createWorkspaceNavigation({ document: doc, load: () => featureLoad("navigation", discovery.navigation), host: () => host, check, changed: () => publish(true), ...navigationBinding ? { readBinding: navigationBinding } : {} });
+  const actions = createWorkspaceActions({ document: doc, load: () => featureLoad("action", discovery.action), activity: () => activity ??= findActivity(doc), check, report });
+  const composers = createComposers({ document: doc, load: () => featureLoad("composer", discovery.composer), surface: () => surface, check, report, metrics });
+  let composerFeatures, composerFeatureEpoch = 0;
+  function prepareComposerFeatures() {
+    if (host?.auxiliary || typeof discovery.composerCapabilities !== "function") return;
+    const epoch = composerFeatureEpoch;
+    composerFeatures ??= Promise.resolve().then(discovery.composerCapabilities).then(async (capabilities) => {
+      if (!alive || !sessions.size || epoch !== composerFeatureEpoch || !capabilities?.rebind) return;
+      await composers.prepare();
+      if (!alive || !sessions.size || epoch !== composerFeatureEpoch) return;
+      features = { ...features, composerRebind: composers.supportsRebind() };
+      schedule(false);
+    }).catch((error) => {
+      if (alive && sessions.size) report(error);
+    });
+  }
   function callback(listener, value) {
     try {
       Promise.resolve(listener(value)).catch(report);
@@ -7463,21 +8727,44 @@ function createWorkspace(context, {
     };
     const previous = { ...snapshot };
     delete previous.revision;
-    const changed = routeChanged || geometrySignature !== previousGeometry || JSON.stringify(next) !== JSON.stringify(previous);
+    const changed = routeChanged || surfaceRevision !== publishedSurfaceRevision || geometrySignature !== previousGeometry || JSON.stringify(next) !== JSON.stringify(previous);
     if (!changed) return;
     previousGeometry = geometrySignature;
+    publishedSurfaceRevision = surfaceRevision;
+    metrics?.add("surface.publish");
     snapshot = Object.freeze({ ...next, revision: ++revision, route: route && Object.freeze(route), features: Object.freeze({ ...features }), diagnostic: diagnostic && Object.freeze({ ...diagnostic }) });
     for (const session of sessions) for (const listener of session.listeners) callback(listener, snapshot);
   }
   let previousGeometry = "";
   let microtaskSequence = 0;
   function refreshGeometry() {
+    geometryDirty = false;
+    metrics?.add("surface.geometry");
+    if (metrics) {
+      for (const key2 of roleNames) if (surface?.[key2]) metrics.add("surface.layout.read");
+    }
     publicSurface = Object.freeze({ available: !!surface?.composer && !host?.auxiliary, ...Object.fromEntries(roleNames.map((key2) => [key2, geometry(surface?.[key2])])) });
     geometrySignature = JSON.stringify(roleNames.map((key2) => publicSurface[key2]?.rect ?? null));
+  }
+  function observeSurface() {
+    if (!resize) return;
+    const next = new Set(roleNames.map((key2) => surface?.[key2]).filter(Boolean));
+    for (const node of observedNodes) if (!next.has(node)) {
+      resize.unobserve(node);
+      observedNodes.delete(node);
+      metrics?.add("surface.resize.unobserve");
+    }
+    for (const node of next) if (!observedNodes.has(node)) {
+      resize.observe(node);
+      observedNodes.add(node);
+      metrics?.add("surface.resize.observe");
+    }
   }
   function reconcile() {
     frame = null;
     if (!alive || !sessions.size) return;
+    const started = metrics?.start();
+    metrics?.add("surface.reconcile");
     let routeChanged = false;
     try {
       if (!root?.isConnected || root !== doc.getElementById("root") || !host) {
@@ -7491,41 +8778,51 @@ function createWorkspace(context, {
       const oldSurface = surface;
       if (structural || routeChanged) {
         structural = false;
-        surface = host.auxiliary ? null : findWorkspaceSurface(doc);
-        if (!activity?.isConnected && !host.auxiliary && (slots.size || features.shortcuts)) activity = findActivity(doc);
-        features = { ...features, surface: !!surface?.composer, activitySlot: !!activity, transcript: host.auxiliary ? false : features.transcript, shortcuts: host.auxiliary ? false : features.shortcuts };
-        if (diagnostic === surfaceFailure) diagnostic = surfaceFailure = null;
-        if (resize && oldSurface !== surface) {
-          resize.disconnect();
-          for (const node of new Set(roleNames.map((key2) => surface?.[key2]).filter(Boolean))) resize.observe(node);
+        metrics?.add("surface.scan");
+        const next = host.auxiliary ? null : findWorkspaceSurface(doc);
+        if (roleNames.some((key2) => oldSurface?.[key2] !== next?.[key2])) {
+          surface = next;
+          surfaceRevision++;
+          geometryDirty = true;
         }
+        if (!activity?.isConnected && !host.auxiliary && (slots.size || features.shortcuts || features.action)) activity = findActivity(doc);
+        features = { ...features, surface: !!surface?.composer, activitySlot: !!activity, transcript: host.auxiliary ? false : features.transcript, shortcuts: host.auxiliary ? false : features.shortcuts, composerRebind: host.auxiliary ? false : features.composerRebind };
+        if (diagnostic === surfaceFailure) diagnostic = surfaceFailure = null;
+        observeSurface();
       }
       control.reconcile(surface);
-      let anchor = activity;
-      if (anchor?.isConnected) for (const slot of [...slots].reverse()) {
-        if (slot.container.parentElement !== anchor.parentElement || slot.container.nextSibling !== anchor) anchor.before(slot.container);
-        anchor = slot.container;
+      let anchor = activity?.isConnected ? activityPlacement(activity).anchor : null;
+      if (anchor?.isConnected) for (const slot of slots) {
+        if (slot.name !== "activity.before") continue;
+        let sibling2 = slot.container.nextSibling;
+        while (sibling2?.nodeType === 1 && sibling2.matches(OWNED)) sibling2 = sibling2.nextSibling;
+        if (slot.container.parentElement !== anchor.parentElement || sibling2 !== anchor) anchor.before(slot.container);
       }
-      refreshGeometry();
-      if (routeChanged) {
-        transcripts.rebind();
-        shortcuts.rebind();
-      } else if (structuralSettings) shortcuts.refresh();
+      for (const slot of slots) if (slot.name === "workspace.overlay" && slot.container.parentElement !== root) root.append(slot.container);
+      actions.reconcile();
+      if (geometryDirty) refreshGeometry();
+      if (routeChanged) shortcuts.rebind();
+      else if (structuralSettings) shortcuts.refresh();
     } catch (error) {
       diagnostic = surfaceFailure = errorValue(error);
       if (diagnostic.code !== "workspace_host_pending" && diagnostic.code !== "ui_host_pending") report(error);
+      if (surface) surfaceRevision++;
       surface = null;
+      observeSurface();
       control.reconcile(null);
       features = { ...features, surface: false };
       refreshGeometry();
     }
     structuralSettings = false;
     publish(routeChanged);
+    navigation.pulse();
+    if (metrics) metrics.end("surface.reconcile.complete", started);
   }
   let structuralSettings = false;
   function schedule(scan = true) {
     if (!alive || !sessions.size) return;
     structural ||= scan;
+    geometryDirty ||= scan;
     if (frame == null) {
       if (doc.visibilityState === "hidden") {
         const token = --microtaskSequence;
@@ -7539,6 +8836,7 @@ function createWorkspace(context, {
   function observe() {
     if (observer) return;
     observer = new doc.defaultView.MutationObserver((records) => {
+      metrics?.add("surface.mutation");
       const relevant = records.filter((record) => {
         const target = record.target.nodeType === 1 ? record.target : record.target.parentElement;
         if (target?.closest(OWNED)) return false;
@@ -7552,31 +8850,43 @@ function createWorkspace(context, {
       schedule(true);
     });
     observer.observe(doc.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-app-shell-active-page"] });
-    if (doc.defaultView.ResizeObserver) resize = new doc.defaultView.ResizeObserver(() => schedule(false));
+    if (doc.defaultView.ResizeObserver) resize = new doc.defaultView.ResizeObserver((entries) => {
+      if (!entries.some((entry) => observedNodes.has(entry.target))) return;
+      metrics?.add("surface.resize");
+      geometryDirty = true;
+      schedule(false);
+    });
     doc.defaultView.addEventListener("resize", onResize);
   }
-  const onResize = () => schedule(false);
+  const onResize = () => {
+    geometryDirty = true;
+    schedule(false);
+  };
   function stopObserving() {
     observer?.disconnect();
     resize?.disconnect();
     observer = resize = null;
     unroute?.();
     unroute = null;
+    observedNodes.clear();
+    geometryDirty = true;
+    composerFeatureEpoch++;
+    composerFeatures = void 0;
     doc.defaultView.removeEventListener("resize", onResize);
     if (frame != null && frame >= 0) cancelFrame(frame);
     frame = null;
     host = root = surface = activity = null;
   }
-  function issueTicket(args, invocation) {
+  function issueTicket(args, invocation2) {
     check();
     if (!args || typeof args !== "object" || Array.isArray(args) || Object.keys(args).length) throw workspaceError("invalid_argument", "getApi expects an empty object");
-    const caller = invocation?.caller;
-    if (invocation?.signal?.aborted || !caller || typeof caller.pluginId !== "string" || !Number.isSafeInteger(caller.generation)) throw workspaceError("invalid_owner", "Workspace access requires a Core-authenticated caller");
+    const caller = invocation2?.caller;
+    if (invocation2?.signal?.aborted || !caller || typeof caller.pluginId !== "string" || !Number.isSafeInteger(caller.generation)) throw workspaceError("invalid_owner", "Workspace access requires a Core-authenticated caller");
     for (const [key2, value] of tickets) if (value.expires < Date.now()) tickets.delete(key2);
     if (tickets.size >= 64) throw workspaceError("resource_limit", "Too many pending workspace tickets");
     const ticket = crypto.randomUUID();
     tickets.set(ticket, { ...caller, expires: Date.now() + 15e3 });
-    return { api: 1, symbol: WORKSPACE_SYMBOL, ticket };
+    return { api: 1, symbol: apiSymbol, ticket };
   }
   function connect(owner2, token) {
     check();
@@ -7598,10 +8908,17 @@ function createWorkspace(context, {
       record.handles.set(kind, entries);
       if (entries.size >= limit) throw workspaceError("resource_limit", `Too many owned ${kind} handles`);
       const value = factory();
-      const result = Object.freeze({ ...value, dispose() {
+      const descriptors = Object.getOwnPropertyDescriptors(value);
+      descriptors.dispose = { enumerable: true, value() {
         if (!entries.delete(result)) return;
         value.dispose();
-      } });
+      } };
+      if (typeof value.close === "function") descriptors.close = { enumerable: true, value(options3) {
+        const completion = value.close(options3);
+        entries.delete(result);
+        return completion;
+      } };
+      const result = Object.freeze(Object.defineProperties({}, descriptors));
       entries.add(result);
       return result;
     }
@@ -7633,9 +8950,9 @@ function createWorkspace(context, {
         });
       },
       createSlot(name) {
-        if (name !== "activity.before") throw workspaceError("invalid_argument", "Unknown workspace slot");
+        if (!["activity.before", "workspace.overlay"].includes(name)) throw workspaceError("invalid_argument", "Unknown workspace slot");
         return own("slot", 8, () => {
-          if (!activity?.isConnected && !host?.auxiliary) try {
+          if (name === "activity.before" && !activity?.isConnected && !host?.auxiliary) try {
             activity = findActivity(doc);
             features = { ...features, activitySlot: !!activity };
           } catch (error) {
@@ -7644,9 +8961,11 @@ function createWorkspace(context, {
           }
           const container = doc.createElement("span");
           container.dataset.codletWorkspaceOwned = ownerKey;
-          const slot = { container };
+          container.style.display = "contents";
+          const slot = { container, name };
           slots.add(slot);
-          if (activity?.isConnected) activity.before(container);
+          if (name === "workspace.overlay") root?.append(container);
+          else if (activity?.isConnected) activityPlacement(activity).anchor.before(container);
           schedule(true);
           return { container, dispose() {
             slots.delete(slot);
@@ -7655,9 +8974,9 @@ function createWorkspace(context, {
           } };
         });
       },
-      acquireSurface(options) {
+      acquireSurface(options3) {
         return own("surface", 8, () => {
-          const lease = { options: surfaceOptions(options) };
+          const lease = { options: surfaceOptions(options3) };
           control.leases.add(lease);
           control.reconcile(surface);
           let active2 = true;
@@ -7676,17 +8995,29 @@ function createWorkspace(context, {
           };
         });
       },
-      mountTranscript(container, options) {
+      mountTranscript(container, options3) {
         return own("transcript", 16, () => {
           if (host?.auxiliary) throw workspaceError("workspace_transcript_unavailable", "Auxiliary windows have no transcripts");
-          return transcripts.mount(container, options, ownerKey);
+          return transcripts.mount(container, options3, ownerKey);
         });
       },
-      registerShortcut(options) {
+      mountComposer(container, options3) {
+        return own("composer", 16, () => {
+          if (host?.auxiliary) throw workspaceError("workspace_composer_unavailable", "Auxiliary windows have no composers");
+          return composers.mount(container, options3, ownerKey, live);
+        });
+      },
+      createNavigation() {
+        return own("navigation", 1, () => navigation.create(live));
+      },
+      registerAction(options3) {
+        return own("action", 16, () => actions.register(options3, ownerKey, live));
+      },
+      registerShortcut(options3) {
         return own("shortcut", 16, () => {
           if (host?.auxiliary) throw workspaceError("workspace_shortcuts_unavailable", "Auxiliary windows have no shortcut workspace");
           schedule(true);
-          return shortcuts.register(options, ownerKey);
+          return shortcuts.register(options3, ownerKey);
         });
       },
       dispose() {
@@ -7708,6 +9039,7 @@ function createWorkspace(context, {
       observe();
       structural = true;
       reconcile();
+      prepareComposerFeatures();
     } catch (error) {
       session.dispose();
       throw error;
@@ -7716,7 +9048,7 @@ function createWorkspace(context, {
   }
   const publicApi = Object.freeze({ api: 1, connect });
   Object.defineProperty(globalThis, symbol, { value: publicApi, configurable: true });
-  context.rpc.provide(WORKSPACE_CAPABILITY, "getApi", issueTicket);
+  context.rpc.provide(capability, "getApi", issueTicket);
   function dispose() {
     if (!alive) return;
     for (const record of [...sessions]) record.session.dispose();
@@ -7724,16 +9056,27 @@ function createWorkspace(context, {
     tickets.clear();
     stopObserving();
     control.dispose();
+    navigation.dispose();
+    actions.dispose();
+    composers.dispose();
     transcripts.dispose();
     shortcuts.dispose();
     discovery.dispose();
     if (globalThis[symbol] === publicApi) delete globalThis[symbol];
   }
   const releaseProvider = context.onDeactivate(dispose);
-  return { issueTicket, connect, refresh: () => schedule(true), dispose() {
-    dispose();
-    releaseProvider?.();
-  } };
+  const releaseCleanup = context.onCleanup?.((cleanup) => composers.cleanup(cleanup));
+  return {
+    issueTicket,
+    connect,
+    refresh: () => schedule(true),
+    ...metrics ? { readTestPoints: () => metrics.report() } : {},
+    dispose() {
+      dispose();
+      releaseProvider?.();
+      composers.cleanup().then(() => releaseCleanup?.(), report);
+    }
+  };
 }
 
 // src/adapter/navigation.js
@@ -7743,20 +9086,20 @@ function pageProfile(build, entries = Array.from(document.scripts, (script) => s
     const sources = Array.isArray(entries) ? entries : [entries];
     const candidates = CLIENT_PROFILES.filter((profile2) => profile2.appVersion === build?.appVersion && profile2.buildNumber === String(build?.buildNumber));
     if (candidates.length && !candidates.some((profile2) => sources.includes(profile2.entry)) && readyState !== "complete")
-      throw fail5("ui_host_pending", "Waiting for the reviewed Desktop entry resource");
-    throw fail5("ui_build_drift", "No reviewed sidebar/page profile for this Desktop build");
+      throw fail6("ui_host_pending", "Waiting for the reviewed Desktop entry resource");
+    throw fail6("ui_build_drift", "No reviewed sidebar/page profile for this Desktop build");
   }
   return profile;
 }
 var CAPABILITY = Object.freeze({ name: "codex.ui.navigation.page", api: 1, scope: "target" });
-var fail5 = (code, message) => Object.assign(new Error(message), { code });
+var fail6 = (code, message) => Object.assign(new Error(message), { code });
 var current2;
 function fibers() {
   try {
     return hostFibers();
   } catch (error) {
-    if (error.code === "desktop_host_pending") throw fail5("ui_host_pending", error.message);
-    if (error.code === "desktop_host_drift") throw fail5("ui_host_drift", error.message);
+    if (error.code === "desktop_host_pending") throw fail6("ui_host_pending", error.message);
+    if (error.code === "desktop_host_drift") throw fail6("ui_host_drift", error.message);
     throw error;
   }
 }
@@ -7777,10 +9120,10 @@ function locateHost() {
     }
   }
   if (!trees.size) for (const tree2 of objectTrees) trees.add(tree2);
-  if (navigators.size !== 1 || trees.size !== 1) throw fail5("ui_host_pending", "A unique Desktop router and route tree are required");
+  if (navigators.size !== 1 || trees.size !== 1) throw fail6("ui_host_pending", "A unique Desktop router and route tree are required");
   const navigator = reviewedNavigator(navigators, routerContexts), tree = [...trees][0];
   if (!navigator)
-    throw fail5("ui_host_drift", "The Desktop memory router is unavailable in this window");
+    throw fail6("ui_host_drift", "The Desktop memory router is unavailable in this window");
   if (navigator.location.pathname === "/avatar-overlay" || navigator.location.pathname.startsWith("/avatar-overlay/"))
     return { navigator, tree, rootNode: document.getElementById("root"), auxiliary: true };
   const candidates = [], objects = !tree.props;
@@ -7796,7 +9139,7 @@ function locateHost() {
   };
   visit2(tree);
   if (candidates.length !== 1 || Object.isFrozen(candidates[0]) || !Object.isExtensible(candidates[0]))
-    throw fail5("ui_host_drift", "The reviewed authenticated route collection is unavailable");
+    throw fail6("ui_host_drift", "The reviewed authenticated route collection is unavailable");
   return { navigator, routes: candidates[0], Route: tree.type, objects, tree, rootNode: document.getElementById("root") };
 }
 function nativePlacement(SidebarItem, SidebarGroup) {
@@ -7844,13 +9187,13 @@ function railPlacement(SidebarGroup) {
   }
   return null;
 }
-function pageOwner(args, invocation) {
-  const caller = invocation?.caller;
-  if (!caller || typeof caller.pluginId !== "string" || !Number.isSafeInteger(caller.generation)) throw fail5("invalid_owner", "Page registration requires a Core-authenticated caller");
-  if (!args || Object.keys(args).some((key2) => !["label", "icon", "token", "toolbar"].includes(key2)) || typeof args.label !== "string" || !args.label.trim() || args.label.length > 64 || !["Cube", "CodeSquareSlash", "Codlet"].includes(args.icon) || args.toolbar !== void 0 && typeof args.toolbar !== "boolean" || typeof args.token !== "string" || !/^[a-zA-Z0-9-]{16,80}$/.test(args.token)) throw fail5("invalid_argument", "Invalid page registration");
+function pageOwner(args, invocation2) {
+  const caller = invocation2?.caller;
+  if (!caller || typeof caller.pluginId !== "string" || !Number.isSafeInteger(caller.generation)) throw fail6("invalid_owner", "Page registration requires a Core-authenticated caller");
+  if (!args || Object.keys(args).some((key2) => !["label", "icon", "token", "toolbar"].includes(key2)) || typeof args.label !== "string" || !args.label.trim() || args.label.length > 64 || !["Cube", "CodeSquareSlash", "Codlet"].includes(args.icon) || args.toolbar !== void 0 && typeof args.toolbar !== "boolean" || typeof args.token !== "string" || !/^[a-zA-Z0-9-]{16,80}$/.test(args.token)) throw fail6("invalid_argument", "Invalid page registration");
   const lease = [...document.querySelectorAll("[data-codlet-page-lease]")].find((node) => node.dataset.codletPageLease === args.token);
   if (!lease || lease.dataset.codletPageOwner !== caller.pluginId || lease.dataset.codletGeneration !== String(caller.generation))
-    throw fail5("invalid_owner", "The page lifetime does not match its caller");
+    throw fail6("invalid_owner", "The page lifetime does not match its caller");
   return { caller, lease };
 }
 function createNavigation(context, native, host, withComposer = true) {
@@ -7858,20 +9201,20 @@ function createNavigation(context, native, host, withComposer = true) {
     const actions = createComposerActions(context, host, null);
     let alive2 = true;
     return {
-      register(args, invocation) {
-        if (!alive2) throw fail5("ui_retired", "The UI adapter retired");
+      register(args, invocation2) {
+        if (!alive2) throw fail6("ui_retired", "The UI adapter retired");
         const current3 = locateHost();
         if (!current3.auxiliary || current3.tree !== host.tree || current3.navigator !== host.navigator)
-          throw fail5("ui_host_drift", "Desktop route ownership changed; reload the UI adapter");
-        pageOwner(args, invocation);
+          throw fail6("ui_host_drift", "Desktop route ownership changed; reload the UI adapter");
+        pageOwner(args, invocation2);
         return { api: 1, token: args.token, path: null, available: false };
       },
       newTaskDraft() {
-        throw fail5("ui_composer_unavailable", "This window has no task composer");
+        throw fail6("ui_composer_unavailable", "This window has no task composer");
       },
-      registerComposer: (args, invocation) => actions.register(args, invocation),
-      unregisterComposer: (args, invocation) => actions.unregister(args, invocation),
-      statusComposer: (args, invocation) => actions.status(args, invocation),
+      registerComposer: (args, invocation2) => actions.register(args, invocation2),
+      unregisterComposer: (args, invocation2) => actions.unregister(args, invocation2),
+      statusComposer: (args, invocation2) => actions.status(args, invocation2),
       dispose() {
         alive2 = false;
         actions.dispose();
@@ -7888,7 +9231,7 @@ function createNavigation(context, native, host, withComposer = true) {
   const check = () => {
     const current3 = alive ? locateHost() : null;
     if (!current3 || current3.tree !== host.tree || current3.navigator !== host.navigator)
-      throw fail5("ui_host_drift", "Desktop route ownership changed; reload the UI adapter");
+      throw fail6("ui_host_drift", "Desktop route ownership changed; reload the UI adapter");
   };
   const renderNav = () => {
     if (!alive || !navRoot) return;
@@ -7991,21 +9334,21 @@ function createNavigation(context, native, host, withComposer = true) {
     }, [entry, compose]);
     return null;
   }
-  function newTaskDraft(args, invocation) {
+  function newTaskDraft(args, invocation2) {
     check();
-    const caller = invocation?.caller, entry = entries.get(caller?.pluginId);
-    if (!entry || !Number.isSafeInteger(caller.generation) || !entry.lease.isConnected || entry.lease.dataset.codletGeneration !== String(caller.generation) || !entry.active || !(host.navigator.location.pathname === entry.path || host.navigator.location.pathname.startsWith(entry.path + "/")) || invocation.signal?.aborted)
-      throw fail5("invalid_owner", "A new task draft requires this caller\u2019s active page");
+    const caller = invocation2?.caller, entry = entries.get(caller?.pluginId);
+    if (!entry || !Number.isSafeInteger(caller.generation) || !entry.lease.isConnected || entry.lease.dataset.codletGeneration !== String(caller.generation) || !entry.active || !(host.navigator.location.pathname === entry.path || host.navigator.location.pathname.startsWith(entry.path + "/")) || invocation2.signal?.aborted)
+      throw fail6("invalid_owner", "A new task draft requires this caller\u2019s active page");
     if (!args || Object.keys(args).some((key2) => key2 !== "prompt") || typeof args.prompt !== "string" || !args.prompt.trim() || args.prompt.length > 16384)
-      throw fail5("invalid_argument", "A new task draft requires a bounded prompt");
-    if (typeof entry.compose !== "function") throw fail5("ui_composer_unavailable", "The native new-task composer is not ready");
+      throw fail6("invalid_argument", "A new task draft requires a bounded prompt");
+    if (typeof entry.compose !== "function") throw fail6("ui_composer_unavailable", "The native new-task composer is not ready");
     entry.compose({ ...native.newTaskOptions, prefillPrompt: args.prompt, prefillLocalExecution: true, prefillComposerMode: "local", startInSidebar: true });
     return { opened: true, submitted: false };
   }
-  function register(args, invocation) {
+  function register(args, invocation2) {
     check();
-    const { caller, lease } = pageOwner(args, invocation);
-    if (args.toolbar && (!Header || !HeaderToolbar)) throw fail5("ui_build_drift", "The reviewed native page toolbar is unavailable");
+    const { caller, lease } = pageOwner(args, invocation2);
+    if (args.toolbar && (!Header || !HeaderToolbar)) throw fail6("ui_build_drift", "The reviewed native page toolbar is unavailable");
     const existing = entries.get(caller.pluginId);
     if (existing) {
       if (existing.token === args.token && existing.lease === lease) return existing.description;
@@ -8059,9 +9402,9 @@ function createNavigation(context, native, host, withComposer = true) {
   return {
     register,
     newTaskDraft,
-    registerComposer: (args, invocation) => composerActions.register(args, invocation),
-    unregisterComposer: (args, invocation) => composerActions.unregister(args, invocation),
-    statusComposer: (args, invocation) => composerActions.status(args, invocation),
+    registerComposer: (args, invocation2) => composerActions.register(args, invocation2),
+    unregisterComposer: (args, invocation2) => composerActions.unregister(args, invocation2),
+    statusComposer: (args, invocation2) => composerActions.status(args, invocation2),
     dispose() {
       if (!alive) return;
       observer.disconnect();
@@ -8074,20 +9417,20 @@ function createNavigation(context, native, host, withComposer = true) {
   };
 }
 function reviewedHeader(initial, names) {
-  if (typeof initial[names.headerInit] !== "function") throw fail5("ui_build_drift", "The reviewed native AppShell initializer changed");
+  if (typeof initial[names.headerInit] !== "function") throw fail6("ui_build_drift", "The reviewed native AppShell initializer changed");
   initial[names.headerInit]();
   const Header = initial[names.header]?.Header, HeaderToolbar = initial[names.header]?.HeaderToolbar;
   const component2 = (value) => typeof value === "function" || value?.$$typeof === Symbol.for("react.memo");
-  if (!component2(Header) || !component2(HeaderToolbar)) throw fail5("ui_build_drift", "The reviewed native header exports changed");
+  if (!component2(Header) || !component2(HeaderToolbar)) throw fail6("ui_build_drift", "The reviewed native header exports changed");
   return { Header, HeaderToolbar };
 }
 function nativeProfile() {
   const build = globalThis.electronBridge?.getSentryInitOptions?.();
   if (location.origin !== "app://-" || location.pathname !== "/index.html")
-    throw fail5("ui_build_drift", "No reviewed sidebar/page profile for this Desktop build");
+    throw fail6("ui_build_drift", "No reviewed sidebar/page profile for this Desktop build");
   const profile = pageProfile(build);
   if (![...document.scripts].some((script) => script.src === profile.entry))
-    throw fail5(document.readyState === "complete" ? "ui_build_drift" : "ui_host_pending", "The Desktop entry resource does not match this adapter");
+    throw fail6(document.readyState === "complete" ? "ui_build_drift" : "ui_host_pending", "The Desktop entry resource does not match this adapter");
   return profile;
 }
 async function loadNative() {
@@ -8101,21 +9444,21 @@ async function loadNative() {
   const native = { React: react[names.react ?? "t"](), DOM: dom[names.dom ?? "t"](), Client: client[names.client ?? "t"](), SidebarItem: primary[names.sidebar], ...reviewedHeader(initial, names) };
   native.composerActionProfile = page.composerAction ?? null;
   native.SidebarGroup = names.sidebarGroup ? primary[names.sidebarGroup] : void 0;
-  if (names.sidebarGroup && typeof native.SidebarGroup !== "function") throw fail5("ui_build_drift", "The reviewed native sidebar group changed");
+  if (names.sidebarGroup && typeof native.SidebarGroup !== "function") throw fail6("ui_build_drift", "The reviewed native sidebar group changed");
   if (page.navigationRail) {
     native.RailButton = react[page.navigationRail.button];
     native.RailTooltip = react[page.navigationRail.tooltip];
     if (typeof native.RailButton !== "function" || typeof native.RailTooltip !== "function" || !native.SidebarGroup)
-      throw fail5("ui_build_drift", "The reviewed native navigation rail changed");
+      throw fail6("ui_build_drift", "The reviewed native navigation rail changed");
   }
   native.toolbarInset = page.toolbarInset;
   native.newTaskOptions = page.newTaskOptions ?? {};
-  if (typeof initial[names.newTaskInit] !== "function") throw fail5("ui_build_drift", "The reviewed new-task initializer changed");
+  if (typeof initial[names.newTaskInit] !== "function") throw fail6("ui_build_drift", "The reviewed new-task initializer changed");
   initial[names.newTaskInit]();
-  if (typeof initial[names.newTask] !== "function") throw fail5("ui_build_drift", "The reviewed new-task hook changed");
+  if (typeof initial[names.newTask] !== "function") throw fail6("ui_build_drift", "The reviewed new-task hook changed");
   native.useStartNewConversation = initial[names.newTask];
   if (typeof native.React.createElement !== "function" || typeof native.Client.createRoot !== "function" || typeof native.SidebarItem !== "function")
-    throw fail5("ui_build_drift", "The reviewed native UI exports changed");
+    throw fail6("ui_build_drift", "The reviewed native UI exports changed");
   return native;
 }
 function deferredNavigation(context, load = loadNative) {
@@ -8172,7 +9515,7 @@ function deferredNavigation(context, load = loadNative) {
         delay = Math.min(1e3, delay * 2);
       }
     }
-    if (!alive) throw fail5("ui_retired", "The UI adapter retired during initialization");
+    if (!alive) throw fail6("ui_retired", "The UI adapter retired during initialization");
     for (const entry of pending.values()) {
       if (!entry.lease.isConnected) continue;
       try {
@@ -8208,58 +9551,58 @@ function deferredNavigation(context, load = loadNative) {
   return {
     ready,
     native: () => ready.then(() => native),
-    register(args, invocation) {
-      if (!alive || invocation?.signal?.aborted) throw fail5("ui_retired", "The page registration retired");
+    register(args, invocation2) {
+      if (!alive || invocation2?.signal?.aborted) throw fail6("ui_retired", "The page registration retired");
       if (failure) throw failure;
-      if (navigation) return navigation.register(args, invocation);
-      const { caller, lease } = pageOwner(args, invocation);
+      if (navigation) return navigation.register(args, invocation2);
+      const { caller, lease } = pageOwner(args, invocation2);
       for (const [id, entry] of pending) if (!entry.lease.isConnected) pending.delete(id);
-      if (!pending.has(caller.pluginId) && pending.size >= 64) throw fail5("resource_limit", "Too many pending native pages");
+      if (!pending.has(caller.pluginId) && pending.size >= 64) throw fail6("resource_limit", "Too many pending native pages");
       const previous = pending.get(caller.pluginId);
       if (previous && previous.lease !== lease) previous.lease.remove();
       pending.set(caller.pluginId, { args: { ...args }, caller: { ...caller }, lease });
       return { api: 1, token: args.token, path: "/codlet/" + encodeURIComponent(caller.pluginId), pending: true };
     },
-    newTaskDraft(args, invocation) {
-      if (!alive) throw fail5("ui_retired", "The page provider retired");
+    newTaskDraft(args, invocation2) {
+      if (!alive) throw fail6("ui_retired", "The page provider retired");
       if (failure) throw failure;
-      if (!navigation) throw fail5("ui_host_pending", "The native page is not ready");
-      return navigation.newTaskDraft(args, invocation);
+      if (!navigation) throw fail6("ui_host_pending", "The native page is not ready");
+      return navigation.newTaskDraft(args, invocation2);
     },
-    registerComposer(args, invocation) {
-      if (!alive || invocation?.signal?.aborted) throw fail5("ui_retired", "The composer provider retired");
+    registerComposer(args, invocation2) {
+      if (!alive || invocation2?.signal?.aborted) throw fail6("ui_retired", "The composer provider retired");
       const actions = composer();
-      if (actions) return actions.register(args, invocation);
+      if (actions) return actions.register(args, invocation2);
       if (failure) throw failure;
-      if (navigation) return navigation.registerComposer(args, invocation);
-      const { caller, lease } = composerLease(args, invocation);
+      if (navigation) return navigation.registerComposer(args, invocation2);
+      const { caller, lease } = composerLease(args, invocation2);
       for (const [id2, entry] of pendingComposer) if (!entry.lease.isConnected) pendingComposer.delete(id2);
       const id = `${caller.pluginId}\0${args.token}`;
-      if (!pendingComposer.has(id) && pendingComposer.size >= 64) throw fail5("resource_limit", "Too many pending composer actions");
+      if (!pendingComposer.has(id) && pendingComposer.size >= 64) throw fail6("resource_limit", "Too many pending composer actions");
       const previous = pendingComposer.get(id);
       if (previous && previous.lease !== lease) previous.lease.remove();
       pendingComposer.set(id, { args: { ...args }, caller: { ...caller }, lease });
       return { api: 1, token: args.token, available: true, pending: true, mounted: 0 };
     },
-    unregisterComposer(args, invocation) {
-      if (!alive) throw fail5("ui_retired", "The composer provider retired");
+    unregisterComposer(args, invocation2) {
+      if (!alive) throw fail6("ui_retired", "The composer provider retired");
       const actions = composer();
-      if (actions) return actions.unregister(args, invocation);
-      if (navigation) return navigation.unregisterComposer(args, invocation);
-      const caller = invocation?.caller;
-      if (!caller || typeof caller.pluginId !== "string" || !Number.isSafeInteger(caller.generation) || typeof args?.token !== "string") throw fail5("invalid_argument", "Invalid composer action removal");
+      if (actions) return actions.unregister(args, invocation2);
+      if (navigation) return navigation.unregisterComposer(args, invocation2);
+      const caller = invocation2?.caller;
+      if (!caller || typeof caller.pluginId !== "string" || !Number.isSafeInteger(caller.generation) || typeof args?.token !== "string") throw fail6("invalid_argument", "Invalid composer action removal");
       const id = `${caller.pluginId}\0${args.token}`, entry = pendingComposer.get(id);
       if (!entry || entry.caller.generation !== caller.generation) return { removed: false };
       pendingComposer.delete(id);
       return { removed: true };
     },
-    statusComposer(args, invocation) {
-      if (!alive) throw fail5("ui_retired", "The composer provider retired");
+    statusComposer(args, invocation2) {
+      if (!alive) throw fail6("ui_retired", "The composer provider retired");
       const actions = composer();
-      if (actions) return actions.status(args, invocation);
-      if (navigation) return navigation.statusComposer(args, invocation);
-      const caller = invocation?.caller;
-      if (!caller || typeof caller.pluginId !== "string" || !Number.isSafeInteger(caller.generation) || typeof args?.token !== "string") throw fail5("invalid_argument", "Invalid composer action status");
+      if (actions) return actions.status(args, invocation2);
+      if (navigation) return navigation.statusComposer(args, invocation2);
+      const caller = invocation2?.caller;
+      if (!caller || typeof caller.pluginId !== "string" || !Number.isSafeInteger(caller.generation) || typeof args?.token !== "string") throw fail6("invalid_argument", "Invalid composer action status");
       const entry = pendingComposer.get(`${caller.pluginId}\0${args.token}`);
       return { registered: !!entry && entry.caller.generation === caller.generation, mounted: 0, pending: true };
     },
@@ -8283,11 +9626,11 @@ function deactivate() {
 async function activate(context) {
   deactivate();
   const session = deferredNavigation(context);
-  context.rpc.provide(CAPABILITY, "register", async (args, invocation) => session.register(args, invocation));
-  context.rpc.provide(CAPABILITY, "newTaskDraft", async (args, invocation) => session.newTaskDraft(args, invocation));
-  context.rpc.provide(COMPOSER_CAPABILITY, "register", async (args, invocation) => session.registerComposer(args, invocation));
-  context.rpc.provide(COMPOSER_CAPABILITY, "unregister", async (args, invocation) => session.unregisterComposer(args, invocation));
-  context.rpc.provide(COMPOSER_CAPABILITY, "status", async (args, invocation) => session.statusComposer(args, invocation));
+  context.rpc.provide(CAPABILITY, "register", async (args, invocation2) => session.register(args, invocation2));
+  context.rpc.provide(CAPABILITY, "newTaskDraft", async (args, invocation2) => session.newTaskDraft(args, invocation2));
+  context.rpc.provide(COMPOSER_CAPABILITY, "register", async (args, invocation2) => session.registerComposer(args, invocation2));
+  context.rpc.provide(COMPOSER_CAPABILITY, "unregister", async (args, invocation2) => session.unregisterComposer(args, invocation2));
+  context.rpc.provide(COMPOSER_CAPABILITY, "status", async (args, invocation2) => session.statusComposer(args, invocation2));
   const workspace = createWorkspace(context, { locate: locateHost, baseNative: session.native });
   current2 = { dispose() {
     workspace.dispose();

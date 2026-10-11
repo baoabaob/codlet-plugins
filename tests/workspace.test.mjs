@@ -7,27 +7,28 @@ import { build } from '../frontend/node_modules/esbuild/lib/main.js';
 import { createLoadedThreads } from '../frontend/src/desktop/loaded-threads.js';
 import { keymapExport, assetReferences } from '../frontend/src/adapter/workspace-discovery.js';
 import { componentSource } from '../frontend/src/host-discovery.js';
+import { createTranscriptIsolation } from '../frontend/src/adapter/workspace-shadow.js';
 const require = createRequire(new URL('../frontend/package.json', import.meta.url)), { JSDOM } = require('jsdom');
 const source = (await build({ entryPoints: [new URL('../frontend/src/adapter/workspace.js', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')], bundle: true, write: false, format: 'iife', globalName: 'Workspace', platform: 'browser' })).outputFiles[0].text;
 const domSource = (await build({ entryPoints: [new URL('../frontend/src/adapter/workspace-dom.js', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')], bundle: true, write: false, format: 'iife', globalName: 'WorkspaceDom', platform: 'browser' })).outputFiles[0].text;
 const nativeSource = (await build({ absWorkingDir: fileURLToPath(new URL('../frontend', import.meta.url)), stdin: { contents: readFileSync(new URL('./support/native-shell.js', import.meta.url), 'utf8'), resolveDir: fileURLToPath(new URL('../frontend', import.meta.url)) }, bundle: true, write: false, format: 'iife', globalName: 'NativeShell', platform: 'browser', define: { 'process.env.NODE_ENV': '"production"' } })).outputFiles[0].text;
 const plain = value => JSON.parse(JSON.stringify(value));
 const tick = () => new Promise(resolve => setTimeout(resolve, 0));
-function fixture(t) {
+function fixture(t,options={}) {
   const dom = new JSDOM('<!doctype html><body><div id="root"><nav><button id="activity"></button><span data-thread-title id="thread"></span></nav><div data-app-shell-main-titlebar></div><main data-app-shell-main-surface><div data-includes-composer><div class="thread-scroll-container"><section id="body">body</section><footer data-thread-scroll-footer><div data-codex-composer-root></div></footer></div></div></main><aside data-app-shell-focus-area="right-panel"></aside></div></body>', { url: 'app://-/index.html', runScripts: 'outside-only' });
   const { window } = dom, { document } = window; window.eval(source); window.eval(domSource);
   const activity = document.getElementById('activity');
   activity.__reactFiber$fixture = { memoizedProps: {}, type: function activityOwner({ onActivate, needsAttention }) { return 'sidebarElectron.priorityThreads.coachmark.description'; } };
-  const frames = new Map(), diagnostics = [], cleanups = new Set(), rpc = new Map(); let frameCount = 0, discoveryCount = 0;
-  const context = { onDeactivate(fn) { cleanups.add(fn); return () => cleanups.delete(fn); }, reportDiagnostic(error) { diagnostics.push(error); }, rpc: { provide(cap, method, handler) { rpc.set(cap.name + ':' + method, handler); } } };
+  const frames = new Map(), diagnostics = [], cleanups = new Set(), asyncCleanups = new Set(), rpc = new Map(); let frameCount = 0, discoveryCount = 0;
+  const context = { onDeactivate(fn) { cleanups.add(fn); return () => cleanups.delete(fn); }, onCleanup(fn) { asyncCleanups.add(fn); return () => asyncCleanups.delete(fn); }, reportDiagnostic(error) { diagnostics.push(error); }, rpc: { provide(cap, method, handler) { rpc.set(cap.name + ':' + method, handler); } } };
   const navigator = { location: { pathname: '/local/thread-a', search: '', hash: '' } }, host = { navigator, rootNode: document.getElementById('root') };
   const discovery = { transcript() { throw Error('Not loaded'); }, shortcuts() { throw Error('Not loaded'); }, dispose() {} };
-  const workspace = window.Workspace.createWorkspace(context, { document, validateDocument() {}, locate: () => { discoveryCount++; return host; }, discovery, requestFrame(fn) { frames.set(++frameCount, fn); return frameCount; }, cancelFrame(id) { frames.delete(id); } });
+  const workspace = window.Workspace.createWorkspace(context, { document, validateDocument() {}, locate: () => { discoveryCount++; return host; }, discovery, requestFrame(fn) { frames.set(++frameCount, fn); return frameCount; }, cancelFrame(id) { frames.delete(id); },...options });
   t.after(() => { workspace.dispose(); window.close(); });
   function owner(id, generation = 1) { const cleanups = new Set(); return { world: 'main', pluginId: id, generation, onDeactivate(fn) { cleanups.add(fn); return () => cleanups.delete(fn); }, retire() { for (const fn of [...cleanups]) fn(); } }; }
   const connect = (id = 'consumer', generation = 1) => { const ctx = owner(id, generation), descriptor = workspace.issueTicket({}, { caller: ctx }); return { ctx, session: workspace.connect(ctx, descriptor.ticket), descriptor }; };
   async function flush() { await tick(); const pending = [...frames.values()]; frames.clear(); pending.forEach(fn => fn()); await tick(); }
-  return { window, document, workspace, discovery, rpc, connect, owner, flush, frames, navigator, diagnostics, stats: () => ({ frameCount, discoveryCount }) };
+  return { window, document, workspace, discovery, rpc, connect, owner, flush, frames, navigator, diagnostics, cleanup: cleanup => Promise.all([...asyncCleanups].map(fn => fn(cleanup))), stats: () => ({ frameCount, discoveryCount }) };
 }
 
 test('workspace tickets bind owner/generation, are single-use, and deactivation retires all owned handles', async t => {
@@ -102,6 +103,174 @@ function native(f) {
   N.roots = () => roots; return N;
 }
 
+function composerNative(f,{wrong=false}={}){
+  const N=native(f),R=N.React,h=R.createElement,thread=R.createContext(null),route=R.createContext(null);let mounted=0,renders=0;
+  N.ThreadScope={};N.RouteScope={};N.Scope=({scope,value,children})=>h((scope===N.ThreadScope?thread:route).Provider,{value},children);
+  N.routeDescription=({pathname,search})=>({pathname,search,routeKind:'local-thread',conversationId:pathname.slice('/local/'.length)});N.composerValue=value=>({clientThreadId:'local:'+value.conversationId});
+  N.manager={getConversation:id=>({id,resumeState:'resumed'}),getStreamRole:()=>({role:'owner'})};
+  function Composer(props){const{composerSubmitDisabled,isThreadHistoryLoading}=props,[shown,setShown]=R.useState(false),identity=R.useContext(thread),location=R.useContext(route);R.useEffect(()=>{mounted++;setShown(true);return()=>mounted--;},[]);if(!shown)return h('span',{'data-native-preparing':''});return h('footer',{'data-thread-scroll-footer':''},h('div',{'data-codex-composer-root':''},h('div',{contentEditable:true,suppressContentEditableWarning:true,'data-thread':props.conversationId,'data-client':identity.clientThreadId,'data-route':location.conversationId}),h('button',{disabled:composerSubmitDisabled||isThreadHistoryLoading,onClick:()=>N.actions.push(location.conversationId)},'Native action')));}
+  N.actions=[];N.Frame=props=>{renders++;return h(Composer,{...props,conversationId:wrong?'wrong-thread':props.conversationId,composerPresentation:null,isThreadHistoryLoading:false});};N.composerStats=()=>({mounted,renders});f.discovery.composer=async()=>N;return N;
+}
+
+test('owned composers activate independently without rerender, implicit peer deactivation, navigation or focus',async t=>{
+  const f=fixture(t),N=composerNative(f),owner=f.connect(),states=[];const boxes=['composer-one','composer-two'].map(id=>{const box=f.document.createElement('div');f.document.body.append(box);return{box,handle:owner.session.mountComposer(box,{threadId:id,onState:state=>states.push([id,state.phase])})};});
+  await Promise.all(boxes.map(x=>x.handle.ready));assert.equal(N.composerStats().mounted,2);assert.equal(N.roots(),2);const before=N.composerStats(),focus=f.document.activeElement;
+  for(const view of boxes){assert.equal(view.box.firstElementChild.hasAttribute('inert'),true);const input=view.box.querySelector('[contenteditable]');assert.equal(input.dataset.thread,view.handle.threadId);assert.equal(input.dataset.route,view.handle.threadId);assert.equal(input.dataset.client,'local:'+view.handle.threadId);assert.throws(()=>{view.handle.threadId='other-id';},TypeError);}
+  for(let repeat=0;repeat<2;repeat++)for(const view of boxes){const receipt=await view.handle.activate();assert.equal(receipt.threadId,view.handle.threadId);assert.equal(receipt.hostId,'local');assert.equal(receipt.inputConfirmed,true);assert.equal(receipt.submitDisabled,false);assert.equal(f.document.activeElement,focus);assert.equal(view.box.firstElementChild.hasAttribute('inert'),false);view.box.querySelector('button').click();}
+  assert.deepEqual(N.actions,['composer-one','composer-two','composer-one','composer-two']);assert.deepEqual(N.composerStats(),before);assert.equal(f.navigator.location.pathname,'/local/thread-a');assert.equal(boxes[0].box.firstElementChild.hasAttribute('inert'),false);assert.equal(boxes[1].box.firstElementChild.hasAttribute('inert'),false);
+  owner.ctx.retire();assert.equal(N.composerStats().mounted,0);assert.equal(f.document.querySelectorAll('[data-codlet-workspace-composer]').length,0);assert.throws(()=>boxes[0].handle.activate(),{code:'workspace_retired'});
+});
+
+test('deactivation synchronously blocks late activation while allowing the prepared input to finish warming',async t=>{
+  const f=fixture(t),N=composerNative(f),owner=f.connect();let release;f.discovery.composer=()=>new Promise(resolve=>{release=resolve;});const box=f.document.createElement('div');f.document.body.append(box);const handle=owner.session.mountComposer(box,{threadId:'late-composer'}),activation=handle.activate();handle.deactivate();await assert.rejects(activation,{code:'workspace_composer_deactivated'});assert.equal(box.firstElementChild.hasAttribute('inert'),true);await tick();release(N);await handle.ready;await tick();assert.equal(box.firstElementChild.hasAttribute('inert'),true);assert.throws(()=>handle.focus(),{code:'workspace_composer_inactive'});assert.equal(f.navigator.location.pathname,'/local/thread-a');
+});
+
+test('composer cancellation only affects its handle and disposal prevents roots after late discovery',async t=>{
+  const f=fixture(t),N=composerNative(f),alice=f.connect('alice'),bob=f.connect('bob');const make=(owner,id)=>{const box=f.document.createElement('div');f.document.body.append(box);return{box,handle:owner.session.mountComposer(box,{threadId:id})};};const first=make(alice,'alice-first'),second=make(alice,'alice-second'),other=make(bob,'bob-composer');await Promise.all([first.handle.ready,second.handle.ready,other.handle.ready]);await first.handle.activate();await other.handle.activate();const late=second.handle.activate();assert.equal(first.box.firstElementChild.hasAttribute('inert'),false);assert.equal(other.box.firstElementChild.hasAttribute('inert'),false);second.handle.deactivate();await assert.rejects(late,{code:'workspace_composer_deactivated'});await tick();assert.equal(second.box.firstElementChild.hasAttribute('inert'),true);
+  const delayed=fixture(t),D=composerNative(delayed),owner=delayed.connect();let release;delayed.discovery.composer=()=>new Promise(resolve=>release=resolve);const box=delayed.document.createElement('div');delayed.document.body.append(box);const handle=owner.session.mountComposer(box,{threadId:'retired-composer'}),activation=handle.activate();await tick();owner.ctx.retire();await assert.rejects(handle.ready,{code:'workspace_retired'});await assert.rejects(activation,{code:'workspace_composer_deactivated'});release(D);await tick();assert.equal(D.roots(),0);assert.equal(box.childNodes.length,0);
+});
+
+test('surface scans retain resize subscriptions on identical nodes and only replace changed roles',async t=>{
+  const f=fixture(t,{testPoints:{enabled:true,runId:'resize-subscriptions'}}),observers=[];
+  f.window.ResizeObserver=class {
+    constructor(callback){this.callback=callback;this.nodes=new Set();this.adds=0;this.removes=0;this.disconnects=0;observers.push(this);}
+    observe(node){this.nodes.add(node);this.adds++;}
+    unobserve(node){this.nodes.delete(node);this.removes++;}
+    disconnect(){this.nodes.clear();this.disconnects++;}
+  };
+  const owner=f.connect(),ro=observers[0],initial=ro.adds;
+  assert.equal(initial,7);
+  for(let repeat=0;repeat<3;repeat++){
+    for(let i=0;i<40;i++)f.document.querySelector('nav').append(f.document.createElement('span'));
+    await f.flush();
+    assert.equal(ro.adds,initial);assert.equal(ro.removes,0);assert.equal(ro.disconnects,0);
+    await f.flush();assert.equal(f.frames.size,0);
+  }
+  const previous=owner.session.getSurface().composer.element,beforeRevision=owner.session.getSnapshot().revision;
+  const next=previous.cloneNode(true);previous.replaceWith(next);await f.flush();
+  assert.equal(owner.session.getSurface().composer.element,next);
+  assert.ok(owner.session.getSnapshot().revision>beforeRevision,'equal rectangles must still publish replaced role identity');
+  assert.equal(ro.adds,initial+1);assert.equal(ro.removes,1);assert.equal(ro.disconnects,0);
+  const before=f.workspace.readTestPoints().counts['surface.geometry'];
+  ro.callback([{target:previous}]);await f.flush();
+  assert.equal(f.workspace.readTestPoints().counts['surface.geometry'],before,'late notifications from a retired role are ignored');
+  owner.ctx.retire();assert.equal(ro.nodes.size,0);assert.equal(ro.disconnects,1);
+});
+
+test('feature updates publish without rereading geometry and metrics exist only when explicitly enabled',async t=>{
+  const f=fixture(t,{testPoints:{enabled:true,runId:'feature-only'}}),owner=f.connect(),N=native(f);
+  const before=f.workspace.readTestPoints().counts['surface.geometry'];
+  N.Button=props=>N.React.createElement('button',props);N.Tooltip=({children})=>children;f.discovery.action=async()=>N;
+  const action=owner.session.registerAction({id:'measurement-action',label:'Measurement action',icon:{paths:['M0 0 H4 V4 H0 Z']},onInvoke(){}});
+  await action.ready;await f.flush();
+  assert.equal(owner.session.getSnapshot().features.action,true);
+  assert.equal(f.workspace.readTestPoints().counts['surface.geometry'],before);
+  assert.equal('readTestPoints' in fixture(t).workspace,false);
+});
+
+test('composer readiness rejects a Native input bound to another conversation',async t=>{
+  const f=fixture(t),N=composerNative(f,{wrong:true}),owner=f.connect(),box=f.document.createElement('div');f.document.body.append(box);const handle=owner.session.mountComposer(box,{threadId:'expected-thread'});await assert.rejects(handle.ready,{code:'workspace_composer_binding_drift'});assert.equal(box.firstElementChild.hasAttribute('inert'),true);handle.dispose();assert.equal(N.composerStats().mounted,0);
+});
+
+function rebindingNative(f, { pendingSave = false, saveError } = {}) {
+  const N = native(f), R = N.React, h = R.createElement;
+  let mounted = 0, closed = 0, saveResolve;
+  const saved = pendingSave ? new Promise(resolve => saveResolve = resolve) : Promise.resolve();
+  function Input({ binding, active, commit, submit }) {
+    R.useLayoutEffect(commit, [commit]);
+    return h('div', {'data-codex-composer-root': ''},
+      h('div', { contentEditable: active, suppressContentEditableWarning: true, 'data-thread': binding.threadId }),
+      h('button', { disabled: !active, onClick: submit }, 'Native fixture submit'));
+  }
+  N.actions = [];
+  N.Frame = () => assert.fail('rebind fixture must never mount the thread Frame');
+  N.composerRebind = { supported: true, mount({ container }) {
+    const root = N.Client.createRoot(container); mounted++;
+    // Prototype methods and private fields exercise the actual driver boundary.
+    return new class {
+      #binding; #active = false; #closed = false;
+      block() { this.#active = false; }
+      isComposing() { return false; }
+      readBinding() { return this.#binding && {...this.#binding, inputConfirmed: true, submitDisabled: !this.#active}; }
+      render(value, active, signal) {
+        return new Promise((resolve, reject) => {
+          const abort = () => reject(signal.reason); signal.addEventListener('abort', abort, {once:true});
+          const commit = () => {
+            signal.removeEventListener('abort', abort);
+            if (signal.aborted || this.#closed) return;
+            this.#binding = value; this.#active = active; resolve();
+          };
+          root.render(h(Input, {key:value.threadId, binding:value, active, commit,
+            submit:() => { if (this.#active && this.#binding.bindingRevision === value.bindingRevision) N.actions.push([value.threadId,value.bindingRevision]); }}));
+        });
+      }
+      bind(value, {signal}) { return this.render(value, false, signal); }
+      activate({bindingRevision,signal}) { assert.equal(this.#binding.bindingRevision,bindingRevision);return this.render(this.#binding,true,signal); }
+      focus() { const input=container.querySelector('[contenteditable="true"]');input?.focus();return f.document.activeElement===input; }
+      async close({signal}) {
+        this.#closed=true;N.DOM.flushSync(()=>root.unmount());mounted--;closed++;
+        if (saveError) throw saveError;
+        await saved;signal.throwIfAborted();
+      }
+    }();
+  }};
+  f.discovery.composerCapabilities = async () => ({rebind:true}); f.discovery.composer = async () => N;
+  N.stats = () => ({mounted,closed}); N.confirmSave = () => saveResolve();
+  return N;
+}
+
+test('rebind capability is observable before mounting and public ownership wrappers retain live identity getters',async t=>{
+  const f=fixture(t,{testPoints:{enabled:true,runId:'rebind-public'}}),N=rebindingNative(f),owner=f.connect(),features=[];
+  owner.session.subscribe(snapshot=>features.push(snapshot.features.composerRebind));
+  assert.equal(owner.session.getSnapshot().features.composerRebind,false);assert.equal(N.roots(),0);
+  await f.flush();assert.equal(owner.session.getSnapshot().features.composerRebind,true);assert.equal(N.roots(),0);assert.deepEqual(features,[false,true]);
+  const box=f.document.createElement('div');f.document.body.append(box);const handle=owner.session.mountComposer(box,{threadId:'first-public'});
+  const first=await handle.ready;await handle.activate({bindingRevision:first.bindingRevision});assert.equal(handle.focus({bindingRevision:first.bindingRevision}),true);
+  box.querySelector('button').click();const second=await handle.bind({threadId:'second-public'});
+  assert.equal(handle.threadId,'second-public');assert.equal(N.roots(),1);assert.equal(box.firstElementChild.hasAttribute('inert'),true);
+  await handle.activate({bindingRevision:second.bindingRevision});box.querySelector('button').click();
+  assert.deepEqual(N.actions,[['first-public',1],['second-public',2]]);assert.equal(f.navigator.location.pathname,'/local/thread-a');
+  assert.throws(()=>handle.close({unknown:true}),{code:'invalid_argument'});
+  owner.ctx.retire();await f.cleanup({signal:new f.window.AbortController().signal});assert.equal(N.stats().mounted,0);assert.equal(N.stats().closed,1);
+  assert.equal(box.childNodes.length,0);assert.ok(f.workspace.readTestPoints().counts['composer.bind.complete']>=2);
+});
+
+test('Core asynchronous cleanup waits for a Native checkpoint even after synchronous consumer disposal',async t=>{
+  const f=fixture(t),N=rebindingNative(f,{pendingSave:true}),owner=f.connect();await f.flush();
+  const box=f.document.createElement('div');f.document.body.append(box);const handle=owner.session.mountComposer(box,{threadId:'save-fixture'});await handle.ready;
+  owner.ctx.retire();let complete=false;const cleanup=f.cleanup({signal:new f.window.AbortController().signal}).then(()=>complete=true);
+  await tick();assert.equal(N.stats().mounted,0);assert.equal(complete,false);assert.equal(N.stats().closed,1);
+  N.confirmSave();await cleanup;await handle.close();assert.equal(complete,true);assert.equal(box.childNodes.length,0);
+});
+
+test('Core cleanup retains an already-settled Native checkpoint failure after the consumer removes the handle',async t=>{
+  const f=fixture(t),error=Object.assign(Error('checkpoint not confirmed'),{code:'workspace_composer_cleanup_incomplete'});
+  const N=rebindingNative(f,{saveError:error}),owner=f.connect();await f.flush();
+  const box=f.document.createElement('div');f.document.body.append(box);
+  const handle=owner.session.mountComposer(box,{threadId:'failed-save-fixture'});await handle.ready;
+  handle.dispose();await assert.rejects(handle.close(),{code:error.code});await tick();
+  assert.equal(box.childNodes.length,0);assert.equal(N.stats().mounted,0);
+  owner.ctx.retire();await assert.rejects(f.cleanup({signal:new f.window.AbortController().signal}),{code:error.code});
+});
+
+test('an incomplete Native factory releases its root and remains part of asynchronous provider cleanup',async t=>{
+  const f=fixture(t),N=rebindingNative(f,{pendingSave:true}),create=N.composerRebind.mount,owner=f.connect();await f.flush();
+  N.composerRebind.mount=options=>{const driver=create(options);driver.focus=undefined;return driver;};
+  const box=f.document.createElement('div');f.document.body.append(box);
+  assert.throws(()=>owner.session.mountComposer(box,{threadId:'invalid-driver-fixture'}),{code:'workspace_composer_unsupported'});
+  let complete=false;const cleanup=f.cleanup({signal:new f.window.AbortController().signal}).then(()=>complete=true);await tick();
+  assert.equal(N.stats().mounted,0);assert.equal(N.stats().closed,1);assert.equal(complete,false);assert.equal(box.childNodes.length,0);
+  N.confirmSave();await cleanup;assert.equal(complete,true);
+});
+
+test('retirement during capability discovery cannot enable it late or allocate a Native input',async t=>{
+  const f=fixture(t),N=rebindingNative(f);let resolve;
+  f.discovery.composerCapabilities=()=>new Promise(yes=>resolve=yes);const owner=f.connect();await tick();owner.ctx.retire();resolve({rebind:true});await f.flush();
+  assert.equal(N.roots(),0);
+  f.discovery.composerCapabilities=async()=>({rebind:true});const current=f.connect('second-owner');await f.flush();
+  assert.equal(current.session.getSnapshot().features.composerRebind,true);assert.equal(N.roots(),0);
+});
+
 test('transcripts share discovery/history/listener, preserve roots and scroll on flags, and retire late work', async t => {
   const f = fixture(t), N = native(f), owner = f.connect(), conversations = new Map(), callbacks = new Set();
   let discoveries = 0, loads = 0, interests = 0;
@@ -139,6 +308,114 @@ test('different cold read-only transcripts hydrate full turn items without resum
   assert.deepEqual([...threads.values()].map(thread=>[thread.resumeState,thread.streamRole]),Array.from({length:4},()=>['needs_resume','none']));
   assert.ok(interests.every(([,active])=>active===false));assert.equal(states.filter(([,phase])=>phase==='ready').length,4);
   assert.equal(callbacks.size,1);assert.equal(N.roots(),4);owner.ctx.retire();assert.equal(callbacks.size,0);
+});
+
+test('main route switches retain ready transcript roots, providers, subscriptions, body and scroll',async t=>{
+  const f=fixture(t),N=native(f),owner=f.connect();let mounts=0,unmounts=0,loads=0;const phases=[];
+  N.manager={getConversation:()=>({resumeState:'resumed',turns:[{}]}),loadBackgroundThreadHistoryPage(){loads++;},addConversationStateCallback:()=>()=>{}};
+  N.Scope=({children})=>children;N.composerScope={};N.composerValue=route=>({id:route.conversationId});N.ThreadSubscription=()=>null;
+  N.Content=({conversationId})=>{N.React.useEffect(()=>{mounts++;return()=>unmounts++;},[]);return N.React.createElement('div',{className:'thread-scroll-container'},N.React.createElement('div',{'data-thread-find-target':'conversation'},'preserved '+conversationId));};f.discovery.transcript=async()=>N;
+  const slot=owner.session.createSlot('workspace.overlay'),box=f.document.createElement('div');slot.container.append(box);const handle=owner.session.mountTranscript(box,{threadId:'cached-one',onState:value=>phases.push(value.phase)});await handle.ready;await tick();
+  const scroller=box.querySelector('.thread-scroll-container'),body=box.querySelector('[data-thread-find-target]');handle.setScrollPosition({top:-37,left:4});
+  for(const id of ['thread-b','thread-c','thread-a']){f.navigator.location.pathname='/local/'+id;f.document.querySelector('nav').append(f.document.createElement('span'));await f.flush();}
+  assert.equal(N.roots(),1);assert.equal(mounts,1);assert.equal(unmounts,0);assert.equal(loads,0);assert.equal(box.querySelector('.thread-scroll-container'),scroller);assert.equal(box.querySelector('[data-thread-find-target]'),body);assert.deepEqual(plain(handle.getScrollPosition()),{top:-37,left:4});assert.deepEqual(phases,['loading','ready']);
+  const lease=owner.session.acquireSurface({hideBody:true});assert.equal(slot.container.isConnected,true);assert.equal(slot.container.closest('[inert]'),null);lease.dispose();
+});
+
+test('transcript identities override captured thread, route and composer scopes and stay stable across main navigation',async t=>{
+  const f=fixture(t),N=native(f),R=N.React,h=R.createElement,owner=f.connect();
+  const thread=R.createContext({clientThreadId:'local:original-primary'}),route=R.createContext({conversationId:'original-primary'}),composer=R.createContext(null);
+  N.ThreadScope={};N.RouteScope={};N.composerScope={};
+  N.Scope=({scope,value,children})=>h((scope===N.ThreadScope?thread:scope===N.RouteScope?route:composer).Provider,{value},children);
+  N.routeDescription=({pathname,search})=>({pathname,search,routeKind:'local-thread',conversationId:pathname.slice('/local/'.length)});
+  N.composerValue=value=>({conversationId:value.conversationId,clientThreadId:'local:'+value.conversationId});
+  N.ThreadSubscription=()=>null;N.manager={getConversation:()=>({resumeState:'resumed',turns:[{}]}),addConversationStateCallback:()=>()=>{}};
+  N.Content=({conversationId})=>h('div',{className:'thread-scroll-container'},h('div',{'data-thread-find-target':'conversation','data-context':JSON.stringify([R.useContext(thread).clientThreadId,R.useContext(route).conversationId,R.useContext(composer).conversationId])},'body '+conversationId));
+  f.discovery.transcript=async()=>N;
+  const views=['scope-first','scope-second'].map(id=>{const box=f.document.createElement('div');f.document.body.append(box);return{id,box,handle:owner.session.mountTranscript(box,{threadId:id})};});
+  await Promise.all(views.map(view=>view.handle.ready));const bodies=views.map(view=>view.box.querySelector('[data-context]'));
+  for(const view of views)assert.deepEqual(JSON.parse(view.box.querySelector('[data-context]').dataset.context),['local:'+view.id,view.id,view.id]);
+  f.navigator.location.pathname='/local/another-primary';f.document.querySelector('nav').append(f.document.createElement('span'));await f.flush();
+  for(let i=0;i<views.length;i++){assert.equal(views[i].box.querySelector('[data-context]'),bodies[i]);assert.deepEqual(JSON.parse(bodies[i].dataset.context),['local:'+views[i].id,views[i].id,views[i].id]);}
+});
+
+test('shadow transcripts reuse Native styles, stream within their root, retain scroll and retire their resources',async t=>{
+  const f=fixture(t,{transcriptIsolation:true}),N=native(f),owner=f.connect(),sheet=f.document.createElement('link');sheet.rel='stylesheet';sheet.href='app://-/assets/native-fixture.css';f.document.head.append(sheet);
+  const callbacks=new Set(),listeners=new Set();let text='initial native token',effects=0;
+  N.manager={getConversation:()=>({resumeState:'resumed',turns:[{}]}),addConversationStateCallback:fn=>{callbacks.add(fn);return()=>callbacks.delete(fn);}};
+  N.Scope=({children})=>children;N.composerScope={};N.composerValue=()=>({});N.ThreadSubscription=()=>null;
+  N.Content=()=>{const body=N.React.useSyncExternalStore(fn=>{listeners.add(fn);return()=>listeners.delete(fn);},()=>text);N.React.useEffect(()=>{effects++;return()=>effects--;},[]);return N.React.createElement('div',{className:'thread-scroll-container'},N.React.createElement('div',{'data-thread-find-target':'conversation'},body));};f.discovery.transcript=async()=>N;
+  const box=f.document.createElement('div');f.document.body.append(box);const states=[],handle=owner.session.mountTranscript(box,{threadId:'shadow-thread',onState:value=>states.push(value.phase)});await tick();
+  const host=box.firstElementChild,root=host.shadowRoot;assert.ok(root);root.querySelector('link').dispatchEvent(new f.window.Event('load'));await handle.ready;await tick();
+  assert.equal(box.querySelector('.thread-scroll-container'),null);const scroller=root.querySelector('.thread-scroll-container'),body=root.querySelector('[data-thread-find-target]');handle.setScrollPosition({top:-43,left:7});let outside=0;const observer=new f.window.MutationObserver(records=>outside+=records.length);observer.observe(f.document.body,{childList:true,subtree:true,characterData:true});
+  text='streamed native token';for(const fn of listeners)fn();await tick();await tick();assert.equal(body.textContent,text);assert.equal(outside,0);
+  handle.update({readOnly:false});await tick();assert.equal(root.querySelector('.thread-scroll-container'),scroller);assert.equal(root.querySelector('[data-thread-find-target]'),body);assert.deepEqual(plain(handle.getScrollPosition()),{top:-43,left:7});assert.deepEqual(states,['loading','ready']);assert.equal(N.roots(),1);
+  sheet.media='print';await tick();assert.equal(root.querySelector('link').media,'print');const consumerSheet=f.document.createElement('link');consumerSheet.rel='stylesheet';consumerSheet.href='codlet://consumer/theme.css';f.document.head.append(consumerSheet);await tick();assert.equal(root.querySelectorAll('link').length,1);
+  observer.disconnect();owner.ctx.retire();assert.equal(effects,0);assert.equal(callbacks.size,0);assert.equal(listeners.size,0);assert.equal(root.querySelectorAll('link').length,0);assert.equal(host.isConnected,false);
+});
+
+test('retiring a shadow transcript before styles load cancels readiness before creating a Native root',async t=>{
+  const f=fixture(t,{transcriptIsolation:true}),N=native(f),owner=f.connect(),sheet=f.document.createElement('link');sheet.rel='stylesheet';sheet.href='app://-/assets/native-fixture.css';f.document.head.append(sheet);
+  N.manager={getConversation:()=>({resumeState:'resumed'}),addConversationStateCallback:()=>()=>{}};f.discovery.transcript=async()=>N;
+  const box=f.document.createElement('div');f.document.body.append(box);const handle=owner.session.mountTranscript(box,{threadId:'shadow-thread'});await tick();const root=box.firstElementChild.shadowRoot;assert.equal(root.querySelectorAll('link').length,1);owner.ctx.retire();await assert.rejects(handle.ready,{code:'workspace_retired'});await tick();assert.equal(N.roots(),0);assert.equal(root.querySelectorAll('link').length,0);
+});
+
+test('shadow style discovery fails closed when Native resources are absent',t=>{
+  const f=fixture(t),wrapper=f.document.createElement('div');f.document.body.append(wrapper);const isolation=createTranscriptIsolation({document:f.document,report(){}});assert.throws(()=>isolation.create(wrapper),{code:'workspace_transcript_styles_unavailable'});isolation.dispose();
+});
+
+test('activity slots and native actions live outside the native tooltip trigger, preserve controls and retire with the owner',async t=>{
+  const f=fixture(t),N=native(f),owner=f.connect(),button=f.document.getElementById('activity'),toolbar=button.parentElement,group=f.document.createElement('div'),trigger=f.document.createElement('span');
+  toolbar.insertBefore(group,button);group.append(trigger);trigger.append(button);
+  const ownerFiber=button.__reactFiber$fixture;button.__reactFiber$fixture={stateNode:button,return:{stateNode:trigger,return:{stateNode:group,return:ownerFiber}}};
+  const slot=owner.session.createSlot('activity.before');assert.equal(slot.container.parentElement,toolbar);assert.equal(slot.container.nextElementSibling,group);assert.equal(trigger.contains(slot.container),false);
+  N.Button=props=>N.React.createElement('button',props);N.Tooltip=({tooltipContent,shortcut,children})=>N.React.createElement('span',{'data-native-tooltip':tooltipContent,'data-native-shortcut':shortcut},children);f.discovery.action=async()=>N;
+  let invoked=0;const action=owner.session.registerAction({id:'generic-action',label:'Generic action',icon:{paths:['M0 0 H24 V24 H0 Z']},shortcut:'Ctrl+K',onInvoke(){invoked++;}});await action.ready;
+  const actionButton=f.document.querySelector('[data-codlet-workspace-action]');assert.equal(trigger.contains(actionButton),false);assert.equal(actionButton.getAttribute('aria-label'),'Generic action');assert.equal(actionButton.querySelector('svg').getAttribute('fill'),'currentColor');actionButton.click();assert.equal(invoked,1);
+  await new Promise(resolve=>{const observer=new f.window.MutationObserver(()=>{if(actionButton.getAttribute('aria-pressed')==='true'){observer.disconnect();resolve();}});observer.observe(actionButton,{attributes:true});action.update({pressed:true,disabled:true});});assert.equal(actionButton.getAttribute('aria-pressed'),'true');actionButton.click();assert.equal(invoked,1);assert.equal(trigger.querySelectorAll('button').length,1);
+  owner.ctx.retire();assert.equal(f.document.querySelector('[data-codlet-workspace-action]'),null);assert.throws(()=>action.update({pressed:false}),{code:'workspace_retired'});
+});
+
+test('native actions wait for a missing activity toolbar, reuse their root after returning, and cancel pending readiness',async t=>{
+  const f=fixture(t),N=native(f),owner=f.connect(),button=f.document.getElementById('activity'),toolbar=button.parentElement;
+  N.Button=props=>N.React.createElement('button',props);N.Tooltip=({children})=>children;f.discovery.action=async()=>N;
+  button.remove();await f.flush();let settled=false;
+  const action=owner.session.registerAction({id:'late-action',label:'Late action',icon:{paths:['M0 0 H24 V24 H0 Z']},onInvoke(){}});action.ready.then(()=>{settled=true;});await tick();await f.flush();assert.equal(settled,false);assert.equal(N.roots(),0);
+  toolbar.append(button);await f.flush();await action.ready;const control=f.document.querySelector('[data-codlet-workspace-action="late-action"]');assert.ok(control);assert.equal(N.roots(),1);
+  button.remove();await f.flush();toolbar.append(button);await f.flush();assert.equal(f.document.querySelector('[data-codlet-workspace-action="late-action"]'),control);assert.equal(f.document.querySelectorAll('[data-codlet-workspace-action="late-action"]').length,1);assert.equal(N.roots(),1);
+  button.remove();await f.flush();const pending=owner.session.registerAction({id:'cancelled-action',label:'Cancelled action',icon:{paths:['M0 0 H24 V24 H0 Z']},onInvoke(){}});await tick();pending.dispose();await assert.rejects(pending.ready,{code:'workspace_retired'});toolbar.append(button);await f.flush();assert.equal(f.document.querySelector('[data-codlet-workspace-action="cancelled-action"]'),null);assert.equal(N.roots(),1);
+});
+
+test('direct navigation separates same-renderer execution from confirmed input ownership and never bypasses cancellation',async t=>{
+  let binding={threadId:'thread-a',hostId:'local',submitDisabled:false};const f=fixture(t,{navigationBinding:()=>binding}),owner=f.connect(),calls=[];
+  f.navigator.push=path=>{calls.push(path);f.navigator.location.pathname=path;};
+  f.discovery.navigation=async()=>({manager:{getConversation:id=>({id,hostId:'local',resumeState:'resumed'}),getStreamRole:()=>({role:'owner'}),sendRequest(){assert.fail('cached direct navigation must not make a Core or metadata request');}}});
+  const navigation=owner.session.createNavigation();await navigation.ready;const signal=new f.window.AbortController(),first=navigation.open({threadId:'thread-b'},{signal:signal.signal});
+  assert.deepEqual(calls,['/local/thread-b'],'execute the cached route before returning to the caller');assert.equal((await first.executed).threadId,'thread-b');assert.equal(owner.session.getSnapshot().threadId,'thread-b');let committed=false;first.committed.then(()=>committed=true,()=>{});await tick();assert.equal(committed,false);
+  assert.throws(()=>navigation.open({threadId:42}),{code:'invalid_argument'});assert.throws(()=>navigation.open({threadId:'thread-c'},{signal:{}}),{code:'invalid_argument'});
+  const cancelled=new f.window.AbortController();cancelled.abort();const invalid=navigation.open({threadId:'thread-c'},{signal:cancelled.signal});await assert.rejects(invalid.executed,{code:'invocation_cancelled'});assert.equal(calls.length,1);
+  binding={threadId:'thread-b',hostId:'local',submitDisabled:false};f.document.querySelector('main').append(f.document.createElement('span'));await f.flush();assert.equal((await first.committed).threadId,'thread-b');
+  const second=navigation.open({threadId:'thread-c'});await second.executed;const third=navigation.open({threadId:'thread-d'});await assert.rejects(second.committed,{code:'workspace_navigation_superseded'});await third.executed;owner.ctx.retire();await assert.rejects(third.committed,{code:'workspace_retired'});assert.throws(()=>navigation.open({threadId:'thread-e'}),{code:'workspace_retired'});
+});
+
+test('a cancelled cold read cannot navigate after a newer operation stays on the current task',async t=>{
+  const f=fixture(t,{navigationBinding:()=>({threadId:'thread-a',hostId:'local',submitDisabled:false})}),owner=f.connect(),calls=[];let release;
+  f.navigator.push=path=>{calls.push(path);f.navigator.location.pathname=path;};
+  f.discovery.navigation=async()=>({manager:{getConversation:id=>id==='thread-a'?{id,hostId:'local',resumeState:'resumed'}:null,sendRequest:()=>new Promise(resolve=>{release=resolve;})}});
+  const navigation=owner.session.createNavigation();await navigation.ready;const old=navigation.open({threadId:'uncached-cold'});assert.equal(typeof release,'function');
+  const current=navigation.open({threadId:'thread-a'});await assert.rejects(old.executed,{code:'workspace_navigation_superseded'});assert.equal((await current.executed).threadId,'thread-a');await current.committed;
+  release({thread:{id:'uncached-cold'}});await tick();await tick();assert.deepEqual(calls,[]);assert.equal(f.navigator.location.pathname,'/local/thread-a');
+});
+
+test('navigation queues one frame, cancels all pending work and observes mutations only while confirmation is pending',async t=>{
+  let bindings=0;const f=fixture(t,{navigationBinding:()=>{bindings++;return{threadId:'thread-a',hostId:'local',submitDisabled:false};}}),owner=f.connect(),frames=new Map(),active=new Set(),original=f.window.MutationObserver;let next=0;
+  f.window.requestAnimationFrame=callback=>{frames.set(++next,callback);return next;};f.window.cancelAnimationFrame=id=>frames.delete(id);
+  f.window.MutationObserver=class{constructor(callback){this.inner=new original(callback);}observe(...args){active.add(this);this.inner.observe(...args);}disconnect(){active.delete(this);this.inner.disconnect();}};
+  f.navigator.push=path=>{f.navigator.location.pathname=path;};f.discovery.navigation=async()=>({manager:{getConversation:id=>({id,resumeState:'resumed'})}});
+  const navigation=owner.session.createNavigation();await navigation.ready;assert.equal(active.size,0);const signal=new f.window.AbortController(),op=navigation.open({threadId:'thread-b'},{signal:signal.signal});await op.executed;await tick();assert.equal(active.size,1);
+  for(let i=0;i<100;i++)f.document.getElementById('body').append(f.document.createElement('span'));await tick();assert.equal(frames.size,1);
+  signal.abort();await assert.rejects(op.committed,{code:'invocation_cancelled'});assert.equal(active.size,0);assert.equal(frames.size,0);const count=bindings;
+  for(let i=0;i<100;i++)f.document.getElementById('body').append(f.document.createElement('span'));await tick();assert.equal(bindings,count);
 });
 
 test('cold item hydration errors reject readiness; retirement after background hydration cancels further reads',async t=>{

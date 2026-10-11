@@ -43,7 +43,7 @@ export function hostFibers(limit = 20000) {
 // descendants. React can reuse a child whose return points at the alternate;
 // checking both parents' actual child links handles that case and rejects a
 // detached provider even when its stale return chain still reaches the root.
-function currentAncestry(fiber, current) {
+export function currentAncestry(fiber, current) {
   const pending = [{ fiber, depth: 1 }], seen = new Set(); let links = 0;
   // A commit may reuse children whose return links still name the previous
   // parent. Prove each edge in either parent's child list, then follow the
@@ -66,6 +66,18 @@ function currentAncestry(fiber, current) {
         siblings.add(candidate); candidate = candidate.sibling;
       }
     }
+  }
+  return null;
+}
+
+export function currentElementAncestry(element, root = document.getElementById('root')) {
+  const key = root && Object.keys(root).find(key => key.startsWith('__reactContainer$'));
+  const container = key && root[key], current = container?.stateNode?.current ?? container;
+  const attachedKey = element && Object.keys(element).find(key => key.startsWith('__reactFiber$'));
+  const attached = attachedKey && element[attachedKey];
+  if (!current) return null;
+  for (const fiber of [attached, attached?.alternate]) if (fiber?.stateNode === element) {
+    const chain = currentAncestry(fiber, current); if (chain) return [...chain].reverse();
   }
   return null;
 }

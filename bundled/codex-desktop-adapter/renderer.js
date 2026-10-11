@@ -873,8 +873,10 @@ function createThreadOpener({ manager, selection, navigation, request }) {
         const metadata = await request("thread/read", { threadId, includeTurns: false }, signal);
         if (metadata?.thread?.id !== threadId) throw fail5("desktop_navigation_unavailable", "Desktop did not confirm the requested task identity");
       }
+      if (signal?.aborted) throw fail5("invocation_cancelled", "Task navigation was cancelled during validation");
       selection();
       if (nav.stamp() !== stamp) throw fail5("desktop_navigation_superseded", "The user navigated while this task was being checked");
+      if (signal?.aborted) throw fail5("invocation_cancelled", "Task navigation was cancelled before routing");
       nav.open(threadId);
       const current = selection();
       if (current.threadId !== threadId) throw fail5("desktop_navigation_superseded", "Desktop selected a different task during navigation");

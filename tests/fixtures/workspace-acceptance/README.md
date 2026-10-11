@@ -1,4 +1,6 @@
-# Current-instance workspace acceptance
+# Workspace acceptance fixtures
+
+The Native probes below document earlier acceptance runs. Any new runtime run must target its own independent Codlet test client and synthetic conversations, with verified run/profile/registry/PID/Target and backend/home ownership. Historical Target IDs, real conversation lists and an arbitrary first page cannot select that run. Creating a second window alone does not establish data isolation. These fixtures do not run automatically during build or CI.
 
 Build with `node tests/fixtures/workspace-acceptance/build.mjs`. This prepares two explicit local test packages under ignored `.artifacts/workspace-acceptance/`; it does not replace official adapters or install anything automatically.
 
@@ -23,3 +25,9 @@ Build with `node tests/fixtures/workspace-acceptance/build-cold-probe.mjs` and p
 Build with `node tests/fixtures/workspace-acceptance/build-navigation-probe.mjs`. Preview/register `dev.workspace.navigation-probe-provider` with `ui.dom`/`ui.mainWorld`, then `dev.workspace.navigation-probe-consumer` with `ui.mainWorld`/`host.process`/`cdp.raw`. The consumer invokes a temporary capability through Core RPC; the provider uses the exact internal `createThreadOpener` used by Desktop, the existing local manager and the actual native router. It installs no transport interceptor and leaves official adapter symbols untouched.
 
 Run the read-only alternate probe first to preserve tree evidence. Navigation acceptance requires a local selected route and two other already-resumed owner tasks. It measures receipt latency and metadata reads, then restores the original selected route. If those prerequisites are absent it records read-only control RPC timing and performs no navigation. Results are in the consumer's `report.json`; retain completed navigation reports before a control-only run. Remove the consumer, then provider through the scoped CLI. The two modes measure RPC receipt completion, not Native paint completion or a universal latency bound.
+
+## Offline Adapter wrapper matrix
+
+Run `node tests/fixtures/workspace-acceptance/bench-wrapper.mjs`. It bundles the Adapter into a React/jsdom fixture, uses only synthetic thread identities, and writes `.artifacts/workspace-wrapper-benchmark/report.json`. No client, Core registration or backend is used. The report records its source bundle hash, runId, Node version and explicit `nativeClientTested:false` / `nativeDraftHandoffTested:false` fields.
+
+Cases cover 0/1/2/4/5/8 transcript roots, 200 streaming mutations, five bursts of 40 shell mutations, ResizeObserver subscription churn and complete teardown. A separate fake composer driver samples warm binding/state transitions. Its timing is only protocol overhead, not Native editor readiness or paint latency. A settled microtask count is not a sustained idle CPU measurement. See [the agreed Native contract and remaining acceptance work](../../../docs/spec/workspace-composer-contract.md).

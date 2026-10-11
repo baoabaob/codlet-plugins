@@ -53,7 +53,7 @@ const markers = (value, list) => { const source = componentSource(value); return
 // One cache per provider lifetime; lazy modules never initialize in pet windows.
 export function createWorkspaceDiscovery(baseNative, { load = url => import(url), read = readWorkspaceAsset, connect = localConnection } = {}) {
   const controller = new AbortController(), sources = new Map(), modules = new Map();
-  let common, transcript, shortcuts, connection;
+  let common, transcript, shortcuts, connection, threadModule, composer, primaryModule, composerParts;
   const source = url => { if (!sources.has(url)) sources.set(url, read(url, controller.signal)); return sources.get(url); };
   const module = url => { if (!modules.has(url)) modules.set(url, load(url)); return modules.get(url); };
   const existing = () => {
@@ -70,8 +70,14 @@ export function createWorkspaceDiscovery(baseNative, { load = url => import(url)
     const [shared, initial] = await Promise.all([module(sharedUrl), module(initialUrl)]);
     return { ...native, shared, initial, sharedUrl, initialUrl };
   })();
-  return {
+  const api = {
     connection: existing,
+    // Finding a component alone cannot establish live-main draft handoff or
+    // persistent cleanup. No archived Native profile has passed those checks.
+    // A future reviewed profile can prepare its driver here, before any mount.
+    composerCapabilities: async () => ({ rebind: false }),
+    navigation: async () => { await getCommon(); const connection=existing(); return {manager:connection.manager,check:()=>existing()}; },
+    action: async () => { const native=await getCommon();if(!native.RailButton||!native.RailTooltip)throw workspaceError('workspace_action_unavailable','Native toolbar button or tooltip is unavailable');return{...native,Button:native.RailButton,Tooltip:native.RailTooltip}; },
     transcript: () => transcript ??= (async () => {
       const native = await getCommon(), graph = await source(native.initialUrl), urls = assetReferences(graph, native.initialUrl, 'local-conversation-thread');
       if (!urls.length || urls.length > 8) throw workspaceError('workspace_transcript_unavailable', 'Native transcript modules are missing or ambiguous');
@@ -82,18 +88,38 @@ export function createWorkspaceDiscovery(baseNative, { load = url => import(url)
       // The semantic wrapper runs Native's own initializer. Source is never evaluated.
       await module(wrappers[0].url);
       const thread = await module(implementations[0].url);
+      threadModule=thread;
       const Content = uniqueExport(thread, value => markers(value, ['trackReadState', 'retainActiveInterest', 'contentSearchOrchestrationId', 'enableMcpApps']), 'transcript content');
       const Scope = uniqueExport(native.shared, value => markers(value, ['Missing parent scope', 'providedValue']), 'scope provider');
       const composerScope = uniqueExport(native.shared, value => value?.__scopeBrand === 'ComposerScope' && typeof value.id === 'symbol', 'composer scope');
       const composerValue = uniqueExport(native.shared, value => markers(value, ['routeKind', 'local-thread', 'client-local-thread', 'browserTabMentionConversationId']), 'composer scope value');
+      const ThreadScope=uniqueExport(native.shared,value=>value?.__scopeBrand==='ThreadScope','thread scope');
+      const RouteScope=uniqueExport(native.shared,value=>value?.__scopeBrand==='RouteScope','route scope');
+      const routeDescription=uniqueExport(native.shared,value=>typeof value==='function'&&value.length===1&&markers(value,['pathname','routeTemplate','local-thread','client-local-thread','routeKind','/extension/panel/new','new URLSearchParams']),'route description');
       const primaryUrls = assetReferences(graph, native.initialUrl, 'app-primary');
       if (primaryUrls.length !== 1) throw workspaceError('workspace_transcript_unavailable', 'A unique native thread subscription module is required');
       const primary = await module(primaryUrls[0]);
+      primaryModule=primary;
       const ThreadSubscription = uniqueExport(primary, value => markers(value, ['threadKey', 'cancelRelease', 'useSyncExternalStore', 'hostId', 'threadId']), 'thread subscription');
       const manager = existing().manager;
       for (const method of ['getConversation', 'loadBackgroundThreadHistoryPage', 'loadRemainingTurnItems', 'addConversationStateCallback'])
         if (typeof manager[method] !== 'function') throw workspaceError('workspace_transcript_unavailable', `Native transcript manager lacks ${method}`);
-      return { ...native, Content, ThreadSubscription, Scope, composerScope, composerValue, manager };
+      return { ...native, Content, ThreadSubscription, Scope, composerScope, composerValue, manager, ThreadScope, RouteScope, routeDescription };
+    })(),
+    composerParts: () => composerParts ??= (async()=>{
+      const native=await api.transcript();
+      // Native's thread footer uses these components directly. The outer Frame
+      // adds scroll/layout and route work even with hideThreadContent. Finding
+      // these parts does not enable rebind without a validated draft driver.
+      const Composer=uniqueExport(primaryModule,value=>markers(value,['useAsbDirect','runtime','account']),'composer component');
+      const ComposerSurface=uniqueExport(primaryModule,value=>markers(value,['isWorkHome','isCodexHome','cloneElement','surfacePlacement']),'composer surface');
+      return{...native,Composer,ComposerSurface,check:existing};
+    })(),
+    composer: () => composer ??= (async()=>{
+      const native=await api.transcript();
+      if(typeof native.manager.getStreamRole!=='function')throw workspaceError('workspace_composer_unavailable','Native stream identity is unavailable');
+      const Frame=uniqueExport(threadModule,value=>markers(value,['hideThreadContent','canInteract','shouldResume','threadAccess','hostMcpApps']),'composer frame');
+      return{...native,Frame,check:existing};
     })(),
     shortcuts: () => shortcuts ??= (async () => {
       const native = await getCommon(), graph = await source(native.initialUrl), urls = assetReferences(graph, native.initialUrl, 'app-primary');
@@ -127,6 +153,7 @@ export function createWorkspaceDiscovery(baseNative, { load = url => import(url)
           return connection.node.store.get(keymap.resolve(connection.node, connection.chain));
         } };
     })(),
-    dispose() { controller.abort(); sources.clear(); modules.clear(); connection = null; common = transcript = shortcuts = null; },
+    dispose() { controller.abort(); sources.clear(); modules.clear(); connection = null; common = transcript = shortcuts = composer = threadModule = primaryModule = composerParts = null; },
   };
+  return api;
 }

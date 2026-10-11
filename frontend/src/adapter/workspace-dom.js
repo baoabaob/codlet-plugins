@@ -1,4 +1,4 @@
-import { componentSource } from '../host-discovery.js';
+import { componentSource, currentElementAncestry } from '../host-discovery.js';
 
 export const workspaceError = (code, message) => Object.assign(new Error(message), { code });
 export const OWNED = '[data-codlet-workspace-owned]';
@@ -61,6 +61,40 @@ export function findActivity(document) {
     if (owner) matches.push(button);
   }
   return one(matches, 'activity control', true);
+}
+export function activityPlacement(button) {
+  if (!button?.isConnected) return null;
+  const chain = currentElementAncestry(button) ?? ancestry(button, 48);
+  const owner = chain.find(fiber => {
+    const source = componentSource(fiber.type);
+    return source.includes('sidebarElectron.priorityThreads.coachmark.description') && source.includes('onActivate') && source.includes('needsAttention');
+  });
+  if (!owner) throw workspaceError('workspace_host_drift', 'Native activity ownership changed');
+  let anchor = button;
+  for (const fiber of chain) {
+    if (fiber === owner) break;
+    const node = fiber.stateNode;
+    if (node?.nodeType === 1 && node.contains(button)) anchor = node;
+  }
+  return { button, anchor, parent: anchor.parentElement };
+}
+
+export function composerBinding(document, composer) {
+  if (!composer?.isConnected || composer.closest(OWNED)) return null;
+  return nativeComposerBinding(composer,document.getElementById('root'));
+}
+export function nativeComposerBinding(composer,root) {
+  if (!composer?.isConnected) return null;
+  const chain = currentElementAncestry(composer,root);
+  if (!chain) return null;
+  for (const fiber of chain) {
+    const props = fiber.memoizedProps ?? {}, source = componentSource(fiber.type);
+    if (!Object.hasOwn(props, 'composerSubmitDisabled') || !Object.hasOwn(props, 'composerPresentation') ||
+        !source.includes('composerSubmitDisabled') || !source.includes('isThreadHistoryLoading')) continue;
+    if (props.hostId !== 'local' || typeof props.conversationId !== 'string') return null;
+    return { threadId: props.conversationId, hostId: 'local', submitDisabled: !!props.composerSubmitDisabled || !!props.isResuming || !!props.isThreadHistoryLoading };
+  }
+  return null;
 }
 export function resolveThreadReference(document, element, isCachedLocal = () => false) {
   if (!(element instanceof document.defaultView.Element) || element.ownerDocument !== document || !active(element) || element.closest('main')) return null;

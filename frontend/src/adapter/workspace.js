@@ -1,31 +1,53 @@
 import { desktopDocument } from '../host-discovery.js';
 import { subscribeNativeRoute } from '../native-navigation.js';
-import { OWNED, workspaceError, findWorkspaceSurface, findActivity, resolveThreadReference, geometry, createSurfaceControl, surfaceOptions } from './workspace-dom.js';
+import { OWNED, workspaceError, findWorkspaceSurface, findActivity, activityPlacement, resolveThreadReference, geometry, createSurfaceControl, surfaceOptions } from './workspace-dom.js';
 import { createWorkspaceDiscovery } from './workspace-discovery.js';
 import { createTranscripts } from './workspace-transcript.js';
 import { createShortcuts } from './workspace-shortcuts.js';
+import { createWorkspaceNavigation } from './workspace-navigation.js';
+import { createWorkspaceActions } from './workspace-actions.js';
+import { createComposers } from './workspace-composer.js';
+import { createWorkspaceMetrics } from './workspace-metrics.js';
 
 export const WORKSPACE_CAPABILITY = Object.freeze({ name: 'codex.ui.workspace', api: 1, scope: 'target' });
 export const WORKSPACE_SYMBOL = 'codlet.codex.ui.workspace.v1';
-const emptyFeatures = () => ({ surface: false, activitySlot: false, transcript: false, shortcuts: false });
+const emptyFeatures = () => ({ surface: false, activitySlot: false, transcript: false, shortcuts: false, navigation: false, action: false, composer:false, composerRebind:false });
 const roleNames = ['main', 'content', 'scroller', 'composer', 'footer', 'header', 'rightPanel'];
 const errorValue = error => ({ code: typeof error?.code === 'string' ? error.code : 'workspace_host_drift', message: String(error?.message ?? error) });
 
 export function createWorkspace(context, { locate, baseNative, discovery: suppliedDiscovery, document: doc = document,
-    requestFrame = callback => requestAnimationFrame(callback), cancelFrame = id => cancelAnimationFrame(id), validateDocument = desktopDocument } = {}) {
-  const symbol = Symbol.for(WORKSPACE_SYMBOL), tickets = new Map(), sessions = new Set(), slots = new Set(), control = createSurfaceControl();
+    requestFrame = callback => requestAnimationFrame(callback), cancelFrame = id => cancelAnimationFrame(id), validateDocument = desktopDocument,
+    apiSymbol=WORKSPACE_SYMBOL,capability=WORKSPACE_CAPABILITY,navigationBinding,transcriptIsolation=false,testPoints } = {}) {
+  const symbol = Symbol.for(apiSymbol), tickets = new Map(), sessions = new Set(), slots = new Set(), control = createSurfaceControl();
   if (globalThis[symbol] !== undefined) throw workspaceError('workspace_host_drift', 'Another workspace provider owns this document');
   let alive = true, frame = null, observer, resize, host, root, unroute, structural = true, surface, activity, features = emptyFeatures(), diagnostic = null, surfaceFailure = null, revision = 0;
   let snapshot = Object.freeze({ api: 1, revision, route: null, threadId: null, hostId: null, auxiliary: false, available: false, features: Object.freeze(features), diagnostic: null });
   let publicSurface = Object.freeze({ available: false, ...Object.fromEntries(roleNames.map(key => [key, null])) }), geometrySignature = '';
   const report = error => { try { context.reportDiagnostic?.({ ...errorValue(error), level: 'warning' }); } catch {} };
+  const metrics = createWorkspaceMetrics(testPoints);
+  const observedNodes = new Set();
+  let surfaceRevision = 0, publishedSurfaceRevision = -1, geometryDirty = true;
   const check = () => { if (!alive) throw workspaceError('workspace_retired', 'Workspace provider retired'); };
   const discovery = suppliedDiscovery ?? createWorkspaceDiscovery(baseNative);
   const featureLoad = (role, load) => Promise.resolve().then(load).then(value => { check(); features = { ...features, [role]: true }; schedule(false); return value; }, error => {
     features = { ...features, [role]: false }; diagnostic = errorValue(error); report(error); schedule(false); throw error;
   });
-  const transcripts = createTranscripts({ document: doc, load: () => featureLoad('transcript', discovery.transcript), surface: () => surface, check, report });
+  const transcripts = createTranscripts({ document: doc, load: () => featureLoad('transcript', discovery.transcript), surface: () => surface, check, report, isolate:transcriptIsolation, metrics });
   const shortcuts = createShortcuts({ document: doc, load: () => featureLoad('shortcuts', discovery.shortcuts), surface: () => surface, activity: () => activity, check, report, changed: () => schedule(false) });
+  const navigation = createWorkspaceNavigation({document:doc,load:()=>featureLoad('navigation',discovery.navigation),host:()=>host,check,changed:()=>publish(true),...(navigationBinding?{readBinding:navigationBinding}:{})});
+  const actions=createWorkspaceActions({document:doc,load:()=>featureLoad('action',discovery.action),activity:()=>activity??=findActivity(doc),check,report});
+  const composers=createComposers({document:doc,load:()=>featureLoad('composer',discovery.composer),surface:()=>surface,check,report,metrics});
+  let composerFeatures, composerFeatureEpoch = 0;
+  function prepareComposerFeatures() {
+    if (host?.auxiliary || typeof discovery.composerCapabilities !== 'function') return;
+    const epoch = composerFeatureEpoch;
+    composerFeatures ??= Promise.resolve().then(discovery.composerCapabilities).then(async capabilities => {
+      if (!alive || !sessions.size || epoch !== composerFeatureEpoch || !capabilities?.rebind) return;
+      await composers.prepare();
+      if (!alive || !sessions.size || epoch !== composerFeatureEpoch) return;
+      features = { ...features, composerRebind: composers.supportsRebind() }; schedule(false);
+    }).catch(error => { if (alive && sessions.size) report(error); });
+  }
   function callback(listener, value) { try { Promise.resolve(listener(value)).catch(report); } catch (error) { report(error); } }
   function publish(routeChanged = false) {
     const location = host?.navigator.location, route = location ? { pathname: location.pathname, search: location.search ?? '', hash: location.hash ?? '' } : null;
@@ -33,20 +55,37 @@ export function createWorkspace(context, { locate, baseNative, discovery: suppli
     const next = { api: 1, route, threadId, hostId: threadId ? 'local' : null, auxiliary: !!host?.auxiliary,
       available: !!surface?.composer && !host?.auxiliary, features, diagnostic };
     const previous = { ...snapshot }; delete previous.revision;
-    const changed = routeChanged || geometrySignature !== previousGeometry || JSON.stringify(next) !== JSON.stringify(previous);
+  const changed = routeChanged || surfaceRevision !== publishedSurfaceRevision || geometrySignature !== previousGeometry || JSON.stringify(next) !== JSON.stringify(previous);
     if (!changed) return;
     previousGeometry = geometrySignature;
+    publishedSurfaceRevision = surfaceRevision;
+    metrics?.add('surface.publish');
     snapshot = Object.freeze({ ...next, revision: ++revision, route: route && Object.freeze(route), features: Object.freeze({ ...features }), diagnostic: diagnostic && Object.freeze({ ...diagnostic }) });
     for (const session of sessions) for (const listener of session.listeners) callback(listener, snapshot);
   }
   let previousGeometry = '';
   let microtaskSequence = 0;
   function refreshGeometry() {
+    geometryDirty = false;
+    metrics?.add('surface.geometry');
+    if (metrics) for (const key of roleNames) if (surface?.[key]) metrics.add('surface.layout.read');
     publicSurface = Object.freeze({ available: !!surface?.composer && !host?.auxiliary, ...Object.fromEntries(roleNames.map(key => [key, geometry(surface?.[key])])) });
     geometrySignature = JSON.stringify(roleNames.map(key => publicSurface[key]?.rect ?? null));
   }
+  function observeSurface() {
+    if (!resize) return;
+    const next = new Set(roleNames.map(key => surface?.[key]).filter(Boolean));
+    for (const node of observedNodes) if (!next.has(node)) {
+      resize.unobserve(node); observedNodes.delete(node); metrics?.add('surface.resize.unobserve');
+    }
+    for (const node of next) if (!observedNodes.has(node)) {
+      resize.observe(node); observedNodes.add(node); metrics?.add('surface.resize.observe');
+    }
+  }
   function reconcile() {
     frame = null; if (!alive || !sessions.size) return;
+    const started = metrics?.start();
+    metrics?.add('surface.reconcile');
     let routeChanged = false;
     try {
       if (!root?.isConnected || root !== doc.getElementById('root') || !host) {
@@ -57,33 +96,42 @@ export function createWorkspace(context, { locate, baseNative, discovery: suppli
       const oldSurface = surface;
       if (structural || routeChanged) {
         structural = false;
-        surface = host.auxiliary ? null : findWorkspaceSurface(doc);
-        if (!activity?.isConnected && !host.auxiliary && (slots.size || features.shortcuts)) activity = findActivity(doc);
-        features = { ...features, surface: !!surface?.composer, activitySlot: !!activity, transcript: host.auxiliary ? false : features.transcript, shortcuts: host.auxiliary ? false : features.shortcuts };
-        if (diagnostic === surfaceFailure) diagnostic = surfaceFailure = null;
-        if (resize && oldSurface !== surface) {
-          resize.disconnect(); for (const node of new Set(roleNames.map(key => surface?.[key]).filter(Boolean))) resize.observe(node);
+        metrics?.add('surface.scan');
+        const next = host.auxiliary ? null : findWorkspaceSurface(doc);
+        if (roleNames.some(key => oldSurface?.[key] !== next?.[key])) {
+          surface = next; surfaceRevision++; geometryDirty = true;
         }
+        if (!activity?.isConnected && !host.auxiliary && (slots.size || features.shortcuts || features.action)) activity = findActivity(doc);
+        features = { ...features, surface: !!surface?.composer, activitySlot: !!activity, transcript: host.auxiliary ? false : features.transcript, shortcuts: host.auxiliary ? false : features.shortcuts, composerRebind: host.auxiliary ? false : features.composerRebind };
+        if (diagnostic === surfaceFailure) diagnostic = surfaceFailure = null;
+        observeSurface();
       }
       control.reconcile(surface);
-      let anchor = activity;
-      if (anchor?.isConnected) for (const slot of [...slots].reverse()) {
-        if (slot.container.parentElement !== anchor.parentElement || slot.container.nextSibling !== anchor) anchor.before(slot.container);
-        anchor = slot.container;
+      let anchor = activity?.isConnected ? activityPlacement(activity).anchor : null;
+      if (anchor?.isConnected) for (const slot of slots) {
+        if (slot.name !== 'activity.before') continue;
+        let sibling=slot.container.nextSibling;while(sibling?.nodeType===1&&sibling.matches(OWNED))sibling=sibling.nextSibling;
+        if (slot.container.parentElement !== anchor.parentElement || sibling !== anchor) anchor.before(slot.container);
       }
-      refreshGeometry();
-      if (routeChanged) { transcripts.rebind(); shortcuts.rebind(); }
+      for (const slot of slots) if (slot.name === 'workspace.overlay' && slot.container.parentElement !== root) root.append(slot.container);
+      actions.reconcile();
+      if (geometryDirty) refreshGeometry();
+      if (routeChanged) shortcuts.rebind();
       else if (structuralSettings) shortcuts.refresh();
     } catch (error) {
       diagnostic = surfaceFailure = errorValue(error); if (diagnostic.code !== 'workspace_host_pending' && diagnostic.code !== 'ui_host_pending') report(error);
-      surface = null; control.reconcile(null); features = { ...features, surface: false }; refreshGeometry();
+      if (surface) surfaceRevision++;
+      surface = null; observeSurface(); control.reconcile(null); features = { ...features, surface: false }; refreshGeometry();
     }
     structuralSettings = false; publish(routeChanged);
+    navigation.pulse();
+    if (metrics) metrics.end('surface.reconcile.complete', started);
   }
   let structuralSettings = false;
   function schedule(scan = true) {
     if (!alive || !sessions.size) return;
     structural ||= scan;
+    geometryDirty ||= scan;
     if (frame == null) {
       // Current UIKit can display a native window while its backing Chromium
       // document reports hidden. Its rAF/timers are throttled. Batch committed
@@ -97,6 +145,7 @@ export function createWorkspace(context, { locate, baseNative, discovery: suppli
   function observe() {
     if (observer) return;
     observer = new doc.defaultView.MutationObserver(records => {
+      metrics?.add('surface.mutation');
       // Ignore consumer roots and changes below a stable native scroller. A new
       // direct body/footer child or a shell replacement still invalidates roles.
       const relevant = records.filter(record => {
@@ -111,12 +160,17 @@ export function createWorkspace(context, { locate, baseNative, discovery: suppli
       structuralSettings = true; schedule(true);
     });
     observer.observe(doc.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-app-shell-active-page'] });
-    if (doc.defaultView.ResizeObserver) resize = new doc.defaultView.ResizeObserver(() => schedule(false));
+    if (doc.defaultView.ResizeObserver) resize = new doc.defaultView.ResizeObserver(entries => {
+      if (!entries.some(entry => observedNodes.has(entry.target))) return;
+      metrics?.add('surface.resize'); geometryDirty = true; schedule(false);
+    });
     doc.defaultView.addEventListener('resize', onResize);
   }
-  const onResize = () => schedule(false);
+  const onResize = () => { geometryDirty = true; schedule(false); };
   function stopObserving() {
     observer?.disconnect(); resize?.disconnect(); observer = resize = null; unroute?.(); unroute = null;
+    observedNodes.clear(); geometryDirty = true;
+    composerFeatureEpoch++; composerFeatures = undefined;
     doc.defaultView.removeEventListener('resize', onResize);
     if (frame != null && frame >= 0) cancelFrame(frame); frame = null; host = root = surface = activity = null;
   }
@@ -128,7 +182,7 @@ export function createWorkspace(context, { locate, baseNative, discovery: suppli
     for (const [key, value] of tickets) if (value.expires < Date.now()) tickets.delete(key);
     if (tickets.size >= 64) throw workspaceError('resource_limit', 'Too many pending workspace tickets');
     const ticket = crypto.randomUUID(); tickets.set(ticket, { ...caller, expires: Date.now() + 15000 });
-    return { api: 1, symbol: WORKSPACE_SYMBOL, ticket };
+    return { api: 1, symbol: apiSymbol, ticket };
   }
   function connect(owner, token) {
     check(); const ticket = tickets.get(token);
@@ -143,7 +197,10 @@ export function createWorkspace(context, { locate, baseNative, discovery: suppli
       live(); const entries = record.handles.get(kind) ?? new Set(); record.handles.set(kind, entries);
       if (entries.size >= limit) throw workspaceError('resource_limit', `Too many owned ${kind} handles`);
       const value = factory();
-      const result = Object.freeze({ ...value, dispose() { if (!entries.delete(result)) return; value.dispose(); } }); entries.add(result); return result;
+      const descriptors = Object.getOwnPropertyDescriptors(value);
+      descriptors.dispose = { enumerable: true, value() { if (!entries.delete(result)) return; value.dispose(); } };
+      if (typeof value.close === 'function') descriptors.close = { enumerable: true, value(options) { const completion = value.close(options); entries.delete(result); return completion; } };
+      const result = Object.freeze(Object.defineProperties({}, descriptors)); entries.add(result); return result;
     }
     const session = Object.freeze({ api: 1,
       getSnapshot() { live(); return snapshot; },
@@ -153,13 +210,16 @@ export function createWorkspace(context, { locate, baseNative, discovery: suppli
         try { return !!discovery.connection?.().manager.getConversation(id); } catch { return false; }
       }); },
       createSlot(name) {
-        if (name !== 'activity.before') throw workspaceError('invalid_argument', 'Unknown workspace slot');
+        if (!['activity.before', 'workspace.overlay'].includes(name)) throw workspaceError('invalid_argument', 'Unknown workspace slot');
         return own('slot', 8, () => {
-          if (!activity?.isConnected && !host?.auxiliary) try {
+          if (name === 'activity.before' && !activity?.isConnected && !host?.auxiliary) try {
             activity = findActivity(doc); features = { ...features, activitySlot: !!activity };
           } catch (error) { diagnostic = errorValue(error); report(error); }
-          const container = doc.createElement('span'); container.dataset.codletWorkspaceOwned = ownerKey;
-          const slot = { container }; slots.add(slot); if (activity?.isConnected) activity.before(container); schedule(true);
+          const container = doc.createElement('span'); container.dataset.codletWorkspaceOwned = ownerKey; container.style.display = 'contents';
+          const slot = { container, name }; slots.add(slot);
+          if (name === 'workspace.overlay') root?.append(container);
+          else if (activity?.isConnected) activityPlacement(activity).anchor.before(container);
+          schedule(true);
           return { container, dispose() { slots.delete(slot); container.remove(); schedule(false); } };
         });
       },
@@ -170,6 +230,9 @@ export function createWorkspace(context, { locate, baseNative, discovery: suppli
           dispose() { active = false; control.leases.delete(lease); control.reconcile(surface); } };
       }); },
       mountTranscript(container, options) { return own('transcript', 16, () => { if (host?.auxiliary) throw workspaceError('workspace_transcript_unavailable', 'Auxiliary windows have no transcripts'); return transcripts.mount(container, options, ownerKey); }); },
+      mountComposer(container, options) { return own('composer',16,()=>{if(host?.auxiliary)throw workspaceError('workspace_composer_unavailable','Auxiliary windows have no composers');return composers.mount(container,options,ownerKey,live);}); },
+      createNavigation() { return own('navigation',1,()=>navigation.create(live)); },
+      registerAction(options) { return own('action',16,()=>actions.register(options,ownerKey,live)); },
       registerShortcut(options) { return own('shortcut', 16, () => { if (host?.auxiliary) throw workspaceError('workspace_shortcuts_unavailable', 'Auxiliary windows have no shortcut workspace'); schedule(true); return shortcuts.register(options, ownerKey); }); },
       dispose() {
         if (!record.alive) return; record.alive = false; record.listeners.clear();
@@ -178,19 +241,22 @@ export function createWorkspace(context, { locate, baseNative, discovery: suppli
       },
     });
     record.session = session; sessions.add(record);
-    try { release = owner.onDeactivate(session.dispose); if (!record.alive) throw workspaceError('workspace_retired', 'The consumer is already retired'); observe(); structural = true; reconcile(); }
+    try { release = owner.onDeactivate(session.dispose); if (!record.alive) throw workspaceError('workspace_retired', 'The consumer is already retired'); observe(); structural = true; reconcile(); prepareComposerFeatures(); }
     catch (error) { session.dispose(); throw error; }
     return session;
   }
   const publicApi = Object.freeze({ api: 1, connect });
   Object.defineProperty(globalThis, symbol, { value: publicApi, configurable: true });
-  context.rpc.provide(WORKSPACE_CAPABILITY, 'getApi', issueTicket);
+  context.rpc.provide(capability, 'getApi', issueTicket);
   function dispose() {
     if (!alive) return;
     for (const record of [...sessions]) record.session.dispose();
-    alive = false; tickets.clear(); stopObserving(); control.dispose(); transcripts.dispose(); shortcuts.dispose(); discovery.dispose();
+    alive = false; tickets.clear(); stopObserving(); control.dispose(); navigation.dispose(); actions.dispose();composers.dispose();transcripts.dispose(); shortcuts.dispose(); discovery.dispose();
     if (globalThis[symbol] === publicApi) delete globalThis[symbol];
   }
   const releaseProvider = context.onDeactivate(dispose);
-  return { issueTicket, connect, refresh: () => schedule(true), dispose() { dispose(); releaseProvider?.(); } };
+  const releaseCleanup = context.onCleanup?.(cleanup => composers.cleanup(cleanup));
+  return { issueTicket, connect, refresh: () => schedule(true),
+    ...(metrics ? { readTestPoints: () => metrics.report() } : {}),
+    dispose() { dispose(); releaseProvider?.(); composers.cleanup().then(() => releaseCleanup?.(), report); } };
 }

@@ -1,4 +1,5 @@
 import { workspaceError, OWNED, providersFor, wrapProviders } from './workspace-dom.js';
+import { createTranscriptIsolation } from './workspace-shadow.js';
 
 export function transcriptOptions(options, previous = { hostId: 'local', readOnly: true, trackReadState: false }) {
   if (!options || typeof options !== 'object' || Array.isArray(options) || Object.keys(options).some(key => !['threadId', 'hostId', 'readOnly', 'trackReadState', 'onState'].includes(key)))
@@ -10,7 +11,8 @@ export function transcriptOptions(options, previous = { hostId: 'local', readOnl
   return result;
 }
 
-export function createTranscripts({ document, load, surface, check, report }) {
+export function createTranscripts({ document, load, surface, check, report, isolate = false, metrics }) {
+  const isolation = isolate ? createTranscriptIsolation({ document, report }) : null;
   const records = new Set(), containers = new WeakSet(), histories = new Map(), queue = [], updates = new Set();
   let updateScheduled = false;
   let native, loading, unlisten, disposed = false, running = 0;
@@ -59,6 +61,7 @@ export function createTranscripts({ document, load, surface, check, report }) {
     if (record.disposed && phase !== 'disposed') return;
     if (record.phase === phase && !error) return;
     record.phase = phase;
+    metrics?.add('transcript.state', { viewId:record.viewId, threadAlias:record.epoch });
     const value = Object.freeze({ phase, threadId: record.options.threadId, hostId: 'local', diagnostic: error ? Object.freeze({ code: error.code ?? 'workspace_transcript_unavailable', message: error.message }) : null });
     try { Promise.resolve(record.options.onState?.(value)).catch(report); } catch (error) { report(error); }
   }
@@ -68,7 +71,7 @@ export function createTranscripts({ document, load, surface, check, report }) {
     if (!(container instanceof document.defaultView.HTMLElement) || container.ownerDocument !== document || !container.isConnected || container.childNodes.length || containers.has(container) ||
         container.matches('main,[data-codex-composer-root],.thread-scroll-container') || container.closest('[data-codex-composer-root]'))
       throw workspaceError('invalid_argument', 'Transcript requires a connected empty consumer container');
-    const record = { container, options: transcriptOptions(options), disposed: false, epoch: 0, phase: null, root: null };
+    const record = { container, options: transcriptOptions(options), disposed: false, epoch: 0, phase: null, root: null, viewId:metrics?.nextView() };
     let resolveReady, rejectReady;
     const ready = new Promise((resolve, reject) => { resolveReady = resolve; rejectReady = reject; });
     // Consumers still receive the rejecting ready promise, while provider
@@ -81,7 +84,7 @@ export function createTranscripts({ document, load, surface, check, report }) {
     const fail = error => { if (record.disposed) return; state(record, 'error', error); report(error); if (!settled) { settled = true; rejectReady(error); } };
     function tryReady() {
       if (record.disposed || !record.committed || record.bindingThread !== record.options.threadId || record.phase !== 'loading') return;
-      const scroller = wrapper.querySelector('.thread-scroll-container');
+      const scroller = record.mount.querySelector('.thread-scroll-container');
       if (!scroller) { fail(workspaceError('workspace_transcript_unavailable', 'The native transcript has no independent scroller')); return; }
       const conversation = native.manager.getConversation(record.options.threadId);
       if (!conversation) return;
@@ -89,19 +92,22 @@ export function createTranscripts({ document, load, surface, check, report }) {
       const hasHistory = !!conversation.turns?.length || conversation.turnHistory?.kind === 'canonical' && conversation.turnHistory.history?.islands?.some(island => island.entries?.length);
       if (!body || hasHistory && !body.textContent.trim()) return;
       scroll = scroller; readyObserver?.disconnect(); state(record, 'ready');
+      if (metrics) metrics.end('transcript.ready', record.started, { viewId:record.viewId, threadAlias:record.epoch });
       if (!settled) { settled = true; resolveReady(); }
     }
     record.tryReady = tryReady;
     function render(sync = false) {
       if (record.disposed || !record.root || record.bindingThread !== record.options.threadId) return;
       const N = native, R = N.React, h = R.createElement, opts = record.options;
-      const child = h(record.Boundary, { key: opts.threadId }, h(R.Suspense, { fallback: null },
+      let child = h(record.Boundary, { key: opts.threadId }, h(R.Suspense, { fallback: null },
         h(N.Scope, { scope: N.composerScope, value: record.scopeValue },
           h(N.ThreadSubscription, { threadKey: record.threadKey }),
           h(N.Content, { conversationId: opts.threadId, hostId: 'local', contentSearchOrchestrationId: 'codlet:' + owned + ':' + opts.threadId,
             isReadOnly: opts.readOnly, trackReadState: opts.trackReadState, retainActiveInterest: !opts.readOnly }), h(record.Commit, { epoch: record.epoch }))));
+      if (record.threadValue) child = h(N.Scope,{scope:N.ThreadScope,value:record.threadValue},h(N.Scope,{scope:N.RouteScope,value:record.routeValue},child));
       if (opts.readOnly) wrapper.setAttribute('inert', ''); else wrapper.removeAttribute('inert');
       const tree = wrapProviders(N, record.providers, child);
+      metrics?.add(sync ? 'transcript.render.sync' : 'transcript.render', { viewId:record.viewId, threadAlias:record.epoch });
       if (sync) N.DOM.flushSync(() => record.root.render(tree)); else record.root.render(tree);
     }
     record.render = render;
@@ -116,6 +122,7 @@ export function createTranscripts({ document, load, surface, check, report }) {
     }
     async function bind(reload = true) {
       const epoch = ++record.epoch; state(record, 'loading');
+      record.started = metrics?.start();
       record.committed = false; scroll = null;
       try {
         const N = await ensure();
@@ -129,7 +136,12 @@ export function createTranscripts({ document, load, surface, check, report }) {
         if (!providers.length) throw workspaceError('workspace_transcript_unavailable', 'Native transcript providers are unavailable');
         const R = N.React, h = R.createElement;
         if (!record.root) {
-          record.root = N.Client.createRoot(wrapper, { onUncaughtError: fail, onCaughtError: fail });
+          record.isolation ??= isolation?.create(wrapper);
+          record.mount = record.isolation?.container ?? wrapper;
+          if (record.isolation) await record.isolation.ready;
+          if (record.disposed || epoch !== record.epoch) return;
+          record.root = N.Client.createRoot(record.mount, { onUncaughtError: fail, onCaughtError: fail });
+          metrics?.add('transcript.root.create', { viewId:record.viewId, threadAlias:epoch });
           record.Boundary = class extends R.Component {
             constructor(props) { super(props); this.state = { failed: false }; }
             static getDerivedStateFromError() { return { failed: true }; }
@@ -148,12 +160,18 @@ export function createTranscripts({ document, load, surface, check, report }) {
         const opts = record.options;
         record.providers = providers;
         if (record.bindingThread !== opts.threadId) {
-          record.scopeValue = N.composerValue({ routeKind: 'local-thread', conversationId: opts.threadId, pathname: '/local/' + opts.threadId, hostId: 'local' }, undefined, opts.threadId);
+          record.routeValue = N.routeDescription ? N.routeDescription({pathname:'/local/'+opts.threadId,search:'?codletTranscript='+encodeURIComponent(owned+':'+crypto.randomUUID())}) : { routeKind: 'local-thread', conversationId: opts.threadId, pathname: '/local/' + opts.threadId, hostId: 'local' };
+          record.scopeValue = N.composerValue(record.routeValue);
+          if (N.ThreadScope && N.RouteScope) {
+            if (!record.scopeValue?.clientThreadId || record.routeValue?.conversationId !== opts.threadId || record.routeValue.routeKind !== 'local-thread')
+              throw workspaceError('workspace_transcript_unavailable','Native transcript scopes do not match the requested identity');
+            record.threadValue = {clientThreadId:record.scopeValue.clientThreadId};
+          }
           record.threadKey = { hostId: 'local', threadId: opts.threadId };
         }
         record.bindingThread = opts.threadId;
         readyObserver ??= new document.defaultView.MutationObserver(tryReady);
-        readyObserver.observe(wrapper, { childList: true, subtree: true, characterData: true });
+        readyObserver.observe(record.mount, { childList: true, subtree: true, characterData: true });
         render(true);
       } catch (error) { if (!record.disposed && epoch === record.epoch) fail(error); }
     }
@@ -180,15 +198,16 @@ export function createTranscripts({ document, load, surface, check, report }) {
         if (record.disposed) return;
         record.disposed = true; record.epoch++; readyObserver?.disconnect(); updates.delete(record); state(record, 'disposed'); records.delete(record); containers.delete(container);
         if (!settled) { settled = true; rejectReady(workspaceError('workspace_retired', 'Transcript retired before readiness')); }
-        if (record.root) native.DOM.flushSync(() => record.root.unmount()); wrapper.remove(); scroll = null;
+        if (record.root) native.DOM.flushSync(() => record.root.unmount()); record.isolation?.dispose(); wrapper.remove(); scroll = null;
+        metrics?.add('transcript.root.dispose', { viewId:record.viewId, threadAlias:record.epoch });
         if (!records.size) { unlisten?.(); unlisten = null; }
       },
     });
-    record.handle = handle; record.rebind = () => void bind(false); void bind(); return handle;
+    record.handle = handle; void bind(); return handle;
   }
-  return { mount, rebind() { for (const record of records) record.rebind(); }, dispose() {
+  return { mount, dispose() {
     if (disposed) return; disposed = true;
     for (const record of [...records]) record.handle.dispose(); unlisten?.();
-    for (const job of queue.splice(0)) job.reject(workspaceError('workspace_retired', 'Queued history retired')); histories.clear(); updates.clear();
+    for (const job of queue.splice(0)) job.reject(workspaceError('workspace_retired', 'Queued history retired')); histories.clear(); updates.clear(); isolation?.dispose();
   } };
 }
