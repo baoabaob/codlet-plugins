@@ -1,6 +1,7 @@
 import { parseExpressionAt } from 'acorn';
 import { loadedAsset, localConnection, uniqueExport, componentSource } from '../host-discovery.js';
 import { workspaceError } from './workspace-dom.js';
+import { createNativeComposerDriver } from './workspace-native-composer.js';
 
 export async function readWorkspaceAsset(url, signal) {
   const response = await fetch(url, { credentials: 'omit', signal });
@@ -113,7 +114,14 @@ export function createWorkspaceDiscovery(baseNative, { load = url => import(url)
       // these parts does not enable rebind without a validated draft driver.
       const Composer=uniqueExport(primaryModule,value=>markers(value,['useAsbDirect','runtime','account']),'composer component');
       const ComposerSurface=uniqueExport(primaryModule,value=>markers(value,['isWorkHome','isCodexHome','cloneElement','surfacePlacement']),'composer surface');
-      return{...native,Composer,ComposerSurface,check:existing};
+      const useScope=uniqueExport(native.shared,value=>markers(value,['useContext','getOwnValue','queryClient','Missing query client']),'scope facade hook');
+      const createEditor=uniqueExport(native.initial,value=>typeof value==='function'&&value.length===2&&markers(value,
+        ['codeBlockNodeViewRegistry','inlineMentionIconRegistry','setEnterBehavior','getLiteralMarkdownLinks','restoreMarkdownLinksAsTextLinks','restorePathLinksAsFileMentions']),'native editor factory');
+      const parts={...native,Composer,ComposerSurface,useScope,createEditor,check:existing};
+      // This factory still rejects without a reviewed Native lifecycle bridge.
+      // It is private and does not change composerCapabilities or enable rebind.
+      parts.mountDirect=options=>createNativeComposerDriver({...options,native:parts});
+      return parts;
     })(),
     composer: () => composer ??= (async()=>{
       const native=await api.transcript();

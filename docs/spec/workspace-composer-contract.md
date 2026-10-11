@@ -1,6 +1,6 @@
 # 可重绑定 Native 输入器：接口评估
 
-日期：2026-10-11。状态：双方已接受的最小契约；Adapter 的协议、取消和清理边界已实现并通过离线 fixture 测试，真实 Native driver 尚未实现和验收，未发布。
+日期：2026-10-11。状态：双方已接受的最小契约；协议、取消和清理边界已通过离线 fixture 测试，直接 Native 渲染/绑定核验已有候选实现，Native 草稿/附件 bridge 尚未实现和验收，未发布。
 
 对应分屏侧方案：`X:/codlet-split-workbench/docs/design-decision-2026-10-11.md`。本次进行了 Native 静态分析及 React/jsdom/模拟 driver 测试，没有启动或操作客户端，没有写入草稿。源码分析使用留存的 Windows 包 26.1002.7124.0；不能据此宣称当前日常客户端仍是该版本。
 
@@ -8,7 +8,7 @@
 
 **同一个逻辑句柄切换会话，在源码结构上可行；同一个底层 EditorView 跨会话原位复用，不是 Native 当前提供的语义。** Native 按会话派生的 composer 身份给编辑器 provider 设 key。切换 key 会重新创建编辑器，并销毁旧 controller。因此契约只保持插件 container 和 Adapter handle，不承诺 contenteditable、EditorView、撤销栈或选区对象跨不同会话保持同一对象。插件侧不需要恢复按 cache 常驻多个输入器的方案。
 
-发现了比现有 Frame 更小的 Native 组件：primary 模块的通用 composer（本次构建 `GX`，导出 `Fc`）及其 surface 包装器（`VV`，导出 `xf`）。它们是现有 thread footer 实际调用的输入路径，保留 Native 输入、附件和发送逻辑，不包含 thread 的滚动/正文框架。Adapter 已加入私有的语义发现入口，但未接入实际 driver 或验证运行时角色唯一性；它仍有自己的全局监听、模型和辅助控件成本，不能直接称为性能已通过。
+归档版发现了比现有 Frame 更小的 Native 组件：primary 模块的通用 composer（`GX`，导出 `Fc`）及其 surface 包装器（`VV`，导出 `xf`）。本轮又从当前 26.1007.2314.0 包静态核对了对应组件、scope hook 和 Native controller factory，并实现直接渲染/绑定核验候选。真实 Native 数据生命周期 bridge 尚未实现，运行时角色唯一性未验收；它仍有自己的监听、模型和辅助控件成本。详见 [当前 driver 进展](workspace-native-driver-2026-10-11.md)。
 
 **完整需求尚未成立。** 最大待验证项是：附加编辑器修改某会话后，仍存活的主编辑器能否同步最新 Native 草稿/附件，且不在退出或销毁时写回旧状态。当前存在共享持久化路径，但也存在 scope 本地缓存和初始化读取。源码不足以证明同时存活编辑器的双向同步；原来的实测也未证明它。这是 `composerRebind` 能力启用前必须独立验证的条件。
 
@@ -90,6 +90,6 @@ Adapter 基准分两层：固定模拟 Native fixture 测包装层调度和资�
 
 真实 Native 输入器的具体未决项：最小组件 props 与 scope/发送链路的运行确认、活主编辑器同步及版本冲突、附件迟到归属、IME、250ms 保存队列后的宿主落盘确认，以及 keyed controller 延后销毁。当前未找到已准备且能核对数据隔离的测试客户端；源码里的 Start-TestClient 需要同目录 lab-config 及审核过的 lab binary/profile，不能盲目用它或历史 Target 测试。独立测试许可保留，准备完成后只使用本次 run 的合成数据。
 
-Core 会话的只读预检随后提供了更具体的环境阻塞：当前安装包为 **26.1007.2314.0**，尚不在独立 IPC 审核列表内；该会话正在审核新版隔离，实际 profile/PID/Target/合成数据尚未建立。依据为 `X:/codlet/docs/core-native-runbook.md`。准备脚本只生成计划与元数据，不是启动或 Native 验收。Adapter 后续使用自己的 run/profile，不共用 Core 测试实例；旧 26.1002 源码继续只作为静态分析依据。
+Core 随后已完成 **26.1007.2314.0** 的独立 IPC 审核及匹配 lab，Core 自己的测试实例仍待首次认证/初始化；依据为 `X:/codlet/docs/core-native-runbook.md`。Adapter 的单独计划/prepare 记录见上述 driver 进展，没有启动实际客户端和后端。Adapter 后续使用新的自己 run/profile，不共用 Core 测试实例。26.1002 与新提取的 26.1007 源码都只算静态依据。
 
 原草稿恢复仍是独立未完成项，准确资料保留在 `.artifacts/workspace-draft-recovery/handoff-2026-10-09.json`。这份评估没有运行新的写入测试，也不覆盖此前恢复失败的事实。
