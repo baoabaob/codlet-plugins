@@ -90,4 +90,6 @@ Adapter 基准分两层：固定模拟 Native fixture 测包装层调度和资�
 
 真实 Native 输入器的具体未决项：最小组件 props 与 scope/发送链路的运行确认、活主编辑器同步及版本冲突、附件迟到归属、IME、250ms 保存队列后的宿主落盘确认，以及 keyed controller 延后销毁。当前未找到已准备且能核对数据隔离的测试客户端；源码里的 Start-TestClient 需要同目录 lab-config 及审核过的 lab binary/profile，不能盲目用它或历史 Target 测试。独立测试许可保留，准备完成后只使用本次 run 的合成数据。
 
+Core 会话的只读预检随后提供了更具体的环境阻塞：当前安装包为 **26.1007.2314.0**，尚不在独立 IPC 审核列表内；该会话正在审核新版隔离，实际 profile/PID/Target/合成数据尚未建立。依据为 `X:/codlet/docs/core-native-runbook.md`。准备脚本只生成计划与元数据，不是启动或 Native 验收。Adapter 后续使用自己的 run/profile，不共用 Core 测试实例；旧 26.1002 源码继续只作为静态分析依据。
+
 原草稿恢复仍是独立未完成项，准确资料保留在 `.artifacts/workspace-draft-recovery/handoff-2026-10-09.json`。这份评估没有运行新的写入测试，也不覆盖此前恢复失败的事实。
