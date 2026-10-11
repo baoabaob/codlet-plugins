@@ -24,12 +24,16 @@ const fixtureSource = (await build({ absWorkingDir: cwd, stdin: { contents: `
       React.useLayoutEffect(()=>{controller.view.dom=ref.current;});
       return h('div',{ref,contentEditable:true,suppressContentEditableWarning:true,'data-editor':''});
     }
+    function EditorProvider({composerController,onDocumentChange,onDocumentDispose,children}) {
+      const controller=React.useRef(composerController);
+      return h(Controller.Provider,{value:controller.current},children);
+    }
     function Composer({registerSubmitHandler,submitDisabled,composerController,onDocumentChange,onDocumentDispose}) {
       const scope=useScope(composerScope),ref=React.useRef(scope);ref.current=scope;
       const controller=composerController;
       const submit=React.useCallback(()=>submitted.push(scope.value.conversationId),[scope]);
       React.useEffect(()=>{registerSubmitHandler(submit);return()=>registerSubmitHandler(null);},[registerSubmitHandler,submit]);
-      return h('div',{'data-codex-composer-root':''},h(Controller.Provider,{value:controller},h(Input,{registerSubmitHandler,onSubmitLocal:submit,submitDisabled})));
+      return h('div',{'data-codex-composer-root':''},h(EditorProvider,{composerController:controller,onDocumentChange,onDocumentDispose},h(Input,{registerSubmitHandler,onSubmitLocal:submit,submitDisabled})));
     }
     function ComposerSurface({children}) {return children;}
     return {React,Client:{createRoot(container,options){rootsCreated++;const root=Client.createRoot(container,options);return {render:root.render.bind(root),unmount(){rootsDisposed++;root.unmount();}};}},

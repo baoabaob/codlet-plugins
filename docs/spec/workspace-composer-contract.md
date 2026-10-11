@@ -2,7 +2,7 @@
 
 日期：2026-10-11。状态：双方已接受的最小契约；协议、取消和清理边界已通过离线 fixture 测试，直接 Native 渲染/绑定核验已有候选实现，Native 草稿/附件 bridge 尚未实现和验收，未发布。
 
-对应分屏侧方案：`X:/codlet-split-workbench/docs/design-decision-2026-10-11.md`。本次进行了 Native 静态分析及 React/jsdom/模拟 driver 测试，没有启动或操作客户端，没有写入草稿。源码分析使用留存的 Windows 包 26.1002.7124.0；不能据此宣称当前日常客户端仍是该版本。
+对应分屏侧方案：`X:/codlet-split-workbench/docs/design-decision-2026-10-11.md`。最初使用归档 26.1002 源码及 React/jsdom/模拟 driver；随后核对当前 26.1007.2314.0 包，并在独立、已认证、空数据的 Adapter 测试实例完成只读组件发现和主页模型核验。没有挂载附加输入器或写草稿。不同验证阶段的范围见 [测试环境记录](workspace-native-environment-2026-10-11.md)。
 
 ## 结论
 
@@ -88,8 +88,8 @@ Adapter 基准分两层：固定模拟 Native fixture 测包装层调度和资�
 
 离线命令：`node tests/fixtures/workspace-acceptance/bench-wrapper.mjs`。输出 `.artifacts/workspace-wrapper-benchmark/report.json` 含 runId、Node 版本、bundle SHA256 和明确的非 Native 标识。矩阵 0/1/2/4/5/8 下，每个 provider 的七个稳定角色只订阅一次；200 次流式 fixture 更新没有新增 surface scan/geometry；五批外壳变更各合并为一次扫描/几何刷新；退出后 root 创建/销毁相等，记录的订阅归零。微任务安静不等于持续空闲 CPU 通过，模拟 bind 的耗时不用于承诺 Native 切换延迟。
 
-真实 Native 输入器的具体未决项：最小组件 props 与 scope/发送链路的运行确认、活主编辑器同步及版本冲突、附件迟到归属、IME、250ms 保存队列后的宿主落盘确认，以及 keyed controller 延后销毁。当前未找到已准备且能核对数据隔离的测试客户端；源码里的 Start-TestClient 需要同目录 lab-config 及审核过的 lab binary/profile，不能盲目用它或历史 Target 测试。独立测试许可保留，准备完成后只使用本次 run 的合成数据。
+真实 Native 输入器的具体未决项：local scope/发送链路与附加输入器的运行确认、活主编辑器同步及版本冲突、附件迟到归属、IME、250ms 前端保存队列和 500ms 宿主 debounce 后的落盘确认，以及 keyed controller 清理。现有 atom 更新广播及 sync/get-global-state 只确认内存，没有提供上述持久保存语义；不能用固定 sleep 或旁路写入无关状态补成 ACK。
 
-Core 随后已完成 **26.1007.2314.0** 的独立 IPC 审核及匹配 lab，Core 自己的测试实例仍待首次认证/初始化；依据为 `X:/codlet/docs/core-native-runbook.md`。Adapter 的单独计划/prepare 记录见上述 driver 进展，没有启动实际客户端和后端。Adapter 后续使用新的自己 run/profile，不共用 Core 测试实例。26.1002 与新提取的 26.1007 源码都只算静态依据。
+Core 已完成 **26.1007.2314.0** 的独立 IPC 审核、匹配模板及登录后稳定性修复。Adapter 使用全新的自己的 run/profile，不共用 Core 测试实例，已在用户认证/初始化后重新核验实际所有权。Native 只读探针发现并修复最近文字匹配误停在 EditorProvider 的问题，最终确认主页的实际 composer facade/controller；`kind:new` 的该观察不证明 local bind 或草稿交接成立。
 
 原草稿恢复仍是独立未完成项，准确资料保留在 `.artifacts/workspace-draft-recovery/handoff-2026-10-09.json`。这份评估没有运行新的写入测试，也不覆盖此前恢复失败的事实。

@@ -20,7 +20,7 @@
 
 `workspace-native-composer.js` 使用实际 Native Composer/ComposerSurface，挂自己的 Thread/Route/Composer scope 和单个 React root，正常文档流内渲染。它不挂 Frame、正文、滚动框架或 100vh 尺寸占位；不导航、自动聚焦或停用其他句柄。
 
-绑定核验只读检查 committed ancestry，找到 Native composer 自己 hook 持有的 facade、当前 editable 对应的 Native controller，以及 Native registerSubmitHandler 路径。实际 scope node、conversationId/clientThreadId 和发送组件必须对应请求身份。仅 Adapter props 或 DOM 存在不算确认，也不会调用发送函数验证。
+绑定核验只读检查 committed ancestry，找到最近实际持有 Native composer facade 的组件、当前 editable 对应的 Native controller，以及 Native registerSubmitHandler 路径。EditorProvider 也命中相同 props 文字，不能直接取最近文字匹配。实际 scope node、conversationId/clientThreadId 和发送组件必须对应请求身份。仅 Adapter props 或 DOM 存在不算确认，也不会调用发送函数验证。
 
 驱动要求生命周期桥接创建一个真正的 Native controller，再传给 `composerController`。当前 `Rhl` 在有外部 controller 时跳过内部创建/文档 dispose/延后 destroy 分支。驱动显式管理该 controller 的释放，避免自己依赖 Native 内部销毁回调保存旧文档；它没有复制或更新 EditorState。跨身份可重建 controller，保留逻辑句柄/container/root。
 
@@ -46,8 +46,10 @@
 
 Core 已完成新版隔离审核并准备了自己的测试实例，见 `X:/codlet/docs/native-isolation-26.1007.2314.0.md`。Adapter 单独的计划为 `adapter-0e9c57df-46a6-4c91-9603-8b20411a52fd`，记录在 `.artifacts/adapter-native/`；不复用 Core 的 PID/Target/profile。
 
-本次 Adapter lab 仅到 prepare 阶段，未启动 Desktop 或后端。工具的关闭 stdin 使准备 Host 无法接收 quit；核对 PID、创建时间、镜像和无子进程后，只停止了本次 Host。随后受支持的 resume 明确拒绝该未记录正常退出的准备报告；保留原始日志，没有修改恢复证据。后续应使用新 run 和完整 stdin 协调器，当前目录不算可运行测试实例。
+首个 Adapter lab 仅到 prepare 阶段，未启动 Desktop 或后端。工具的关闭 stdin 使准备 Host 无法接收 quit；核对 PID、创建时间、镜像和无子进程后，只停止了本次 Host。随后受支持的 resume 明确拒绝该未记录正常退出的准备报告；保留原始日志，没有修改恢复证据。该目录不算可运行测试实例，没有复用。
 
-随后分屏会话集中回报新的环境阻塞：Core 独立实例登录后 Local Work executor 反复 startup_failure，造成后端重启及 renderer 重初始化，Core 正在自身 run 诊断。当前隔离审核/未登录启动记录不证明登录后稳定；Adapter 的运行验收继续等待匹配模板的稳定性证据。
+此前分屏会话集中回报 Core 登录后 Local Work startup_failure 和 renderer 重初始化阻塞；该历史阻塞已由 Core 在自己的 run 修复并提供稳定性记录。
 
-Native 验收和性能测试均未开始，日常客户端及真实草稿保持未操作。
+Core 后续提供了修复及正常模式稳定性证据。本轮准备了全新的 Adapter run `adapter-44f7b16a-5596-4bf0-b079-f70095b71696`。用户完成认证/初始化后，Adapter 独立核验 ready、空数据及重启后的实际 PID/Target；只读探针完成当前组件发现和主页 Native facade/controller 核验，并修正 EditorProvider 误匹配。详见 [测试环境及保存边界](workspace-native-environment-2026-10-11.md)。旧未干净准备目录保持原样，不复用。
+
+Native local 输入器的挂载/重绑定/主编辑器同步/持久化验收和多实例性能矩阵尚未完成；只读发现没有替代它们。日常客户端及真实草稿保持未操作。

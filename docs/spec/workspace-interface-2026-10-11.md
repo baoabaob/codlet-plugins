@@ -26,12 +26,12 @@
 
 ## 验证范围
 
-本轮重新构建候选 bundle，相关 Adapter/Workspace/discovery/navigation/distribution 测试 **138 项全部通过，0 失败、0 跳过**。聚焦协议/Workspace/测量测试为 47 项，包含清理失败在句柄删除后仍传给 Core 的回归。日志：`.artifacts/workspace-interface-suite.log`。
+直接 Native driver 加入后，相关 Adapter/Workspace/discovery/navigation/distribution 测试 **143 项全部通过，0 失败、0 跳过**。聚焦协议/Workspace/测量测试包含清理失败在句柄删除后仍传给 Core 的回归。当前客户端只读探针又发现 EditorProvider 误匹配，已修正 scope 定位并将该结构加入 fixture。
 
 `node tests/fixtures/workspace-acceptance/bench-wrapper.mjs` 的 0/1/2/4/5/8 正文矩阵中，稳定的七个角色只各订阅一次；200 次流式 fixture 更新没有额外 surface scan 或 geometry；五批外壳变更合并为五次刷新；退出后记录的 root 和订阅归零。报告：`.artifacts/workspace-wrapper-benchmark/report.json`。
 
 这些仅证明包装层调度和资源生命周期。Native 绘制、持续空闲 CPU、原生按钮/窗口拖动响应、真实输入器切换与草稿持久化没有完成新验收。运行测试许可已明确，后续应使用独立测试客户端和合成会话，同时确认数据隔离；不能沿用历史 Target 或真实草稿。默认关闭的程序化测试点应作为性能验证主入口，不把 Computer Use 当作性能测量工具。
 
-Core 后续已完成 26.1007.2314.0 的隔离审核；其自己的新测试实例仍待认证/初始化。Adapter 已单独记录计划和 prepare，尚未启动客户端/后端。直接组件、外部 Native controller 路径和绑定核验有候选实现，Native 草稿/附件生命周期 bridge 仍未交付，详见 [driver 进展](workspace-native-driver-2026-10-11.md)。归档源码、当前源码解析及模拟测试都不能代替新版 Native 验收。
+Core 已完成 26.1007.2314.0 的隔离审核及登录后稳定性修复。Adapter 单独准备的新 run 已完成用户认证/初始化、ready 和空数据核验；只读探针证实小组件角色唯一可发现及主页 Native facade/controller 可读。Native local 输入器、主编辑器同步与草稿/附件 bridge 仍未交付，详见 [driver 进展](workspace-native-driver-2026-10-11.md)。
 
-本轮没有启动客户端、安装到日常实例、发布或修改真实草稿。既有草稿恢复仍是独立未完成事项，保留 `.artifacts/workspace-draft-recovery/handoff-2026-10-09.json` 的准确记录。
+只读探针仅注册在自己的测试实例，完成后通过专属 CLI 移除，保留报告。没有安装到日常实例、发布或修改真实草稿。既有草稿恢复仍是独立未完成事项，保留 `.artifacts/workspace-draft-recovery/handoff-2026-10-09.json` 的准确记录。

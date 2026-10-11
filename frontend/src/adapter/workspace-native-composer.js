@@ -4,6 +4,24 @@ import { wrapProviders, workspaceError } from './workspace-dom.js';
 const hasMarkers = (fiber, markers) => markers.every(marker => componentSource(fiber.type).includes(marker));
 const unsupported = () => workspaceError('workspace_composer_unsupported', 'Native draft handoff and release must be supplied by a reviewed profile');
 
+export function inspectNativeComposerScope(native, chain) {
+  // EditorProvider also mentions these props. Require the closest component
+  // that actually owns a Native composer facade, rather than the first text
+  // match; otherwise a valid current Native editor can never become ready.
+  for (const implementation of chain) {
+    if (!hasMarkers(implementation, ['onDocumentChange', 'onDocumentDispose', 'composerController'])) continue;
+    let model;
+    for (let hook = implementation.memoizedState, count = 0; hook && count++ < 128; hook = hook.next) {
+      const candidate = hook.memoizedState?.current;
+      if (candidate?.scope !== native.composerScope || !candidate.node) continue;
+      if (model && model.node !== candidate.node) throw workspaceError('workspace_composer_binding_drift', 'Native composer model is ambiguous');
+      model = candidate;
+    }
+    if (model) return model;
+  }
+  return null;
+}
+
 // Read the committed Native editor/model, not the props of our own boundary.
 // The handler is observed through Native's registerSubmitHandler path; it is
 // never invoked as a test. Neither the facade nor controller leaves the driver.
@@ -21,16 +39,7 @@ export function inspectNativeComposer(native, container, scopes, register, ident
     if (chain) break;
   }
   if (!chain) return null;
-  const implementation = chain.find(fiber => hasMarkers(fiber, ['onDocumentChange', 'onDocumentDispose', 'composerController']));
-  if (!implementation) return null;
-  let model;
-  for (let hook = implementation.memoizedState, count = 0; hook && count++ < 128; hook = hook.next) {
-    const candidate = hook.memoizedState?.current;
-    if (candidate?.scope === native.composerScope && candidate.node) {
-      if (model && model.node !== candidate.node) throw workspaceError('workspace_composer_binding_drift', 'Native composer model is ambiguous');
-      model = candidate;
-    }
-  }
+  const model = inspectNativeComposerScope(native, chain);
   if (!model || !scopes?.composer) return null;
   if (scopes.composer.scope !== native.composerScope || scopes.thread?.scope !== native.ThreadScope || scopes.route?.scope !== native.RouteScope ||
       model.node !== scopes.composer.node || model.value?.kind !== 'local' || model.value.conversationId !== identity.threadId ||

@@ -6695,6 +6695,20 @@ function createSurfaceControl() {
 // src/adapter/workspace-native-composer.js
 var hasMarkers = (fiber, markers2) => markers2.every((marker) => componentSource(fiber.type).includes(marker));
 var unsupported = () => workspaceError("workspace_composer_unsupported", "Native draft handoff and release must be supplied by a reviewed profile");
+function inspectNativeComposerScope(native, chain) {
+  for (const implementation of chain) {
+    if (!hasMarkers(implementation, ["onDocumentChange", "onDocumentDispose", "composerController"])) continue;
+    let model;
+    for (let hook = implementation.memoizedState, count = 0; hook && count++ < 128; hook = hook.next) {
+      const candidate = hook.memoizedState?.current;
+      if (candidate?.scope !== native.composerScope || !candidate.node) continue;
+      if (model && model.node !== candidate.node) throw workspaceError("workspace_composer_binding_drift", "Native composer model is ambiguous");
+      model = candidate;
+    }
+    if (model) return model;
+  }
+  return null;
+}
 function inspectNativeComposer(native, container, scopes, register, identity2) {
   const inputs = container.querySelectorAll("[data-codex-composer-root]");
   if (!inputs.length) return null;
@@ -6707,16 +6721,7 @@ function inspectNativeComposer(native, container, scopes, register, identity2) {
     if (chain) break;
   }
   if (!chain) return null;
-  const implementation = chain.find((fiber) => hasMarkers(fiber, ["onDocumentChange", "onDocumentDispose", "composerController"]));
-  if (!implementation) return null;
-  let model;
-  for (let hook = implementation.memoizedState, count = 0; hook && count++ < 128; hook = hook.next) {
-    const candidate = hook.memoizedState?.current;
-    if (candidate?.scope === native.composerScope && candidate.node) {
-      if (model && model.node !== candidate.node) throw workspaceError("workspace_composer_binding_drift", "Native composer model is ambiguous");
-      model = candidate;
-    }
-  }
+  const model = inspectNativeComposerScope(native, chain);
   if (!model || !scopes?.composer) return null;
   if (scopes.composer.scope !== native.composerScope || scopes.thread?.scope !== native.ThreadScope || scopes.route?.scope !== native.RouteScope || model.node !== scopes.composer.node || model.value?.kind !== "local" || model.value.conversationId !== identity2.threadId || model.value.clientThreadId !== scopes.thread?.value?.clientThreadId || scopes.route?.value?.conversationId !== identity2.threadId)
     throw workspaceError("workspace_composer_binding_drift", "Native editor scope does not match the requested conversation");
