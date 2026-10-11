@@ -5,7 +5,8 @@ let running, owned;
 async function probe(context) {
   const spec = JSON.parse(fs.readFileSync(path.join(context.root, 'owned-run.json'), 'utf8'));
   const report = { schema: 1, runId: spec.runId, targetId: spec.targetId, startedAt: new Date().toISOString(), status: 'failed' };
-  let sessionId;
+  let sessionId, errorSubscription;
+  const nativeErrors = [];
   try {
     if (!/^adapter-[a-f0-9-]{36}$/.test(spec.runId) || path.basename(spec.directory) !== spec.runId || !samePath(path.dirname(context.root), spec.directory)) throw Error('Explicit owned probe directory required');
     const state = JSON.parse(fs.readFileSync(path.join(spec.directory, 'profile/logs/manual-client.json'), 'utf8'));
@@ -17,6 +18,20 @@ async function probe(context) {
     const targets = targetInfos.filter(target => target.targetId === spec.targetId);
     if (targets.length !== 1 || targets[0].type !== 'page' || targets[0].url !== 'app://-/index.html') throw Error('The verified owned Native Target is unavailable');
     ({ sessionId } = await context.cdp.request('Target.attachToTarget', { targetId: spec.targetId, flatten: true }));
+    if (spec.captureErrors) {
+      errorSubscription = await context.cdp.subscribe({ scope: 'session', sessionId,
+        methods: ['Runtime.exceptionThrown', 'Runtime.consoleAPICalled', 'Log.entryAdded'] }, event => {
+        if (nativeErrors.length >= 32) return;
+        const detail = event.params ?? {}, exception = detail.exceptionDetails;
+        const descriptions = detail.args?.map(value => value.description ?? value.value).filter(value => typeof value === 'string') ?? [];
+        const message = exception?.exception?.description ?? detail.entry?.text ?? descriptions.join(' ');
+        if (!/Minified React error|Maximum update depth|Too many re-renders|error boundary/i.test(message ?? '')) return;
+        nativeErrors.push({ method: event.method, message: message.slice(0, 4000),
+          timestamp: detail.timestamp ?? exception?.timestamp ?? null, stack: exception?.stackTrace ?? detail.stackTrace ?? detail.entry?.stackTrace ?? null });
+      });
+      await context.cdp.request('Runtime.enable', {}, { sessionId });
+      await context.cdp.request('Log.enable', {}, { sessionId });
+    }
     const expression = fs.readFileSync(path.join(context.root, 'probe.js'), 'utf8');
     if (spec.screenshot) {
       const screenshot = await context.cdp.request('Page.captureScreenshot', { format: 'png' }, { sessionId });
@@ -58,6 +73,8 @@ async function probe(context) {
     report.status = report.result?.status === 'passed' ? 'passed' : 'failed';
   } catch (error) { report.error = error.message; }
   finally {
+    if (errorSubscription) try { await errorSubscription.unsubscribe(); } catch {}
+    if (spec.captureErrors) report.nativeErrors = nativeErrors;
     if (sessionId && spec.measureRendererTasks) try { await context.cdp.request('Performance.disable', {}, { sessionId }); } catch {}
     if (sessionId) try { await context.cdp.request('Target.detachFromTarget', { sessionId }); }
     catch (error) { report.detachError = error.message; report.status = 'failed'; }

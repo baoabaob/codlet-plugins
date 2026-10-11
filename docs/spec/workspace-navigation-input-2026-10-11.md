@@ -76,7 +76,7 @@ Chromium document 为 hidden，没有验证 HWND/Target 的前台 presentation �
 
 ## 保留的失败与发布前缺口
 
-第一次组合导航对照 `navigation-perf-20261011-1/report.json` 在 Native baseline 五秒超时；随后 `navigation-shell-20261011-1/report.json` 及 `native-shell.png` 显示 Native 错误页，导航栏/主 surface/input 全部消失。具体触发原因未定位，不能因为重开后分离正文/导航测试通过就抹掉该失败。重开前后都重新核验了精确 owned 运行边界。
+第一次组合导航对照 `navigation-perf-20261011-1/report.json` 在 Native baseline 五秒超时；随后 `navigation-shell-20261011-1/report.json` 及 `native-shell.png` 显示 Native 错误页，导航栏/主 surface/input 全部消失。后续已找到实际 React 185 / Native PopperAnchor 更新 stack，并在冻结组合序列与跳过 IME 阶段的版本中复现；初始引用循环的触发仍未隔离。分段成本、观测器修正和后台调度限制见 [后续调查](workspace-navigation-investigation-2026-10-11.md)。不能因为重开后分离正文/导航测试通过就抹掉该失败。重开前后都重新核验了精确 owned 运行边界。
 
 尚需长历史/持续流式正文、真实 IME、异步附件、前台 input/paint、持续空闲/交互和导航错误页复现/原因分析。当前交付是通用接口候选、协议回归及限定范围的 Native 证据；不是正式发布验收通过。既有真实草稿恢复事项没有在本轮操作或解决。
 

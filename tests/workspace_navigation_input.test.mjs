@@ -10,7 +10,7 @@ function setup(t, { cold = false, inputApi = 1 } = {}) {
   const makeBinding = threadId => ({ threadId, hostId: 'local', clientThreadId: 'local:' + threadId,
     input: editable.parentElement, editable, controller: { view: { dom: editable, composing: false } }, submitHandler() {}, submitDisabled: false,
     scopeNode: {}, scopeValue: {}, threadNode: {}, threadValue: {}, routeNode: {}, routeValue: {} });
-  const state = { binding: makeBinding('fixture-a'), alive: true }, calls = [], requests = [];
+  const state = { binding: makeBinding('fixture-a'), alive: true }, calls = [], requests = [], checkedInputs = [];
   const navigator = { location: { pathname: '/local/fixture-a', search: '', hash: '', state: null }, push(path) {
     calls.push(path); this.location = { ...this.location, pathname: path }; state.binding = makeBinding(path.slice(7));
   } };
@@ -18,15 +18,16 @@ function setup(t, { cold = false, inputApi = 1 } = {}) {
     sendRequest(method, args) { return new Promise(resolve => requests.push({ method, args, resolve })); } };
   const provider = createWorkspaceNavigation({ document, load: async () => ({ manager, inputApi }), host: () => ({ navigator }),
     check() { if (!state.alive) throw Object.assign(Error('retired'), { code: 'workspace_retired' }); }, changed() {},
-    readBinding: () => state.binding, readCurrentInput: () => state.binding });
+    readBinding: checked => { if (checked !== undefined) checkedInputs.push(checked); return state.binding; }, readCurrentInput: () => state.binding });
   const navigation = provider.create(() => {});
   t.after(() => { provider.dispose(); window.close(); });
-  return { window, document, editable, state, calls, requests, navigator, provider, navigation, makeBinding };
+  return { window, document, editable, state, calls, requests, navigator, provider, navigation, makeBinding, checkedInputs };
 }
 
 test('strict navigation keeps Native objects private and explicit focus checks revision, route and the complete input pin', async t => {
   const f = setup(t); assert.equal(f.navigation.inputApi, 0); assert.equal(await f.navigation.ready, undefined); assert.equal(f.navigation.inputApi, 1);
-  const before = f.document.activeElement, first = f.navigation.open({ threadId: 'fixture-b' });
+  const before = f.document.activeElement, priorInput = f.state.binding, first = f.navigation.open({ threadId: 'fixture-b' });
+  assert.deepEqual(f.checkedInputs, [priorInput], 'binding reuses the same synchronous IME-preflight inspection');
   const commit = await first.committed; assert.equal(f.document.activeElement, before, 'open never explicitly focuses');
   assert.equal(f.navigation.focus({ revision: commit.revision }), true);
   assert.equal(f.navigation.focus({ revision: commit.revision + 1 }), false);

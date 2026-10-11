@@ -8059,11 +8059,12 @@ function createWorkspaceNavigation({ document: document2, load, host, check, cha
   }
   const stamp = () => JSON.stringify(host().navigator.location);
   const input = () => readCurrentInput ? readCurrentInput() : nativeMainInput(document2, native);
-  const binding = () => readBinding ? readBinding() : nativeInputBinding(input(), native);
+  const binding = (value) => readBinding ? readBinding(value) : nativeInputBinding(value === void 0 ? input() : value, native);
   function composition() {
     if (native?.inputApi !== 1) return;
     const value = input();
     if (value && (value.controller.view.composing === true || composing.get(value.input))) throw workspaceError("workspace_composer_busy", "Native main input is composing");
+    return value;
   }
   function stop() {
     observer?.disconnect();
@@ -8176,8 +8177,8 @@ function createWorkspaceNavigation({ document: document2, load, host, check, cha
         if (!options3 || typeof options3 !== "object" || Array.isArray(options3) || Object.keys(options3).some((key2) => key2 !== "signal")) throw workspaceError("invalid_argument", "Invalid navigation options");
         const signal = options3.signal;
         if (signal != null && (typeof signal.aborted !== "boolean" || typeof signal.addEventListener !== "function" || typeof signal.removeEventListener !== "function")) throw workspaceError("invalid_argument", "Invalid navigation signal");
-        if (!signal?.aborted && native) composition();
-        const before = !signal?.aborted && native?.inputApi === 1 ? binding() : null;
+        const checked = !signal?.aborted && native ? composition() : void 0;
+        const before = !signal?.aborted && native?.inputApi === 1 ? binding(checked) : null;
         const op = {
           threadId: args.threadId,
           sequence: ++sequence,

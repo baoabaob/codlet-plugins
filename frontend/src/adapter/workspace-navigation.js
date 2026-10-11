@@ -15,11 +15,12 @@ export function createWorkspaceNavigation({document,load,host,check,changed,read
   function untrack(){if(!tracking)return;tracking=false;document.removeEventListener('compositionstart',compositionStart,true);document.removeEventListener('compositionend',compositionEnd,true);composing=new WeakMap();compositionRoots=new WeakMap();}
   const stamp=()=>JSON.stringify(host().navigator.location);
   const input=()=>readCurrentInput?readCurrentInput():nativeMainInput(document,native);
-  const binding=()=>readBinding?readBinding():nativeInputBinding(input(),native);
+  const binding=value=>readBinding?readBinding(value):nativeInputBinding(value===undefined?input():value,native);
   function composition(){
     if(native?.inputApi!==1)return;
     const value=input();
     if(value&&(value.controller.view.composing===true||composing.get(value.input)))throw workspaceError('workspace_composer_busy','Native main input is composing');
+    return value;
   }
   function stop(){observer?.disconnect();observer=null;if(frame!=null)document.defaultView.cancelAnimationFrame?.(frame);frame=null;microtask=false;queueEpoch++;}
   function pulse(){
@@ -57,8 +58,8 @@ export function createWorkspaceNavigation({document,load,host,check,changed,read
         if(!options||typeof options!=='object'||Array.isArray(options)||Object.keys(options).some(key=>key!=='signal'))throw workspaceError('invalid_argument','Invalid navigation options');
         const signal=options.signal;
         if(signal!=null&&(typeof signal.aborted!=='boolean'||typeof signal.addEventListener!=='function'||typeof signal.removeEventListener!=='function'))throw workspaceError('invalid_argument','Invalid navigation signal');
-        if(!signal?.aborted&&native)composition(); // Before supersession, routing or any possible focus change.
-        const before=!signal?.aborted&&native?.inputApi===1?binding():null;
+        const checked=!signal?.aborted&&native?composition():undefined; // Before supersession, routing or any possible focus change.
+        const before=!signal?.aborted&&native?.inputApi===1?binding(checked):null;
         const op={threadId:args.threadId,sequence:++sequence,settled:false,didExecute:false,session,controller:new document.defaultView.AbortController(),
           started:metrics?.start(),startedBinding:before?.threadId===args.threadId&&host().navigator.location.pathname==='/local/'+args.threadId?before:null};session.operations.add(op);
         const executed=new Promise((resolve,reject)=>{op.resolveExecuted=resolve;op.rejectExecuted=reject;});
