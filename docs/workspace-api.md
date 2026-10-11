@@ -29,7 +29,7 @@ interface WorkspaceSnapshot {
   hostId: 'local' | null;
   auxiliary: boolean;
   available: boolean;
-  features: { surface: boolean; activitySlot: boolean; transcript: boolean; shortcuts: boolean; navigation: boolean; action: boolean; composer: boolean; composerRebind: boolean };
+  features: { surface: boolean; activitySlot: boolean; transcript: boolean; shortcuts: boolean; navigation: boolean; navigationInput?: boolean; action: boolean; composer: boolean; composerRebind: boolean };
   diagnostic: { code: string; message: string } | null;
 }
 ```
@@ -70,15 +70,26 @@ The handle renders the actual native button and tooltip beside the activity cont
 ```js
 const navigation = workspace.createNavigation();
 await navigation.ready; // prepare once; no Core RPC is needed per selection
-lease.update({ composerEnabled: false }); // keep input visible while inert
+if (navigation.inputApi !== 1 || typeof navigation.focus !== 'function')
+  throw new Error('Strict Native input navigation is unavailable');
 const operation = navigation.open({ threadId }, { signal });
+// Only an accepted open may disable the input: an IME-busy open throws above.
+lease.update({ composerEnabled: false });
 const executed = await operation.executed;   // actual native route selected
 const committed = await operation.committed; // physical native composer owner confirmed
-if (committed.threadId === threadId && workspace.getSnapshot().threadId === threadId)
+if (committed.threadId === threadId && workspace.getSnapshot().threadId === threadId) {
   lease.update({ composerEnabled: true });
+  navigation.focus({ revision: committed.revision }); // explicit; may return false
+}
 ```
 
-`open` synchronously returns `{executed,committed,dispose}`. A prepared cached selection executes in this renderer immediately, without Core RPC or redundant metadata reads. `executed` resolves to `{threadId,resumeState,streamRole,status,alreadySelected,revision,synchronousMs}`; it confirms route identity, not input readiness. `committed` resolves to `{threadId,hostId:'local',inputConfirmed:true,submitDisabled,revision}` only after the currently mounted native composer is bound to that task. `submitDisabled` projects Native's own pending/history state. Neither receipt contains private nodes or services. The workspace snapshot is updated before either successful receipt is delivered.
+`ready` resolves to `undefined`; it never exposes Native objects. `features.navigationInput` and `navigation.inputApi === 1` identify the candidate strict input contract after preparation. Older providers may omit them; a package version or `features.navigation` alone does not prove this contract. The prepared session reports `inputApi:0` when unsupported and `focus` throws `workspace_navigation_unsupported`.
+
+`open` synchronously returns `{executed,committed,dispose}`. A prepared cached selection executes in this renderer immediately, without Core RPC or redundant metadata reads. `executed` resolves to `{threadId,resumeState,streamRole,status,alreadySelected,revision,synchronousMs}`; it confirms route identity, not input readiness. `committed` resolves to `{threadId,hostId:'local',inputConfirmed:true,submitDisabled,revision}` only after the currently mounted Native local composer facade, canonical Thread/Route scopes, actual controller and submission handler agree with that task. Outer props, a route or an editable DOM node alone cannot confirm it. An already-selected model/controller replacement during confirmation fails closed. `submitDisabled` projects Native's own pending/history state. Neither receipt contains private nodes or services. The workspace snapshot is updated before either successful receipt is delivered.
+
+After `ready`, an IME-busy `open` synchronously throws `workspace_composer_busy` before accepting or superseding an operation, navigating or moving focus. It checks Native's composing flag and capture-phase composition state, including the home input. Cold metadata validation checks again immediately before routing; IME starting during that wait rejects the accepted operation without navigation. The consumer must apply an inert lease only after `open` has returned successfully. `open` does not explicitly focus or blur; Native owns its normal route lifecycle.
+
+`focus({revision})` returns true only for this session's latest successful, unchanged committed input on the same full route. It compares the current model, scope values, actual controller, submission handler and editable identity with the commit pin, refuses disabled/inert/hidden input and does not steal focus during composition. A stale revision, changed model/controller/handler, changed route or disposed operation returns false. Owner/session/provider retirement throws `workspace_retired`. It adds no selection policy.
 
 One navigation session per workspace session is supported. Abort, operation disposal, owner/provider retirement and a newer valid operation reject pending confirmation. Invalid or already-aborted calls do not cancel another valid operation. Late metadata responses cannot navigate after cancellation/supersession. Cancellation does not undo a route already executed. A user route change supersedes pending confirmation. A bounded 5-second confirmation timeout reports `workspace_navigation_commit_timeout`; there is no polling. The observer is connected only while a valid execution awaits input confirmation; queued frames/microtasks are cancelled at settlement. The consumer owns selection ordering, highlighting and input enablement policy.
 
@@ -157,6 +168,8 @@ The private provider constructor accepts `testPoints:{enabled:true,runId,capacit
 
 Run `node tests/fixtures/workspace-acceptance/bench-wrapper.mjs` for the offline 0/1/2/4/5/8-transcript matrix. It exercises scheduling, subscriptions, geometry reads and teardown with React/jsdom fixtures. It does not measure Native editor behavior, paint, sustained CPU or whole-window responsiveness. Real acceptance uses a separately owned test client and synthetic data after verifying its run, profile, registry, PID, Target and backend/home isolation.
 
+The [strict navigation acceptance record](spec/workspace-navigation-input-2026-10-11.md) documents owned Native probes and their failures. `build-native-navigation.mjs <verified-owned-run> <fresh-navigation-label> --performance-only` builds a temporary Host probe for counterbalanced Native/Adapter navigation and an empty-history body matrix. `--body-only` separates body testing; `--inspect-only` and `--shell-only` are diagnostics. Reports contain model readiness and optional renderer task-time samples, not Native paint or foreground frame latency. Synthetic composition events do not certify physical IME. No probe runs during ordinary production activation.
+
 ## Native shortcut settings
 
 ```js
@@ -175,6 +188,6 @@ Rows appear in the official keyboard-shortcut settings and follow its search, ca
 
 ## Errors and compatibility
 
-`invalid_argument`, `invalid_owner`, `resource_limit`, `workspace_retired`, `api_ticket_retired`, `workspace_host_pending`, `workspace_host_drift`, `workspace_transcript_unavailable`, `workspace_shortcuts_unavailable`, and `shortcut_conflict` are stable error categories. More specific structural discovery diagnostics may accompany snapshots and transcript state. A pending route can recover. Unknown structures fail closed and do not silently use a fixed resource hash, a guessed export, or a hard-coded shortcut platform.
+`invalid_argument`, `invalid_owner`, `resource_limit`, `workspace_retired`, `api_ticket_retired`, `workspace_host_pending`, `workspace_host_drift`, `workspace_transcript_unavailable`, `workspace_shortcuts_unavailable`, `workspace_composer_busy`, `workspace_composer_binding_drift`, `workspace_navigation_unsupported`, `workspace_navigation_superseded`, `workspace_navigation_commit_timeout`, and `shortcut_conflict` are stable error categories. More specific structural discovery diagnostics may accompany snapshots and transcript state. A pending route can recover. Unknown structures fail closed and do not silently use a fixed resource hash, a guessed export, or a hard-coded shortcut platform.
 
 All handles and callbacks are owned by their session. Consumers should release handles explicitly when their feature closes and call `workspace.dispose()` on teardown; Core deactivation is the final cleanup boundary. Main-world plugins already have privileged client access; the ticket scheme enforces Core declaration and lifecycle ownership, and is not an OS security sandbox.

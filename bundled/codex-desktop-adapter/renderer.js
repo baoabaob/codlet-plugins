@@ -855,7 +855,7 @@ function createLoadedThreads(manager, emit, instance) {
 
 // src/desktop/thread-navigation.js
 var fail5 = (code, message) => Object.assign(new Error(message), { code });
-function createThreadOpener({ manager, selection, navigation, request }) {
+function createThreadOpener({ manager, selection, navigation, request, beforeNavigate }) {
   let opening = false;
   return async function openThread(args, signal) {
     if (!args || typeof args !== "object" || Array.isArray(args) || Object.keys(args).some((key) => key !== "threadId")) throw fail5("invalid_argument", "Invalid task navigation arguments");
@@ -877,6 +877,7 @@ function createThreadOpener({ manager, selection, navigation, request }) {
       selection();
       if (nav.stamp() !== stamp) throw fail5("desktop_navigation_superseded", "The user navigated while this task was being checked");
       if (signal?.aborted) throw fail5("invocation_cancelled", "Task navigation was cancelled before routing");
+      beforeNavigate?.();
       nav.open(threadId);
       const current = selection();
       if (current.threadId !== threadId) throw fail5("desktop_navigation_superseded", "Desktop selected a different task during navigation");

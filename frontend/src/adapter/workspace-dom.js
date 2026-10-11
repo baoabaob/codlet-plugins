@@ -1,4 +1,5 @@
 import { componentSource, currentElementAncestry } from '../host-discovery.js';
+import { inspectNativeInput } from './workspace-native-input.js';
 
 export const workspaceError = (code, message) => Object.assign(new Error(message), { code });
 export const OWNED = '[data-codlet-workspace-owned]';
@@ -79,22 +80,38 @@ export function activityPlacement(button) {
   return { button, anchor, parent: anchor.parentElement };
 }
 
-export function composerBinding(document, composer) {
+export function composerBinding(document, composer, native) {
   if (!composer?.isConnected || composer.closest(OWNED)) return null;
-  return nativeComposerBinding(composer,document.getElementById('root'));
+  return nativeComposerBinding(composer, document.getElementById('root'), native);
 }
-export function nativeComposerBinding(composer,root) {
-  if (!composer?.isConnected) return null;
-  const chain = currentElementAncestry(composer,root);
-  if (!chain) return null;
-  for (const fiber of chain) {
-    const props = fiber.memoizedProps ?? {}, source = componentSource(fiber.type);
-    if (!Object.hasOwn(props, 'composerSubmitDisabled') || !Object.hasOwn(props, 'composerPresentation') ||
-        !source.includes('composerSubmitDisabled') || !source.includes('isThreadHistoryLoading')) continue;
-    if (props.hostId !== 'local' || typeof props.conversationId !== 'string') return null;
-    return { threadId: props.conversationId, hostId: 'local', submitDisabled: !!props.composerSubmitDisabled || !!props.isResuming || !!props.isThreadHistoryLoading };
+export function nativeComposerBinding(composer, root, native) {
+  if (!native?.composerScope || !native.ThreadScope || !native.RouteScope) return null;
+  return nativeInputBinding(inspectNativeInput(native, composer, root), native);
+}
+export function nativeInputBinding(value, native) {
+  if (!native?.composerScope || !native.ThreadScope || !native.RouteScope || !value?.input.isConnected) return null;
+  const scope = value.scope;
+  if (!scope || scope.value?.kind !== 'local' || typeof scope.value.conversationId !== 'string' || typeof scope.getOwnValue !== 'function') return null;
+  const threadNode = scope.chain?.get(native.ThreadScope.id), routeNode = scope.chain?.get(native.RouteScope.id);
+  if (threadNode?.token !== native.ThreadScope || routeNode?.token !== native.RouteScope || scope.chain?.get(native.composerScope.id) !== scope.node) return null;
+  const threadValue = scope.getOwnValue(native.ThreadScope), routeValue = scope.getOwnValue(native.RouteScope);
+  if (threadValue?.clientThreadId !== scope.value.clientThreadId || routeValue?.conversationId !== scope.value.conversationId ||
+      threadValue?.hostId != null && threadValue.hostId !== 'local' || scope.value.hostId != null && scope.value.hostId !== 'local')
+    throw workspaceError('workspace_composer_binding_drift', 'Native thread, route and input model disagree');
+  return { ...value, threadId: scope.value.conversationId, clientThreadId: scope.value.clientThreadId,
+    hostId: 'local', scopeNode: scope.node, scopeValue: scope.node.value, threadNode, threadValue, routeNode, routeValue };
+}
+export function nativeMainInput(document, native) {
+  const root = document.getElementById('root'); if (!root) return null;
+  const inputs = [...root.querySelectorAll('[data-codex-composer-root]')].filter(input => !input.closest(OWNED + ',[data-app-shell-active-page="false"]'));
+  const candidates = [];
+  for (const input of inputs) {
+    const value = inspectNativeInput(native, input, root); if (!value) continue;
+    if (value.scope.value?.placement === 'main' || value.scope.value?.kind === 'new' && value.scope.value.entrypoint === 'home') candidates.push(value);
   }
-  return null;
+  if (candidates.length > 1) throw workspaceError('workspace_composer_binding_drift', 'Native main input is ambiguous');
+  if (!candidates.length && inputs.length) throw workspaceError('workspace_host_pending', 'Native main input ownership is not ready');
+  return candidates[0] ?? null;
 }
 export function resolveThreadReference(document, element, isCachedLocal = () => false) {
   if (!(element instanceof document.defaultView.Element) || element.ownerDocument !== document || !active(element) || element.closest('main')) return null;

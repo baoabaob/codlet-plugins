@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 const directory = path.resolve(process.argv[2] ?? ''), repo = fileURLToPath(new URL('../../../', import.meta.url));
 const evidence = JSON.parse(fs.readFileSync(path.join(directory, 'owned-runtime-evidence.json'), 'utf8'));
-if (directory !== path.join(repo, '.artifacts/adapter-native', evidence.runId) || evidence.phase !== 'ready' || !evidence.authenticated ||
+if (directory !== path.join(repo, '.artifacts/adapter-native', evidence.runId) || evidence.phase !== 'ready' || evidence.syntheticThreadsVerified || !evidence.authenticated ||
     !evidence.sandboxReady || evidence.activeThreads !== 0 || evidence.archivedThreads !== 0) throw Error('Verified owned empty Native run required');
 const stateFile = path.join(directory, 'profile/logs/manual-client.json');
 const initial = JSON.parse(fs.readFileSync(stateFile, 'utf8'));

@@ -11,7 +11,7 @@ const driverSource = (await build({ entryPoints: [fileURLToPath(new URL('../fron
 const fixtureSource = (await build({ absWorkingDir: cwd, stdin: { contents: `
   import React from 'react';
   import * as Client from 'react-dom/client';
-  export function fixture() {
+  export function fixture(directDom=false) {
     const h=React.createElement, composerScope={context:React.createContext(null)}, ThreadScope={context:React.createContext(null)}, RouteScope={context:React.createContext(null)};
     const controllers=new Set(),submitted=[];let rootsCreated=0,rootsDisposed=0;
     function Scope({scope,value,children}) {
@@ -21,7 +21,12 @@ const fixtureSource = (await build({ absWorkingDir: cwd, stdin: { contents: `
     const useScope=scope=>React.useContext(scope.context),Controller=React.createContext(null);
     function Input({registerSubmitHandler,onSubmitLocal,submitDisabled}) {
       const controller=React.useContext(Controller),ref=React.useRef(null);
-      React.useLayoutEffect(()=>{controller.view.dom=ref.current;});
+      React.useLayoutEffect(()=>{
+        if(!directDom){controller.view.dom=ref.current;return;}
+        const editable=document.createElement('div');editable.contentEditable='true';editable.setAttribute('contenteditable','true');
+        controller.view.dom=editable;ref.current.closest('[data-codex-composer-root]').append(editable);return()=>editable.remove();
+      });
+      if(directDom)return h('span',{ref,'data-editor-portal-anchor':''});
       return h('div',{ref,contentEditable:true,suppressContentEditableWarning:true,'data-editor':''});
     }
     function EditorProvider({composerController,onDocumentChange,onDocumentDispose,children}) {
@@ -45,10 +50,10 @@ const fixtureSource = (await build({ absWorkingDir: cwd, stdin: { contents: `
   }
 `, resolveDir: cwd }, bundle: true, write: false, format: 'iife', globalName: 'Parts', platform: 'browser', define: { 'process.env.NODE_ENV': '"production"' } })).outputFiles[0].text;
 const tick=()=>new Promise(resolve=>setTimeout(resolve,0));
-function setup(t,{prepare,checkpoint,acquire,released}={}) {
+function setup(t,{prepare,checkpoint,acquire,released,directDom=false}={}) {
   const dom=new JSDOM('<!doctype html><body><div id="main"></div><div id="owned"></div></body>',{url:'app://-/index.html',runScripts:'outside-only'});
   const {window}=dom,{document}=window;window.eval(driverSource);window.eval(fixtureSource);
-  const N=window.Parts.fixture(),calls=[];
+  const N=window.Parts.fixture(directDom),calls=[];
   N.composerLifecycle={
     async prepare(identity,options){calls.push(['prepare',identity.threadId]);await prepare?.(identity,options);},
     createController(){return N.createController();},
@@ -80,6 +85,12 @@ test('the direct Native factory refuses a missing lifecycle before allocating an
   const f=setup(t);delete f.N.composerLifecycle;
   assert.throws(()=>f.window.NativeDriver.createNativeComposerDriver({native:f.N,document:f.document,container:f.container,providers:[],owner:'synthetic-run',check(){}}),{code:'workspace_composer_unsupported'});
   assert.equal(f.N.stats().rootsCreated,0);assert.equal(f.container.childNodes.length,0);
+});
+
+test('binding finds the actual controller and submission below the committed input host when ProseMirror is attached outside React',async t=>{
+  const f=setup(t,{directDom:true});await f.driver.bind(identity('synthetic-direct-dom',1),{signal:f.signal().signal});
+  assert.equal(f.driver.readBinding().threadId,'synthetic-direct-dom');await f.driver.activate({bindingRevision:1,signal:f.signal().signal});
+  assert.equal(f.driver.readBinding().submitDisabled,false);await f.driver.close({signal:f.signal().signal});assert.equal(f.container.childNodes.length,0);
 });
 
 test('retirement during preparation prevents a late Native root and still awaits the profile release',async t=>{

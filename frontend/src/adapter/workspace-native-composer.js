@@ -1,26 +1,8 @@
-import { componentSource, currentElementAncestry } from '../host-discovery.js';
 import { wrapProviders, workspaceError } from './workspace-dom.js';
+import { inspectNativeInput } from './workspace-native-input.js';
+export { inspectNativeComposerScope } from './workspace-native-input.js';
 
-const hasMarkers = (fiber, markers) => markers.every(marker => componentSource(fiber.type).includes(marker));
 const unsupported = () => workspaceError('workspace_composer_unsupported', 'Native draft handoff and release must be supplied by a reviewed profile');
-
-export function inspectNativeComposerScope(native, chain) {
-  // EditorProvider also mentions these props. Require the closest component
-  // that actually owns a Native composer facade, rather than the first text
-  // match; otherwise a valid current Native editor can never become ready.
-  for (const implementation of chain) {
-    if (!hasMarkers(implementation, ['onDocumentChange', 'onDocumentDispose', 'composerController'])) continue;
-    let model;
-    for (let hook = implementation.memoizedState, count = 0; hook && count++ < 128; hook = hook.next) {
-      const candidate = hook.memoizedState?.current;
-      if (candidate?.scope !== native.composerScope || !candidate.node) continue;
-      if (model && model.node !== candidate.node) throw workspaceError('workspace_composer_binding_drift', 'Native composer model is ambiguous');
-      model = candidate;
-    }
-    if (model) return model;
-  }
-  return null;
-}
 
 // Read the committed Native editor/model, not the props of our own boundary.
 // The handler is observed through Native's registerSubmitHandler path; it is
@@ -29,39 +11,13 @@ export function inspectNativeComposer(native, container, scopes, register, ident
   const inputs = container.querySelectorAll('[data-codex-composer-root]');
   if (!inputs.length) return null;
   if (inputs.length !== 1) throw workspaceError('workspace_composer_binding_drift', 'Native input is ambiguous');
-  const input = inputs[0], editable = input.querySelector('[contenteditable="true"]');
-  if (!editable) return null;
-  // ProseMirror inserts its DOM outside React. Start at its nearest committed
-  // React host; do not follow a stale return chain or another root.
-  let chain;
-  for (let node = editable, depth = 0; node && container.contains(node) && depth < 16; node = node.parentElement, depth++) {
-    chain = currentElementAncestry(node, container);
-    if (chain) break;
-  }
-  if (!chain) return null;
-  const model = inspectNativeComposerScope(native, chain);
+  const value = inspectNativeInput(native, inputs[0], container, register), model = value?.scope;
   if (!model || !scopes?.composer) return null;
   if (scopes.composer.scope !== native.composerScope || scopes.thread?.scope !== native.ThreadScope || scopes.route?.scope !== native.RouteScope ||
       model.node !== scopes.composer.node || model.value?.kind !== 'local' || model.value.conversationId !== identity.threadId ||
       model.value.clientThreadId !== scopes.thread?.value?.clientThreadId || scopes.route?.value?.conversationId !== identity.threadId)
     throw workspaceError('workspace_composer_binding_drift', 'Native editor scope does not match the requested conversation');
-  const controllers = new Set();
-  for (const fiber of chain) {
-    const value = fiber.tag === 10 && fiber.memoizedProps?.value;
-    if (value?.view?.dom === editable) controllers.add(value);
-    for (let dep = fiber.dependencies?.firstContext, count = 0; dep && count++ < 128; dep = dep.next)
-      if (dep.memoizedValue?.view?.dom === editable) controllers.add(dep.memoizedValue);
-  }
-  if (!controllers.size) return null;
-  if (controllers.size !== 1) throw workspaceError('workspace_composer_binding_drift', 'Native editor controller is ambiguous');
-  const controller = [...controllers][0];
-  if (controller.view.isDestroyed || typeof controller.getPersistedText !== 'function' || typeof controller.restoreDraft !== 'function')
-    throw workspaceError('workspace_composer_binding_drift', 'Native editor controller changed');
-  const submission = chain.find(fiber => fiber.memoizedProps?.registerSubmitHandler === register &&
-    typeof fiber.memoizedProps?.onSubmitLocal === 'function' && typeof fiber.memoizedProps?.submitDisabled === 'boolean');
-  if (!submission) return null;
-  return { input, editable, controller, scope: model, scopes,
-    submitDisabled: submission.memoizedProps.submitDisabled === true };
+  return { ...value, scopes };
 }
 
 // Actual direct-composer rendering path. It has no thread Frame, viewport

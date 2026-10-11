@@ -28,7 +28,7 @@ export function createComposers({ document, load, surface, check, report, metric
   function ensure() { return prepared ??= Promise.resolve().then(load).then(value => { if(disposed)throw workspaceError('workspace_retired','Composer provider retired'); native=value; return value; }); }
   function binding(record) {
     const input=record.mount.querySelector('[data-codex-composer-root]');
-    const value=nativeComposerBinding(input,record.mount);
+    const value=nativeComposerBinding(input,record.mount,native);
     return value && { ...value, disabled:value.submitDisabled, input, editable:input.querySelector('[contenteditable="true"]') };
   }
   function state(record,phase,error) {

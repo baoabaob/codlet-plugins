@@ -104,12 +104,20 @@ function native(f) {
 }
 
 function composerNative(f,{wrong=false}={}){
-  const N=native(f),R=N.React,h=R.createElement,thread=R.createContext(null),route=R.createContext(null);let mounted=0,renders=0;
-  N.ThreadScope={};N.RouteScope={};N.Scope=({scope,value,children})=>h((scope===N.ThreadScope?thread:route).Provider,{value},children);
-  N.routeDescription=({pathname,search})=>({pathname,search,routeKind:'local-thread',conversationId:pathname.slice('/local/'.length)});N.composerValue=value=>({clientThreadId:'local:'+value.conversationId});
+  const N=native(f),R=N.React,h=R.createElement,scopeContext=R.createContext(new Map()),controllerContext=R.createContext(null);let mounted=0,renders=0;
+  N.ThreadScope={id:Symbol('thread')};N.RouteScope={id:Symbol('route')};N.composerScope={id:Symbol('composer')};
+  N.Scope=({scope,value,children})=>{const parent=R.useContext(scopeContext),node=R.useMemo(()=>({token:scope,value}),[scope,value]),chain=R.useMemo(()=>new Map([...parent,[scope.id,node]]),[parent,scope,node]);return h(scopeContext.Provider,{value:chain},children);};
+  N.routeDescription=({pathname,search})=>({pathname,search,routeKind:'local-thread',conversationId:pathname.slice('/local/'.length)});N.composerValue=value=>({kind:'local',placement:'main',conversationId:value.conversationId,clientThreadId:'local:'+value.conversationId});
   N.manager={getConversation:id=>({id,resumeState:'resumed'}),getStreamRole:()=>({role:'owner'})};
-  function Composer(props){const{composerSubmitDisabled,isThreadHistoryLoading}=props,[shown,setShown]=R.useState(false),identity=R.useContext(thread),location=R.useContext(route);R.useEffect(()=>{mounted++;setShown(true);return()=>mounted--;},[]);if(!shown)return h('span',{'data-native-preparing':''});return h('footer',{'data-thread-scroll-footer':''},h('div',{'data-codex-composer-root':''},h('div',{contentEditable:true,suppressContentEditableWarning:true,'data-thread':props.conversationId,'data-client':identity.clientThreadId,'data-route':location.conversationId}),h('button',{disabled:composerSubmitDisabled||isThreadHistoryLoading,onClick:()=>N.actions.push(location.conversationId)},'Native action')));}
-  N.actions=[];N.Frame=props=>{renders++;return h(Composer,{...props,conversationId:wrong?'wrong-thread':props.conversationId,composerPresentation:null,isThreadHistoryLoading:false});};N.composerStats=()=>({mounted,renders});f.discovery.composer=async()=>N;return N;
+  function Input({submitDisabled,onSubmitLocal,identity,location}){const controller=R.useContext(controllerContext),ref=R.useRef(null);R.useLayoutEffect(()=>{controller.view.dom=ref.current;});return h('div',null,h('div',{ref,contentEditable:true,suppressContentEditableWarning:true,'data-thread':identity.conversationId,'data-client':identity.clientThreadId,'data-route':location.conversationId}),h('button',{disabled:submitDisabled,onClick:onSubmitLocal},'Native action'));}
+  function Composer(props){
+    const{composerSubmitDisabled,isThreadHistoryLoading,composerController,onDocumentChange,onDocumentDispose}=props,[shown,setShown]=R.useState(false),chain=R.useContext(scopeContext);
+    const node=chain.get(N.composerScope.id),ref=R.useRef(null);ref.current={node,scope:N.composerScope,value:node.value,chain,getOwnValue:token=>chain.get(token.id)?.value};
+    const controller=R.useMemo(()=>({view:{dom:null,isDestroyed:false},getPersistedText(){return '';},restoreDraft(){}}),[]),submit=R.useCallback(()=>N.actions.push(chain.get(N.RouteScope.id).value.conversationId),[chain]);
+    R.useEffect(()=>{mounted++;setShown(true);return()=>mounted--;},[]);if(!shown)return h('span',{'data-native-preparing':''});
+    return h('footer',{'data-thread-scroll-footer':''},h('div',{'data-codex-composer-root':''},h(controllerContext.Provider,{value:controller},h(Input,{submitDisabled:composerSubmitDisabled||isThreadHistoryLoading,onSubmitLocal:submit,identity:node.value,location:chain.get(N.RouteScope.id).value}))));
+  }
+  N.actions=[];N.Frame=props=>{renders++;const conversationId=wrong?'wrong-thread':props.conversationId;return h(N.Scope,{scope:N.composerScope,value:N.composerValue({conversationId})},h(Composer,{...props,conversationId,composerPresentation:null,isThreadHistoryLoading:false}));};N.composerStats=()=>({mounted,renders});f.discovery.composer=async()=>N;return N;
 }
 
 test('owned composers activate independently without rerender, implicit peer deactivation, navigation or focus',async t=>{

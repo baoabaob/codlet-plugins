@@ -3,7 +3,7 @@ export interface WorkspaceSnapshot {
   api: 1; revision: number;
   route: Readonly<{ pathname: string; search: string; hash: string }> | null;
   threadId: string | null; hostId: 'local' | null; auxiliary: boolean; available: boolean;
-  features: Readonly<{ surface: boolean; activitySlot: boolean; transcript: boolean; shortcuts: boolean; navigation: boolean; action: boolean; composer: boolean; composerRebind: boolean }>;
+  features: Readonly<{ surface: boolean; activitySlot: boolean; transcript: boolean; shortcuts: boolean; navigation: boolean; navigationInput?: boolean; action: boolean; composer: boolean; composerRebind: boolean }>;
   diagnostic: WorkspaceDiagnostic | null;
 }
 export interface WorkspaceNode { element: HTMLElement; rect: Readonly<{ x: number; y: number; width: number; height: number; top: number; right: number; bottom: number; left: number }> }
@@ -55,7 +55,15 @@ export interface NativeActionHandle { ready: Promise<void>; update(options: Part
 export interface NavigationReceipt { threadId: string; resumeState: string; streamRole: string; status: 'opened' | 'opening'; alreadySelected: boolean; revision: number; synchronousMs: number }
 export interface NavigationCommit { threadId: string; hostId: 'local'; inputConfirmed: true; submitDisabled: boolean; revision: number }
 export interface NavigationOperation { executed: Promise<Readonly<NavigationReceipt>>; committed: Promise<Readonly<NavigationCommit>>; dispose(): void }
-export interface NavigationSession { ready: Promise<void>; open(options: { threadId: string }, invocation?: { signal?: AbortSignal }): NavigationOperation; dispose(): void }
+export interface NavigationSession {
+  ready: Promise<void>;
+  /** 1 after ready only when strict Native ownership, IME checks and focus are available. Older providers omit it. */
+  readonly inputApi?: 0 | 1;
+  open(options: { threadId: string }, invocation?: { signal?: AbortSignal }): NavigationOperation;
+  /** Explicitly focuses the latest unchanged committed Native main input. False for stale revisions or drift. */
+  focus?(options: { revision: number }): boolean;
+  dispose(): void;
+}
 export interface WorkspaceSession {
   api: 1; getSnapshot(): Readonly<WorkspaceSnapshot>; subscribe(listener: (snapshot: Readonly<WorkspaceSnapshot>) => unknown): () => void;
   getSurface(): Readonly<WorkspaceSurface>; resolveThreadReference(element: Element): { threadId: string; hostId: 'local' } | null;

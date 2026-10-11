@@ -77,7 +77,13 @@ export function createWorkspaceDiscovery(baseNative, { load = url => import(url)
     // persistent cleanup. No archived Native profile has passed those checks.
     // A future reviewed profile can prepare its driver here, before any mount.
     composerCapabilities: async () => ({ rebind: false }),
-    navigation: async () => { await getCommon(); const connection=existing(); return {manager:connection.manager,check:()=>existing()}; },
+    navigation: async () => {
+      const native = await getCommon(), connection = existing();
+      const composerScope = uniqueExport(native.shared, value => value?.__scopeBrand === 'ComposerScope' && typeof value.id === 'symbol', 'composer scope');
+      const ThreadScope = uniqueExport(native.shared, value => value?.__scopeBrand === 'ThreadScope' && typeof value.id === 'symbol', 'thread scope');
+      const RouteScope = uniqueExport(native.shared, value => value?.__scopeBrand === 'RouteScope' && typeof value.id === 'symbol', 'route scope');
+      return { manager: connection.manager, composerScope, ThreadScope, RouteScope, inputApi: 1, check: () => existing() };
+    },
     action: async () => { const native=await getCommon();if(!native.RailButton||!native.RailTooltip)throw workspaceError('workspace_action_unavailable','Native toolbar button or tooltip is unavailable');return{...native,Button:native.RailButton,Tooltip:native.RailTooltip}; },
     transcript: () => transcript ??= (async () => {
       const native = await getCommon(), graph = await source(native.initialUrl), urls = assetReferences(graph, native.initialUrl, 'local-conversation-thread');

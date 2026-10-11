@@ -11,7 +11,7 @@ import { createWorkspaceMetrics } from './workspace-metrics.js';
 
 export const WORKSPACE_CAPABILITY = Object.freeze({ name: 'codex.ui.workspace', api: 1, scope: 'target' });
 export const WORKSPACE_SYMBOL = 'codlet.codex.ui.workspace.v1';
-const emptyFeatures = () => ({ surface: false, activitySlot: false, transcript: false, shortcuts: false, navigation: false, action: false, composer:false, composerRebind:false });
+const emptyFeatures = () => ({ surface: false, activitySlot: false, transcript: false, shortcuts: false, navigation: false, navigationInput: false, action: false, composer:false, composerRebind:false });
 const roleNames = ['main', 'content', 'scroller', 'composer', 'footer', 'header', 'rightPanel'];
 const errorValue = error => ({ code: typeof error?.code === 'string' ? error.code : 'workspace_host_drift', message: String(error?.message ?? error) });
 
@@ -34,7 +34,9 @@ export function createWorkspace(context, { locate, baseNative, discovery: suppli
   });
   const transcripts = createTranscripts({ document: doc, load: () => featureLoad('transcript', discovery.transcript), surface: () => surface, check, report, isolate:transcriptIsolation, metrics });
   const shortcuts = createShortcuts({ document: doc, load: () => featureLoad('shortcuts', discovery.shortcuts), surface: () => surface, activity: () => activity, check, report, changed: () => schedule(false) });
-  const navigation = createWorkspaceNavigation({document:doc,load:()=>featureLoad('navigation',discovery.navigation),host:()=>host,check,changed:()=>publish(true),...(navigationBinding?{readBinding:navigationBinding}:{})});
+  const navigation = createWorkspaceNavigation({document:doc,load:()=>featureLoad('navigation',discovery.navigation).then(value=>{
+    features={...features,navigationInput:value.inputApi===1};schedule(false);return value;
+  }),host:()=>host,check,changed:()=>publish(true),metrics,...(navigationBinding?{readBinding:navigationBinding}:{})});
   const actions=createWorkspaceActions({document:doc,load:()=>featureLoad('action',discovery.action),activity:()=>activity??=findActivity(doc),check,report});
   const composers=createComposers({document:doc,load:()=>featureLoad('composer',discovery.composer),surface:()=>surface,check,report,metrics});
   let composerFeatures, composerFeatureEpoch = 0;
@@ -102,7 +104,7 @@ export function createWorkspace(context, { locate, baseNative, discovery: suppli
           surface = next; surfaceRevision++; geometryDirty = true;
         }
         if (!activity?.isConnected && !host.auxiliary && (slots.size || features.shortcuts || features.action)) activity = findActivity(doc);
-        features = { ...features, surface: !!surface?.composer, activitySlot: !!activity, transcript: host.auxiliary ? false : features.transcript, shortcuts: host.auxiliary ? false : features.shortcuts, composerRebind: host.auxiliary ? false : features.composerRebind };
+        features = { ...features, surface: !!surface?.composer, activitySlot: !!activity, transcript: host.auxiliary ? false : features.transcript, shortcuts: host.auxiliary ? false : features.shortcuts, composerRebind: host.auxiliary ? false : features.composerRebind, navigationInput: host.auxiliary ? false : features.navigationInput };
         if (diagnostic === surfaceFailure) diagnostic = surfaceFailure = null;
         observeSurface();
       }
