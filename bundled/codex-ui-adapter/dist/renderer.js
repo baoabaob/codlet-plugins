@@ -7095,6 +7095,71 @@ function createNativeComposerDriver({ native, document: document2, container, pr
   };
 }
 
+// src/adapter/workspace-native-navigation.js
+function visit(node, work) {
+  if (!node || typeof node !== "object") return;
+  if (node.type) work(node);
+  for (const [key2, value] of Object.entries(node)) if (!["start", "end"].includes(key2)) {
+    if (Array.isArray(value)) value.forEach((item) => visit(item, work));
+    else if (value && typeof value === "object") visit(value, work);
+  }
+}
+function navigationSignalExport(source) {
+  const marker = "AppNavigationSignalBridge is missing", at2 = source.indexOf(marker);
+  if (at2 < 0 || source.indexOf(marker, at2 + marker.length) >= 0) throw workspaceError("workspace_navigation_unsupported", "Native navigation bridge marker is missing or ambiguous");
+  const next = /\bfunction\s+[A-Za-z_$][\w$]*\s*\(/.exec(source.slice(at2, at2 + 4096));
+  if (!next) throw workspaceError("workspace_navigation_unsupported", "Native navigation bridge initializer is unavailable");
+  const ast = parseExpressionAt2(source, at2 + next.index, { ecmaVersion: "latest", sourceType: "module" });
+  if (ast.end - ast.start > 32768) throw workspaceError("workspace_navigation_unsupported", "Native navigation bridge initializer exceeds its boundary");
+  const defaults = /* @__PURE__ */ new Set(), signals = /* @__PURE__ */ new Set();
+  visit(ast, (node) => {
+    if (node.type !== "AssignmentExpression" || node.left.type !== "Identifier" || node.right.type !== "ObjectExpression") return;
+    const keys = node.right.properties.map((property) => property.key?.name ?? property.key?.value);
+    if (keys.length === 3 && ["navigate", "navigateToLocalConversation", "prepareNavigation"].every((key2) => keys.includes(key2))) defaults.add(node.left.name);
+  });
+  visit(ast, (node) => {
+    if (node.type === "AssignmentExpression" && node.left.type === "Identifier" && node.right.type === "CallExpression" && node.right.arguments.length === 2 && node.right.arguments[1].type === "Identifier" && defaults.has(node.right.arguments[1].name)) signals.add(node.left.name);
+  });
+  if (signals.size !== 1) throw workspaceError("workspace_navigation_unsupported", "Native navigation signal is missing or ambiguous");
+  const local = [...signals][0], pattern = new RegExp("(?:\\{|,)\\s*" + local.replace(/\$/g, "\\$&") + "\\s+as\\s+([A-Za-z_$][\\w$]*)\\s*(?=,|\\})", "g");
+  const aliases = [...source.slice(source.lastIndexOf("export")).matchAll(pattern)].map((match) => match[1]);
+  if (aliases.length !== 1) throw workspaceError("workspace_navigation_unsupported", "Native navigation signal export is missing or ambiguous");
+  return aliases[0];
+}
+function nativeNavigationScope(connection) {
+  const { node } = connection;
+  for (const fiber of hostFibers()) for (let hook = fiber.memoizedState, count = 0; hook && count++ < 128; hook = hook.next) {
+    const value = hook.memoizedState?.current;
+    if (value?.scope === node.token && value.node === node && value.chain?.get(node.token.id) === node && typeof value.get === "function" && typeof value.set === "function") return value;
+  }
+  throw workspaceError("workspace_host_pending", "Waiting for the mounted Native AppScope facade");
+}
+function createNativeNavigation(signal, connection, dispatch, scope) {
+  const current3 = () => {
+    const { node, chain } = connection();
+    if (signal?.scope !== node.token || signal.cache !== "signal" || typeof signal.resolve !== "function") throw workspaceError("workspace_navigation_unsupported", "Native navigation signal belongs to a different scope");
+    if (!node.signalBindings?.has(signal)) throw workspaceError("workspace_host_pending", "Waiting for the mounted Native navigation bridge");
+    const bridge = node.store.get(signal.resolve(node, chain));
+    if (!bridge || !["navigate", "navigateToLocalConversation", "prepareNavigation"].every((key2) => typeof bridge[key2] === "function") || typeof bridge.pathname !== "string" || typeof bridge.search !== "string") throw workspaceError("workspace_host_pending", "Native navigation bridge is not mounted");
+    return bridge;
+  };
+  current3();
+  if (typeof dispatch !== "function" || typeof scope !== "function") throw workspaceError("workspace_navigation_unsupported", "Native thread navigation action is unavailable");
+  return { openLocalThread(threadId) {
+    const bridge = current3(), facade = scope();
+    if (!facade || typeof facade.get !== "function" || typeof facade.set !== "function") throw workspaceError("workspace_host_pending", "Native navigation scope is not mounted");
+    let accepted = false;
+    dispatch(facade, "local:" + threadId, (id, hostId, options3) => {
+      if (id !== threadId || hostId != null && hostId !== "local") throw workspaceError("workspace_navigation_unavailable", "Native navigation resolved a different local task");
+      if (bridge.navigateToLocalConversation(id, hostId, options3) !== true) throw workspaceError("workspace_navigation_unavailable", "Native declined local task navigation");
+      accepted = true;
+    }, () => {
+      throw workspaceError("workspace_navigation_unsupported", "Native task requires a different route kind");
+    }, "local");
+    if (!accepted) throw workspaceError("workspace_navigation_unavailable", "Native did not dispatch local task navigation");
+  } };
+}
+
 // src/adapter/workspace-discovery.js
 async function readWorkspaceAsset(url, signal) {
   const response = await fetch(url, { credentials: "omit", signal });
@@ -7125,12 +7190,12 @@ function assetReferences(source, parent, role) {
   const pattern = new RegExp("[\"'`]((?:\\./)?" + role + "-[A-Za-z0-9_-]+\\.js)[\"'`]", "g");
   return [...new Set([...source.matchAll(pattern)].map((match) => new URL(match[1], parent).href))].filter((url) => /^app:\/\/-\/assets\/[A-Za-z0-9_-]+\.js$/.test(url));
 }
-function visit(node, fn) {
+function visit2(node, fn) {
   if (!node || typeof node !== "object") return;
   if (node.type) fn(node);
   for (const [key2, value] of Object.entries(node)) if (!["start", "end"].includes(key2)) {
-    if (Array.isArray(value)) value.forEach((item) => visit(item, fn));
-    else if (value && typeof value === "object") visit(value, fn);
+    if (Array.isArray(value)) value.forEach((item) => visit2(item, fn));
+    else if (value && typeof value === "object") visit2(value, fn);
   }
 }
 function keymapExport(initial, source) {
@@ -7140,7 +7205,7 @@ function keymapExport(initial, source) {
   if (start == null) throw workspaceError("workspace_shortcuts_unavailable", "Native keymap declaration is unavailable");
   const ast = parseExpressionAt2(source, start, { ecmaVersion: "latest" }), candidates = /* @__PURE__ */ new Set();
   if (ast.end <= markerAt || ast.end - ast.start > 32768) throw workspaceError("workspace_shortcuts_unavailable", "Native keymap declaration exceeds the discovery boundary");
-  visit(ast, (node) => {
+  visit2(ast, (node) => {
     if (node.type !== "AssignmentExpression" || node.left.type !== "Identifier" || node.right.type !== "CallExpression" || node.right.arguments.length !== 2) return;
     const part = source.slice(node.right.start, node.right.end);
     if (part.includes("primaryNumberShortcutTarget") && (part.includes(".data") || /\bdata\s*:/.test(part))) candidates.add(node.left.name);
@@ -7192,7 +7257,13 @@ function createWorkspaceDiscovery(baseNative, { load = (url) => import(url), rea
       const composerScope = uniqueExport(native.shared, (value) => value?.__scopeBrand === "ComposerScope" && typeof value.id === "symbol", "composer scope");
       const ThreadScope = uniqueExport(native.shared, (value) => value?.__scopeBrand === "ThreadScope" && typeof value.id === "symbol", "thread scope");
       const RouteScope = uniqueExport(native.shared, (value) => value?.__scopeBrand === "RouteScope" && typeof value.id === "symbol", "route scope");
-      return { manager: connection2.manager, composerScope, ThreadScope, RouteScope, inputApi: 1, check: () => existing() };
+      const signal = native.shared[navigationSignalExport(await source(native.sharedUrl))];
+      const dispatch = uniqueExport(native.initial, (value) => typeof value === "function" && value.length === 7 && markers(
+        value,
+        ["sidebarThreadLocationId", "orbitPrewarmId", "`sidebar`", "threadId:"]
+      ), "thread navigation action");
+      const parts = { manager: connection2.manager, composerScope, ThreadScope, RouteScope, inputApi: 1, check: () => existing() };
+      return { ...parts, ...createNativeNavigation(signal, existing, dispatch, () => nativeNavigationScope(existing())) };
     },
     action: async () => {
       const native = await getCommon();
@@ -8137,6 +8208,7 @@ function createWorkspaceNavigation({ document: document2, load, host, check, cha
   function ensure() {
     return prepared ??= Promise.resolve().then(load).then((value) => {
       if (disposed) throw workspaceError("workspace_retired", "Navigation provider retired");
+      if (value.inputApi === 1 && typeof value.openLocalThread !== "function") throw workspaceError("workspace_navigation_unsupported", "Strict navigation requires the Native local task entry");
       native = value;
       return value;
     });
@@ -8160,7 +8232,7 @@ function createWorkspaceNavigation({ document: document2, load, host, check, cha
       return { threadId, resumeState: thread?.resumeState === "resumed" ? "resumed" : "loading", streamRole: native.manager.getStreamRole?.(threadId)?.role ?? "none" };
     }, navigation: () => {
       const navigator = host().navigator;
-      return { stamp: () => JSON.stringify(navigator.location), open: (id) => navigator.push("/local/" + id) };
+      return { stamp: () => JSON.stringify(navigator.location), open: (id) => native.inputApi === 1 ? native.openLocalThread(id) : navigator.push("/local/" + id) };
     }, beforeNavigate: composition, request: async (method, args, signal) => {
       const value = await native.manager.sendRequest(method, args, { timeoutMs: 1e4 });
       if (signal?.aborted) throw workspaceError("invocation_cancelled", "Navigation validation was cancelled");
@@ -9629,17 +9701,17 @@ function locateHost() {
   if (navigator.location.pathname === "/avatar-overlay" || navigator.location.pathname.startsWith("/avatar-overlay/"))
     return { navigator, tree, rootNode: document.getElementById("root"), auxiliary: true };
   const candidates = [], objects = !tree.props;
-  const visit2 = (element) => {
+  const visit3 = (element) => {
     const props = objects ? element : element?.props;
     if (!props) return;
     const children = props.children;
     if (Array.isArray(children)) {
       const path2 = (child) => objects ? child?.path : child?.props?.path;
       if (children.some((child) => path2(child) === "/inbox") && children.some((child) => path2(child) === "/connector/oauth_callback")) candidates.push(children);
-      children.forEach(visit2);
-    } else visit2(children);
+      children.forEach(visit3);
+    } else visit3(children);
   };
-  visit2(tree);
+  visit3(tree);
   if (candidates.length !== 1 || Object.isFrozen(candidates[0]) || !Object.isExtensible(candidates[0]))
     throw fail7("ui_host_drift", "The reviewed authenticated route collection is unavailable");
   return { navigator, routes: candidates[0], Route: tree.type, objects, tree, rootNode: document.getElementById("root") };

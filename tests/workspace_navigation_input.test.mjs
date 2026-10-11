@@ -4,30 +4,31 @@ import { createRequire } from 'node:module';
 import { createWorkspaceNavigation } from '../frontend/src/adapter/workspace-navigation.js';
 
 const require = createRequire(new URL('../frontend/package.json', import.meta.url)), { JSDOM } = require('jsdom');
-function setup(t, { cold = false, inputApi = 1 } = {}) {
+function setup(t, { cold = false, inputApi = 1, nativeEntry = true } = {}) {
   const dom = new JSDOM('<!doctype html><div id="root"><div data-codex-composer-root><div id="input" tabindex="0" contenteditable="true"></div></div></div>', { url: 'app://-/index.html' });
   const { window } = dom, { document } = window, editable = document.getElementById('input');
   const makeBinding = threadId => ({ threadId, hostId: 'local', clientThreadId: 'local:' + threadId,
     input: editable.parentElement, editable, controller: { view: { dom: editable, composing: false } }, submitHandler() {}, submitDisabled: false,
     scopeNode: {}, scopeValue: {}, threadNode: {}, threadValue: {}, routeNode: {}, routeValue: {} });
-  const state = { binding: makeBinding('fixture-a'), alive: true }, calls = [], requests = [], checkedInputs = [];
+  const state = { binding: makeBinding('fixture-a'), alive: true }, calls = [], requests = [], checkedInputs = [], nativeCalls = [];
   const navigator = { location: { pathname: '/local/fixture-a', search: '', hash: '', state: null }, push(path) {
     calls.push(path); this.location = { ...this.location, pathname: path }; state.binding = makeBinding(path.slice(7));
   } };
   const manager = { getConversation: id => cold && id !== 'fixture-a' ? null : { id, hostId: 'local', resumeState: 'resumed' },
     sendRequest(method, args) { return new Promise(resolve => requests.push({ method, args, resolve })); } };
-  const provider = createWorkspaceNavigation({ document, load: async () => ({ manager, inputApi }), host: () => ({ navigator }),
+  const provider = createWorkspaceNavigation({ document, load: async () => ({ manager, inputApi, openLocalThread: nativeEntry ? id => { nativeCalls.push(id); navigator.push('/local/' + id); } : undefined }), host: () => ({ navigator }),
     check() { if (!state.alive) throw Object.assign(Error('retired'), { code: 'workspace_retired' }); }, changed() {},
     readBinding: checked => { if (checked !== undefined) checkedInputs.push(checked); return state.binding; }, readCurrentInput: () => state.binding });
   const navigation = provider.create(() => {});
   t.after(() => { provider.dispose(); window.close(); });
-  return { window, document, editable, state, calls, requests, navigator, provider, navigation, makeBinding, checkedInputs };
+  return { window, document, editable, state, calls, requests, navigator, provider, navigation, makeBinding, checkedInputs, nativeCalls };
 }
 
 test('strict navigation keeps Native objects private and explicit focus checks revision, route and the complete input pin', async t => {
   const f = setup(t); assert.equal(f.navigation.inputApi, 0); assert.equal(await f.navigation.ready, undefined); assert.equal(f.navigation.inputApi, 1);
   const before = f.document.activeElement, priorInput = f.state.binding, first = f.navigation.open({ threadId: 'fixture-b' });
   assert.deepEqual(f.checkedInputs, [priorInput], 'binding reuses the same synchronous IME-preflight inspection');
+  assert.deepEqual(f.nativeCalls, ['fixture-b'], 'strict navigation dispatches the Native local entry');
   const commit = await first.committed; assert.equal(f.document.activeElement, before, 'open never explicitly focuses');
   assert.equal(f.navigation.focus({ revision: commit.revision }), true);
   assert.equal(f.navigation.focus({ revision: commit.revision + 1 }), false);
@@ -90,4 +91,11 @@ test('already-selected confirmation rejects a same-ID controller replacement and
 test('an older navigation provider never claims the strict focus/IME contract', async t => {
   const f = setup(t, { inputApi: 0 }); await f.navigation.ready; assert.equal(f.navigation.inputApi, 0);
   assert.throws(() => f.navigation.focus({ revision: 1 }), { code: 'workspace_navigation_unsupported' });
+});
+
+test('strict input navigation refuses a missing Native lifecycle entry before dispatch', async t => {
+  const f = setup(t, { nativeEntry: false });
+  await assert.rejects(f.navigation.ready, { code: 'workspace_navigation_unsupported' });
+  assert.equal(f.navigation.inputApi, 0);
+  assert.deepEqual(f.calls, []);
 });

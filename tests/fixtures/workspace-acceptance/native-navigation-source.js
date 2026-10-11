@@ -1,5 +1,6 @@
 import { discoverNative } from '../../../frontend/src/adapter/discovery.js';
-import { createWorkspaceDiscovery } from '../../../frontend/src/adapter/workspace-discovery.js';
+import { createWorkspaceDiscovery, readWorkspaceAsset } from '../../../frontend/src/adapter/workspace-discovery.js';
+import { navigationSignalExport } from '../../../frontend/src/adapter/workspace-native-navigation.js';
 import { locateHost } from '../../../frontend/src/adapter/navigation.js';
 import { createWorkspaceNavigation } from '../../../frontend/src/adapter/workspace-navigation.js';
 import { nativeMainInput, nativeInputBinding } from '../../../frontend/src/adapter/workspace-dom.js';
@@ -165,7 +166,25 @@ export async function run(spec) {
       return { selectedTextAttachment: true, nativeModelField: true, preservedAcrossNavigation: true, otherThreadUnaffected: true,
         ownAttachmentRemoved: true, fileOrImageUploadTested: false, diskAckClaimed: false, pinnedTestHelperOnly: true };
     });
-    if (spec.performanceOnly) {
+    if (spec.contractOnly) {
+      await phase('contract-post-idle', async () => {
+        await wait(1000);
+        if (binding()?.threadId !== spec.threads[1].id) throw Error('Native input disappeared after the contract sequence');
+        return { actualBindingAfterIdle: true, waitRequestedMs: 1000 };
+      });
+      await phase('canonical-open-from-settings', async () => {
+        const url = loadedAsset('shared'), shared = await import(url), connection = discovery.connection();
+        const key = shared[navigationSignalExport(await readWorkspaceAsset(url, signal))];
+        if (!connection.node.signalBindings.has(key)) throw Error('Owned Native bridge is not bound');
+        const bridge = connection.node.store.get(key.resolve(connection.node, connection.chain));
+        if (bridge.navigate('/settings') !== true) throw Error('Native declined owned settings navigation');
+        await wait(1000);
+        if (!router.location.pathname.startsWith('/settings')) throw Error('Native settings precondition differs');
+        const commit = await navigation.open({ threadId: spec.threads[0].id }, { signal }).committed;
+        return { inputConfirmed: commit.inputConfirmed, actualFixture: binding()?.threadId === spec.threads[0].id, nativeSettingsEntry: true };
+      });
+    }
+    if (spec.performanceOnly && !spec.contractOnly) {
       if (!spec.bodyOnly) {
       if (spec.navigationBenchOnly) await phase('navigation-bench-prime', async () => {
         const expected = ['Adapter synthetic draft A', 'Adapter synthetic draft B'];

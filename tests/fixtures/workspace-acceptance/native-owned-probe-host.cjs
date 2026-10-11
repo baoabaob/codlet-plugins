@@ -5,7 +5,7 @@ let running, owned;
 async function probe(context) {
   const spec = JSON.parse(fs.readFileSync(path.join(context.root, 'owned-run.json'), 'utf8'));
   const report = { schema: 1, runId: spec.runId, targetId: spec.targetId, startedAt: new Date().toISOString(), status: 'failed' };
-  let sessionId, errorSubscription;
+  let sessionId, errorSubscription, startedProbe = false;
   const nativeErrors = [];
   try {
     if (!/^adapter-[a-f0-9-]{36}$/.test(spec.runId) || path.basename(spec.directory) !== spec.runId || !samePath(path.dirname(context.root), spec.directory)) throw Error('Explicit owned probe directory required');
@@ -45,6 +45,7 @@ async function probe(context) {
       if (spec.measureRendererTasks) await context.cdp.request('Performance.enable', {}, { sessionId });
       const started = await context.cdp.request('Runtime.evaluate', { expression: start, returnByValue: true }, { sessionId });
       if (started.exceptionDetails) throw Error(started.exceptionDetails.exception?.description ?? started.exceptionDetails.text);
+      startedProbe = true;
       const expires = Date.now() + 120000, samples = [];
       while (true) {
         const reply = await context.cdp.request('Runtime.evaluate', { expression: `(()=>{const state=globalThis[Symbol.for(${key})];return state&&{done:state.done,phase:state.phase,result:state.done?state.result:undefined,error:state.error};})()`, returnByValue: true }, { sessionId });
@@ -73,6 +74,12 @@ async function probe(context) {
     report.status = report.result?.status === 'passed' ? 'passed' : 'failed';
   } catch (error) { report.error = error.message; }
   finally {
+    if (startedProbe && sessionId) try {
+      const key = JSON.stringify(spec.controlKey);
+      const reply = await context.cdp.request('Runtime.evaluate', { expression: `(()=>{const key=Symbol.for(${key}),state=globalThis[key];if(!state)return 'absent';if(!state.done){state.abort.abort();return 'cancelled-pending';}delete globalThis[key];return 'retired';})()`, returnByValue: true }, { sessionId });
+      report.controlCleanup = reply.result?.value ?? 'unconfirmed';
+      if (reply.exceptionDetails || !['absent', 'retired'].includes(report.controlCleanup)) report.status = 'failed';
+    } catch (error) { report.controlCleanupError = error.message; report.status = 'failed'; }
     if (errorSubscription) try { await errorSubscription.unsubscribe(); } catch {}
     if (spec.captureErrors) report.nativeErrors = nativeErrors;
     if (sessionId && spec.measureRendererTasks) try { await context.cdp.request('Performance.disable', {}, { sessionId }); } catch {}

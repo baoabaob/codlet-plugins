@@ -43,7 +43,7 @@ export function createWorkspaceNavigation({document,load,host,check,changed,read
   }
   function observe(){if(observer)return;observer=new document.defaultView.MutationObserver(schedule);observer.observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:['data-codex-composer-root','data-app-shell-active-page','disabled','contenteditable']});}
   function finish(op,code,message){if(op.settled)return;op.settled=true;if(current===op)stop();op.session.operations.delete(op);clearTimeout(op.timer);op.removeAbort?.();const error=workspaceError(code,message);op.controller.abort(error);if(!op.didExecute)op.rejectExecuted(error);op.rejectCommitted(error);}
-  function ensure(){return prepared??=Promise.resolve().then(load).then(value=>{if(disposed)throw workspaceError('workspace_retired','Navigation provider retired');native=value;return value;});}
+  function ensure(){return prepared??=Promise.resolve().then(load).then(value=>{if(disposed)throw workspaceError('workspace_retired','Navigation provider retired');if(value.inputApi===1&&typeof value.openLocalThread!=='function')throw workspaceError('workspace_navigation_unsupported','Strict navigation requires the Native local task entry');native=value;return value;});}
   function create(live){
     const session={alive:true,operations:new Set(),latest:null};sessions.add(session);track();
     const valid=()=>{check();live();if(!session.alive)throw workspaceError('workspace_retired','Navigation session retired');};
@@ -51,7 +51,7 @@ export function createWorkspaceNavigation({document,load,host,check,changed,read
     const makeOpener=()=>createThreadOpener({manager:{getConversation:id=>native.manager.getConversation(id)},selection:()=>{
       valid();native.check?.();const match=/^\/local\/([\w-]+)\/?$/.exec(host().navigator.location.pathname),threadId=match?.[1]??null,thread=native.manager.getConversation(threadId);
       return{threadId,resumeState:thread?.resumeState==='resumed'?'resumed':'loading',streamRole:native.manager.getStreamRole?.(threadId)?.role??'none'};
-    },navigation:()=>{const navigator=host().navigator;return{stamp:()=>JSON.stringify(navigator.location),open:id=>navigator.push('/local/'+id)};},beforeNavigate:composition,request:async(method,args,signal)=>{const value=await native.manager.sendRequest(method,args,{timeoutMs:10000});if(signal?.aborted)throw workspaceError('invocation_cancelled','Navigation validation was cancelled');return value;}});
+    },navigation:()=>{const navigator=host().navigator;return{stamp:()=>JSON.stringify(navigator.location),open:id=>native.inputApi===1?native.openLocalThread(id):navigator.push('/local/'+id)};},beforeNavigate:composition,request:async(method,args,signal)=>{const value=await native.manager.sendRequest(method,args,{timeoutMs:10000});if(signal?.aborted)throw workspaceError('invocation_cancelled','Navigation validation was cancelled');return value;}});
     return Object.freeze({ready,get inputApi(){return native?.inputApi===1?1:0;},
       open(args,options={}){
         valid();if(!args||typeof args!=='object'||Array.isArray(args)||Object.keys(args).some(key=>key!=='threadId')||typeof args.threadId!=='string'||!/^[\w-]{1,256}$/.test(args.threadId))throw workspaceError('invalid_argument','Invalid local navigation identity');

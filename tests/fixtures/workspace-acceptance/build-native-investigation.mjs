@@ -12,7 +12,7 @@ const variant = process.argv[5] ?? 'exact';
 if (directory !== path.join(repo, '.artifacts/adapter-native', evidence.runId) || evidence.phase !== 'ready' || !evidence.authenticated ||
     !evidence.sandboxReady || evidence.syntheticThreadsVerified !== 8 || ledger.state !== 'ready' || ledger.sentTurns !== 0 ||
     !/^investigation-[a-z0-9-]{1,48}$/.test(label ?? '') || !['replay', 'timeline'].includes(mode) ||
-    !['exact', 'no-ime', 'no-rapid'].includes(variant) || mode === 'timeline' && variant !== 'exact') throw Error('Explicit verified owned investigation required');
+    !['exact', 'no-ime', 'no-rapid', 'canonical-local'].includes(variant) || mode === 'timeline' && variant !== 'exact') throw Error('Explicit verified owned investigation required');
 const output = path.join(directory, label); await fs.mkdir(output);
 let expression, controlKey;
 if (mode === 'replay') {
@@ -26,7 +26,24 @@ if (mode === 'replay') {
     throw Error('Historical probe bundle hash differs');
   controlKey = 'codlet.adapter.native.probe.' + evidence.runId + '.navigation-perf-20261011-1';
   if (!expression.includes(JSON.stringify(controlKey)) || !expression.includes('"performanceOnly":true')) throw Error('Historical reproduction source differs');
-  if (variant !== 'exact') {
+  if (variant === 'canonical-local') {
+    // Preserve the frozen failed sequence and replace its two reviewed dispatch
+    // sites only. No monkeypatching of the Native router or official components.
+    const replacements = [
+      ['navigator.push("/local/" + id)', 'ownedCanonical.open(id)'],
+      ['router.push("/local/" + fixture.id)', 'ownedCanonical.open(fixture.id)'],
+    ];
+    for (const [before, after] of replacements) {
+      if (expression.split(before).length !== 2) throw Error('Frozen dispatch site differs');
+      expression = expression.replace(before, after);
+    }
+    const phaseAnchor = 'const phase = async (name, work) => {\n';
+    if (expression.split(phaseAnchor).length !== 2) throw Error('Frozen phase wrapper differs');
+    expression = expression.replace(phaseAnchor, phaseAnchor + "if(name==='binding-inspection-cost'||name.startsWith('native-transcripts-')||name==='transcript-retired-idle'){report.phases.push({name,status:'skipped',reason:'unchanged matrix excluded from correctness comparison'});return;}\n");
+    const helper = await buildPlugin(path.join(repo, 'frontend'), '../tests/fixtures/workspace-acceptance/native-canonical-entry.js');
+    const prepare = `(async()=>{const module={exports:{}};${helper.code}\nreturn await module.exports.prepare(${JSON.stringify(ledger.threads.map(value => value.id))});})()`;
+    expression = `(async()=>{const ownedCanonical=await ${prepare};try{return await ${expression};}finally{ownedCanonical.dispose();}})()`;
+  } else if (variant !== 'exact') {
     const anchor = 'const phase = async (name, work) => {\n', skip = variant === 'no-ime' ? 'composition-preflight' : 'rapid-replacement';
     if (expression.split(anchor).length !== 2) throw Error('Historical phase wrapper differs');
     expression = expression.replace(anchor, anchor + `if(name===${JSON.stringify(skip)}){report.phases.push({name,status:'skipped',reason:'controlled reproduction variant'});return;}\n`);

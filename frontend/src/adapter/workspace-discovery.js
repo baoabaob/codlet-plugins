@@ -2,6 +2,7 @@ import { parseExpressionAt } from 'acorn';
 import { loadedAsset, localConnection, uniqueExport, componentSource } from '../host-discovery.js';
 import { workspaceError } from './workspace-dom.js';
 import { createNativeComposerDriver } from './workspace-native-composer.js';
+import { createNativeNavigation, navigationSignalExport, nativeNavigationScope } from './workspace-native-navigation.js';
 
 export async function readWorkspaceAsset(url, signal) {
   const response = await fetch(url, { credentials: 'omit', signal });
@@ -82,7 +83,11 @@ export function createWorkspaceDiscovery(baseNative, { load = url => import(url)
       const composerScope = uniqueExport(native.shared, value => value?.__scopeBrand === 'ComposerScope' && typeof value.id === 'symbol', 'composer scope');
       const ThreadScope = uniqueExport(native.shared, value => value?.__scopeBrand === 'ThreadScope' && typeof value.id === 'symbol', 'thread scope');
       const RouteScope = uniqueExport(native.shared, value => value?.__scopeBrand === 'RouteScope' && typeof value.id === 'symbol', 'route scope');
-      return { manager: connection.manager, composerScope, ThreadScope, RouteScope, inputApi: 1, check: () => existing() };
+      const signal = native.shared[navigationSignalExport(await source(native.sharedUrl))];
+      const dispatch = uniqueExport(native.initial, value => typeof value === 'function' && value.length === 7 && markers(value,
+        ['sidebarThreadLocationId', 'orbitPrewarmId', '`sidebar`', 'threadId:']), 'thread navigation action');
+      const parts = { manager: connection.manager, composerScope, ThreadScope, RouteScope, inputApi: 1, check: () => existing() };
+      return { ...parts, ...createNativeNavigation(signal, existing, dispatch, () => nativeNavigationScope(existing())) };
     },
     action: async () => { const native=await getCommon();if(!native.RailButton||!native.RailTooltip)throw workspaceError('workspace_action_unavailable','Native toolbar button or tooltip is unavailable');return{...native,Button:native.RailButton,Tooltip:native.RailTooltip}; },
     transcript: () => transcript ??= (async () => {

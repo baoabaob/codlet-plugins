@@ -2,6 +2,8 @@
 
 本轮沿用独立 Adapter profile 和八个合成、零 turn 会话，回应首个 Native 错误页及暖导航耗时两个缺口。公开接口保持原候选不变：`features.navigationInput` / `inputApi === 1`、`ready: void`、两阶段 receipt、显式 `focus({revision})`、同步 IME busy。分屏继续独立选方案、测上层成本；Adapter 负责其检查和资源成本。没有发布、推送或安装到日常客户端。
 
+后续已确认 raw router 与 Native 通用会话入口并不完全等价，并修改严格候选使用既有 Native 动作；源码、受控对照和保留边界见 [2026-10-12 入口核对](workspace-native-navigation-action-2026-10-12.md)。本文件的原始测量和失败报告继续保留，不能将后续修正倒推为这些样本的性能收益。
+
 ## 首个错误页：异常和调用路径已定位，初始触发仍未隔离
 
 历史运行 `1791713757017-31524` 的 Native PID 34516 日志在 **2026-10-11T11:48:51.307Z**、第 15775 行记录 `AppRoutes` error boundary，错误为 **Minified React error #185**。React 官方说明是嵌套更新超过深度限制：[React 185](https://react.dev/errors/185)。原始完整 stack、component stack、日志行哈希和源码片段保存为 run 根下的 `native-error-185-evidence.json`。
