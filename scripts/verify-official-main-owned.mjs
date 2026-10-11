@@ -9,6 +9,7 @@ import { createHash } from 'node:crypto';
 import { spawn, execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { childAfterParent } from './process-identity.mjs';
 
 const require = createRequire(import.meta.url);
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -248,7 +249,7 @@ async function main() {
           owned.set(value.ProcessId, value); changed = true; continue;
         }
         const parent = owned.get(value.ParentProcessId);
-        if (parent && live.get(parent.ProcessId)?.Created === parent.Created) { owned.set(value.ProcessId, value); changed = true; }
+        if (parent && live.get(parent.ProcessId)?.Created === parent.Created && childAfterParent(value.Created, parent.Created)) { owned.set(value.ProcessId, value); changed = true; }
       }
     }
     return values;

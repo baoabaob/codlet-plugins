@@ -5,6 +5,7 @@ import path from 'node:path';
 import http from 'node:http';
 import { createHash } from 'node:crypto';
 import { spawn, execFileSync } from 'node:child_process';
+import { childAfterParent } from './process-identity.mjs';
 const options = Object.fromEntries(process.argv.slice(2).reduce((pairs, value, i, all) => i % 2 ? pairs : [...pairs, [value, all[i + 1]]], []));
 if (process.platform !== 'win32' || options['--run-owned'] !== 'yes' || ![options['--executable'], options['--backend']].every(value => path.isAbsolute(value ?? ''))) throw Error('explicit_windows_owned_paths_required');
 if (createHash('sha256').update(await fs.readFile(options['--backend'])).digest('hex') !== 'bc45017e8239dc150258f69309ced9df6bbcdf5b8e4f346decf780ac0999e226') throw Error('backend_build_unverified');
@@ -22,7 +23,7 @@ function capture() {
   for (let changed = true; changed;) { changed = false; for (const value of values) {
     if (owned.has(value.ProcessId) || before.some(item => item.ProcessId === value.ProcessId && item.Created === value.Created)) continue;
     const parent = owned.get(value.ParentProcessId);
-    if ((value.ProcessId === child?.pid && value.ExecutablePath?.toLowerCase() === executable.toLowerCase()) || (parent && live.get(parent.ProcessId)?.Created === parent.Created)) { owned.set(value.ProcessId, value); changed = true; }
+    if ((value.ProcessId === child?.pid && value.ExecutablePath?.toLowerCase() === executable.toLowerCase()) || (parent && live.get(parent.ProcessId)?.Created === parent.Created && childAfterParent(value.Created, parent.Created))) { owned.set(value.ProcessId, value); changed = true; }
   } }
 }
 const connections = new Set();

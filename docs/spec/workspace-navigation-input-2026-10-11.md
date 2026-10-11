@@ -29,6 +29,8 @@ IME 跟踪共享两个 capture-phase 监听器，最后一个 navigation session
 
 最终 scoped 插件清单为空；通过 `Stop-TestClient.ps1` 正常关闭第三次启动。`retirement-1791719702118-17536.before.json` / `.closed.json` 复核 24 个已捕获 PID/创建时间身份全部退役，coordinator 为 closed，剩余所属身份为 0。保留 profile 的认证、合成数据和报告，没有删除或强杀其他实例。
 
+后续 [进程归属审计](process-ownership-audit-2026-10-12.md) 发现旧 capture 缺子/父创建时间检查。此份未发现早于 manager 的成员，但缺父链，不能将捕获身份全部退出扩写为完整组归属认证；原报告保留。
+
 ## 已完成的 Native 功能验证
 
 报告都位于上述 run 根目录：

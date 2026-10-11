@@ -81,4 +81,6 @@ run 为 `adapter-44f7b16a-5596-4bf0-b079-f70095b71696`，Native 26.1007.2314.0�
 
 最后 coordinator `1791725232382-4856`，Target `B4B1DBBE210F2256B25C979FA1BA5876`，这些身份只用于本轮证据，不是下一次常量。最终 scoped 插件清单为空，正常 `Stop-TestClient.ps1` 后 `retirement-1791725232382-4856.closed.json` 确认 25 个已捕获 PID/创建时间身份全部退役，剩余 owned processes=0；保留 profile 和所有报告。
 
+后续 [进程归属审计](process-ownership-audit-2026-10-12.md) 修正旧 capture 的 PID 复用缺陷。此份没有发现早于 manager 的成员，仍因缺父链不能完整认证组归属；捕获身份退出与全部属于该组是两个不同结论。
+
 可重用程序入口：先 `verify-native-run.mjs <owned-run> --synthetic`；再 `build-native-investigation.mjs <owned-run> <fresh-investigation-label> replay|timeline [exact|no-ime|no-rapid]`，通过专属 CLI preview/add/remove。离线 `summarize-native-timeline.mjs <explicit-report> [fresh-summary-name.json]` 不连接客户端，不覆盖旧报告。下一步需要隔离 virtual anchor 引用循环的触发条件，并建立有证据的前台交互测量；不增加面板数量、自动选择策略或常驻 editor 抽象。

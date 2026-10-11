@@ -9,6 +9,7 @@ import { spawn, execFileSync } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
+import { childAfterParent } from './process-identity.mjs';
 const require = createRequire(import.meta.url);
 const { WebSocketServer } = require('../frontend/node_modules/ws');
 const { probeCodexTraffic } = require('../host/codex-traffic.cjs');
@@ -183,7 +184,7 @@ function capture() {
     if (owned.has(value.ProcessId) || original.some(item => item.ProcessId === value.ProcessId && item.Created === value.Created)) continue;
     const parent = owned.get(value.ParentProcessId);
     if ((value.ProcessId === child?.pid && (macCandidate || value.ExecutablePath?.toLowerCase() === executable.toLowerCase()))
-      || (parent && live.get(parent.ProcessId)?.Created === parent.Created)) { owned.set(value.ProcessId, value); changed = true; }
+      || (parent && live.get(parent.ProcessId)?.Created === parent.Created && childAfterParent(value.Created, parent.Created))) { owned.set(value.ProcessId, value); changed = true; }
   } }
 }
 async function closeChild() {

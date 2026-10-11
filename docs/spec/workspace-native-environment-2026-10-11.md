@@ -28,13 +28,13 @@
 
 ## 程序化空页面基线
 
-移除临时探针后，`measure-native-baseline.mjs` 对本 run 的协调器、Core、专属后端、Desktop 和所有子进程采五个区间。总实际跨度 35.03 秒，25 个进程身份稳定、无新增/退出，CPU 总量 2.719 秒：相当于单逻辑核 **7.76%**，在 20 个逻辑处理器的整机口径为 **0.388%**。报告为本 run 的 `empty-home-baseline.json`。
+移除临时探针后，旧 `measure-native-baseline.mjs` 报告五个区间、跨度 35.03 秒、25 个身份无新增/退出、CPU 总量 2.719 秒（单核 7.76%、20 核整机口径 0.388%）。原 `empty-home-baseline.json` 保留。**后续发现旧进程归属算法缺陷，且这份报告没有父链和每区间原始进程数据，已撤回上述数字作为独占测试组 CPU/内存或 Adapter 成本证据的资格。** 逐份审计及新算法见 [进程归属审计](process-ownership-audit-2026-10-12.md)。
 
 这是当前测试客户端发现模块已加载、最后探针 visibility 为 hidden、没有 Adapter 根节点的短时空主页基线，包含 Native 背景服务。没有 1/2/4/5/8 根节点的对照，没有前台输入/绘制延迟，不能归因 Adapter 增量或宣称分屏不卡。子进程若退出则最终 CPU 不可获取，脚本将进程变动明确标记为非稳定，不把它解释为稳态通过。
 
 绑定核验修复并重建后，相关检查再次 **143 通过、0 失败、0 跳过**，日志 `.artifacts/workspace-native-auth-suite.log`。临时 Native 探针成功与这组模拟检查均不启用 `composerRebind`。
 
-结束前再次核验 ready/认证/初始化、活动和归档空列表及 registry 无临时插件。随后通过本客户端的 `Stop-TestClient.ps1` 正常请求退出，协调器记录 closed、Host exit 0，专属后端在 Desktop 退出后停止；按基线所记 PID+创建时间复查，25 个所属进程均已退出。独立 profile/认证和报告保留，后续重新启动必须再核验新 run/PID/Target。
+结束前再次核验 ready/认证/初始化、活动和归档空列表及 registry 无临时插件。随后通过本客户端的 `Stop-TestClient.ps1` 正常请求退出，协调器记录 closed、Host exit 0，专属后端在 Desktop 退出后停止；按旧基线所记 PID+创建时间复查，25 个捕获身份均已退出，该清单的完整组归属未能在后续审计中复核。独立 profile/认证和报告保留，后续重新启动必须再核验新 run/PID/Target。
 
 ## 新确认的持久化边界
 

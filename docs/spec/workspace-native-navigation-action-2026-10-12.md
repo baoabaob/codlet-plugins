@@ -59,4 +59,6 @@ bundle 重建，相关 **155/155 测试通过，0 失败、0 跳过**，日志 `
 
 最后 coordinator 为 `1791737424886-54696`。最终 scoped plugins=[]；正常关闭后 `retirement-1791737424886-54696.closed.json` 确认 25 个捕获身份全部退出，remainingOwnedProcesses=0。前面三次本轮已关闭运行的捕获身份也分别 25/23/25 全部退役。profile、认证和所有报告保留，未触碰日常客户端。既有真实草稿恢复事项没有在此操作或解决。
 
+后续 [进程归属审计](process-ownership-audit-2026-10-12.md) 逐份读取上述旧 capture。没有发现早于 manager 的成员，但因未保存父链，不能把捕获身份退出当作完整组归属认证。旧数据继续保留，新的 capture 已修正算法。
+
 新增静态入口 `extract-native-navigation-source.mjs <owned-run> <fresh-native-navigation-source-label>`；受控对照 `build-native-investigation.mjs <verified-owned-run> <fresh-investigation-label> replay canonical-local`；当前生产路径功能验证 `build-native-navigation.mjs <verified-owned-run> <fresh-navigation-label> --contract-only`。临时 Host 错误/异常退出也会核验 owned control 状态并清理已完成状态；未完成状态只能取消并报告 failed，不能声称已清理。
