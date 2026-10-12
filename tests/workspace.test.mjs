@@ -58,6 +58,58 @@ test('surface leases compose, rebind after navigation and precisely restore attr
   assert.equal(a.getSnapshot().threadId, 'thread-b');
 });
 
+test('a cached footer activation inside a stable scroller updates the public composer and its lease', async t => {
+  const f = fixture(t), scroller = f.document.querySelector('.thread-scroll-container'), oldFooter = scroller.querySelector('footer');
+  oldFooter.dataset.appShellActivePage = 'true';
+  const nextFooter = oldFooter.cloneNode(true); nextFooter.dataset.appShellActivePage = 'false'; scroller.append(nextFooter);
+  const session = f.connect().session, lease = session.acquireSurface({ composerEnabled: false });
+  assert.equal(session.getSurface().composer.element, oldFooter.querySelector('[data-codex-composer-root]'));
+  oldFooter.dataset.appShellActivePage = 'false'; nextFooter.dataset.appShellActivePage = 'true';
+  await f.flush();
+  assert.equal(session.getSurface().composer.element, nextFooter.querySelector('[data-codex-composer-root]'));
+  assert.equal(oldFooter.hasAttribute('inert'), false);
+  assert.equal(nextFooter.hasAttribute('inert'), true);
+  lease.dispose(); assert.equal(nextFooter.hasAttribute('inert'), false);
+});
+
+test('committed navigation publishes the confirmed composer before a queued visible frame', async t => {
+  let binding;
+  const f = fixture(t, { navigationBinding: () => binding, testPoints: { enabled: true, runId: 'confirmed-surface' } });
+  Object.defineProperty(f.document, 'visibilityState', { value: 'visible', configurable: true });
+  const firstMain = f.document.querySelector('main'), secondMain = firstMain.cloneNode(true);
+  firstMain.dataset.appShellActivePage = 'true'; secondMain.dataset.appShellActivePage = 'false'; firstMain.after(secondMain);
+  const firstInput = firstMain.querySelector('[data-codex-composer-root]'), secondInput = secondMain.querySelector('[data-codex-composer-root]');
+  binding = { threadId: 'thread-a', hostId: 'local', input: firstInput, submitDisabled: false };
+  const session = f.connect().session;
+  f.discovery.navigation = async () => ({ manager: { getConversation: id => ({ id, resumeState: 'resumed' }) } });
+  f.navigator.push = pathname => {
+    f.navigator.location.pathname = pathname;
+    firstMain.dataset.appShellActivePage = 'false'; secondMain.dataset.appShellActivePage = 'true';
+    binding = { ...binding, threadId: 'thread-b', input: secondInput };
+  };
+  const navigation = session.createNavigation(); await navigation.ready;
+  const geometryBefore = f.workspace.readTestPoints().counts['surface.geometry'];
+  await navigation.open({ threadId: 'thread-b' }).committed;
+  assert.equal(session.getSurface().composer.element, secondInput, 'receipt cannot expose the old composer until rAF');
+  assert.equal(session.getSurface().main.element, secondMain);
+  assert.equal(session.getSnapshot().threadId, 'thread-b');
+  await f.flush();
+  assert.equal(session.getSurface().composer.element, secondInput);
+  assert.equal(f.workspace.readTestPoints().counts['surface.geometry'], geometryBefore + 1, 'the queued frame does not repeat committed geometry');
+});
+
+test('a confirmed surface input outside the native root, owned by a consumer or inactive cannot substitute a cached composer', t => {
+  const f = fixture(t), input = f.document.querySelector('[data-codex-composer-root]');
+  input.dataset.codletWorkspaceOwned = 'consumer';
+  assert.throws(() => f.window.WorkspaceDom.findWorkspaceSurface(f.document, input), { code: 'workspace_host_drift' });
+  delete input.dataset.codletWorkspaceOwned;
+  input.closest('footer').dataset.appShellActivePage = 'false';
+  assert.throws(() => f.window.WorkspaceDom.findWorkspaceSurface(f.document, input), { code: 'workspace_host_drift' });
+  delete input.closest('footer').dataset.appShellActivePage;
+  f.document.body.append(input);
+  assert.throws(() => f.window.WorkspaceDom.findWorkspaceSurface(f.document, input), { code: 'workspace_host_drift' });
+});
+
 test('streamed body tokens and owned slots do not schedule full discovery; burst shell changes coalesce to one frame', async t => {
   const f = fixture(t), session = f.connect().session, slot = session.createSlot('activity.before'); await f.flush();
   const before = f.stats();

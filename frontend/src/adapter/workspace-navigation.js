@@ -32,7 +32,7 @@ export function createWorkspaceNavigation({document,load,host,check,changed,read
       if(value?.threadId!==op.threadId||value.hostId!=='local')return;
       if(native.inputApi===1&&op.startedBinding&&!sameNativeInput(op.startedBinding,value))throw workspaceError('workspace_composer_binding_drift','Native replaced the already-selected input during confirmation');
       op.session.latest={revision:op.sequence,routeStamp:stamp(),binding:value};
-      op.settled=true;stop();changed();clearTimeout(op.timer);op.removeAbort?.();
+      op.settled=true;stop();changed(value);clearTimeout(op.timer);op.removeAbort?.();
       metrics?.end('navigation.committed',op.started,{operationId:op.sequence});
       op.session.operations.delete(op);op.resolveCommitted(Object.freeze({threadId:op.threadId,hostId:'local',inputConfirmed:true,submitDisabled:value.submitDisabled,revision:op.sequence}));
     }catch(error){if(!['workspace_host_pending','ui_host_pending'].includes(error.code))finish(op,error.code??'workspace_navigation_unavailable',error.message);}
@@ -92,5 +92,5 @@ export function createWorkspaceNavigation({document,load,host,check,changed,read
       dispose(){if(!session.alive)return;session.alive=false;session.latest=null;for(const op of session.operations)finish(op,'workspace_retired','Navigation consumer retired');session.operations.clear();sessions.delete(session);if(!sessions.size)untrack();},
     });
   }
-  return{create,pulse:schedule,dispose(){if(disposed)return;disposed=true;for(const session of sessions){session.alive=false;session.latest=null;for(const op of session.operations)finish(op,'workspace_retired','Navigation provider retired');}sessions.clear();stop();untrack();}};
+  return{create,pulse:schedule,currentInput(){check();if(native?.inputApi!==1)return null;native.check?.();return input();},dispose(){if(disposed)return;disposed=true;for(const session of sessions){session.alive=false;session.latest=null;for(const op of session.operations)finish(op,'workspace_retired','Navigation provider retired');}sessions.clear();stop();untrack();}};
 }

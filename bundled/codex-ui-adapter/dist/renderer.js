@@ -6639,10 +6639,13 @@ function one(nodes, role, optional = false) {
   if (candidates.length !== 1) throw workspaceError(candidates.length ? "workspace_host_drift" : "workspace_host_pending", `A unique native ${role} is required (found ${candidates.length})`);
   return candidates[0];
 }
-function findWorkspaceSurface(document2) {
-  const main = one(document2.querySelectorAll("main[data-app-shell-main-surface]"), "main surface", true);
+function findWorkspaceSurface(document2, confirmedComposer = null) {
+  if (confirmedComposer && (confirmedComposer.ownerDocument !== document2 || !active(confirmedComposer) || !confirmedComposer.matches("[data-codex-composer-root]") || !document2.getElementById("root")?.contains(confirmedComposer)))
+    throw workspaceError("workspace_host_drift", "The confirmed main composer changed ownership");
+  const main = confirmedComposer ? confirmedComposer.closest("main[data-app-shell-main-surface]") : one(document2.querySelectorAll("main[data-app-shell-main-surface]"), "main surface", true);
+  if (confirmedComposer && (!main || !active(main))) throw workspaceError("workspace_host_drift", "The confirmed composer has no active main surface");
   if (!main) return null;
-  const composer = one(main.querySelectorAll("[data-codex-composer-root]"), "main composer", true);
+  const composer = confirmedComposer ?? one(main.querySelectorAll("[data-codex-composer-root]"), "main composer", true);
   const scroller = composer?.closest(".thread-scroll-container") ?? one(main.querySelectorAll(".thread-scroll-container"), "thread scroller", true);
   if (scroller && !main.contains(scroller)) throw workspaceError("workspace_host_drift", "The main thread scroller changed ownership");
   const content = scroller?.closest("[data-includes-composer]") ?? null;
@@ -8162,7 +8165,7 @@ function createWorkspaceNavigation({ document: document2, load, host, check, cha
       op.session.latest = { revision: op.sequence, routeStamp: stamp(), binding: value };
       op.settled = true;
       stop();
-      changed();
+      changed(value);
       clearTimeout(op.timer);
       op.removeAbort?.();
       metrics?.end("navigation.committed", op.started, { operationId: op.sequence });
@@ -8344,7 +8347,12 @@ function createWorkspaceNavigation({ document: document2, load, host, check, cha
       }
     });
   }
-  return { create, pulse: schedule, dispose() {
+  return { create, pulse: schedule, currentInput() {
+    check();
+    if (native?.inputApi !== 1) return null;
+    native.check?.();
+    return input();
+  }, dispose() {
     if (disposed) return;
     disposed = true;
     for (const session of sessions) {
@@ -9262,7 +9270,13 @@ function createWorkspace(context, {
     features = { ...features, navigationInput: value.inputApi === 1 };
     schedule(false);
     return value;
-  }), host: () => host, check, changed: () => publish(true), metrics, ...navigationBinding ? { readBinding: navigationBinding } : {} });
+  }), host: () => host, check, changed: (value) => {
+    if (value?.input) {
+      refreshConfirmedSurface(value.input);
+      return;
+    }
+    publish(true);
+  }, metrics, ...navigationBinding ? { readBinding: navigationBinding } : {} });
   const actions = createWorkspaceActions({ document: doc, load: () => featureLoad("action", discovery.action), activity: () => activity ??= findActivity(doc), check, report });
   const composers = createComposers({ document: doc, load: () => featureLoad("composer", discovery.composer), surface: () => surface, check, report, metrics });
   let composerFeatures, composerFeatureEpoch = 0;
@@ -9334,6 +9348,37 @@ function createWorkspace(context, {
       metrics?.add("surface.resize.observe");
     }
   }
+  function replaceSurface(next) {
+    if (roleNames.some((key2) => surface?.[key2] !== next?.[key2])) {
+      surface = next;
+      surfaceRevision++;
+      geometryDirty = true;
+    }
+    features = { ...features, surface: !!surface?.composer };
+    observeSurface();
+  }
+  function surfaceUnavailable(error) {
+    diagnostic = surfaceFailure = errorValue(error);
+    if (diagnostic.code !== "workspace_host_pending" && diagnostic.code !== "ui_host_pending") report(error);
+    if (surface) surfaceRevision++;
+    surface = null;
+    observeSurface();
+    control.reconcile(null);
+    features = { ...features, surface: false };
+    refreshGeometry();
+  }
+  function refreshConfirmedSurface(input) {
+    try {
+      metrics?.add("surface.scan");
+      replaceSurface(findWorkspaceSurface(doc, input));
+      control.reconcile(surface);
+      if (diagnostic === surfaceFailure) diagnostic = surfaceFailure = null;
+      if (geometryDirty) refreshGeometry();
+    } catch (error) {
+      surfaceUnavailable(error);
+    }
+    publish(true);
+  }
   function reconcile() {
     frame = null;
     if (!alive || !sessions.size) return;
@@ -9349,20 +9394,14 @@ function createWorkspace(context, {
         unroute = subscribeNativeRoute(host.navigator, () => schedule(true));
       }
       routeChanged = host.navigator.location.pathname !== snapshot.route?.pathname;
-      const oldSurface = surface;
       if (structural || routeChanged) {
         structural = false;
         metrics?.add("surface.scan");
-        const next = host.auxiliary ? null : findWorkspaceSurface(doc);
-        if (roleNames.some((key2) => oldSurface?.[key2] !== next?.[key2])) {
-          surface = next;
-          surfaceRevision++;
-          geometryDirty = true;
-        }
+        const next = host.auxiliary ? null : findWorkspaceSurface(doc, navigation.currentInput()?.input);
+        replaceSurface(next);
         if (!activity?.isConnected && !host.auxiliary && (slots.size || features.shortcuts || features.action)) activity = findActivity(doc);
         features = { ...features, surface: !!surface?.composer, activitySlot: !!activity, transcript: host.auxiliary ? false : features.transcript, shortcuts: host.auxiliary ? false : features.shortcuts, composerRebind: host.auxiliary ? false : features.composerRebind, navigationInput: host.auxiliary ? false : features.navigationInput };
         if (diagnostic === surfaceFailure) diagnostic = surfaceFailure = null;
-        observeSurface();
       }
       control.reconcile(surface);
       let anchor = activity?.isConnected ? activityPlacement(activity).anchor : null;
@@ -9378,14 +9417,7 @@ function createWorkspace(context, {
       if (routeChanged) shortcuts.rebind();
       else if (structuralSettings) shortcuts.refresh();
     } catch (error) {
-      diagnostic = surfaceFailure = errorValue(error);
-      if (diagnostic.code !== "workspace_host_pending" && diagnostic.code !== "ui_host_pending") report(error);
-      if (surface) surfaceRevision++;
-      surface = null;
-      observeSurface();
-      control.reconcile(null);
-      features = { ...features, surface: false };
-      refreshGeometry();
+      surfaceUnavailable(error);
     }
     structuralSettings = false;
     publish(routeChanged);
@@ -9414,6 +9446,7 @@ function createWorkspace(context, {
       const relevant = records.filter((record) => {
         const target = record.target.nodeType === 1 ? record.target : record.target.parentElement;
         if (target?.closest(OWNED)) return false;
+        if (record.type === "attributes" && record.attributeName === "data-app-shell-active-page") return true;
         const nodes = [...record.addedNodes, ...record.removedNodes];
         if (nodes.length && nodes.every((node) => node.nodeType === 1 && node.matches(OWNED))) return false;
         if (surface?.scroller?.contains(target) && target !== surface.scroller && ![...record.removedNodes].some((node) => roleNames.some((key2) => node === surface[key2] || node.contains?.(surface[key2])))) return false;

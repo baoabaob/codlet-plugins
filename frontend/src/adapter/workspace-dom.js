@@ -33,10 +33,15 @@ function one(nodes, role, optional = false) {
   if (candidates.length !== 1) throw workspaceError(candidates.length ? 'workspace_host_drift' : 'workspace_host_pending', `A unique native ${role} is required (found ${candidates.length})`);
   return candidates[0];
 }
-export function findWorkspaceSurface(document) {
-  const main = one(document.querySelectorAll('main[data-app-shell-main-surface]'), 'main surface', true);
+export function findWorkspaceSurface(document, confirmedComposer = null) {
+  if (confirmedComposer && (confirmedComposer.ownerDocument !== document || !active(confirmedComposer) ||
+      !confirmedComposer.matches('[data-codex-composer-root]') || !document.getElementById('root')?.contains(confirmedComposer)))
+    throw workspaceError('workspace_host_drift', 'The confirmed main composer changed ownership');
+  const main = confirmedComposer ? confirmedComposer.closest('main[data-app-shell-main-surface]') :
+    one(document.querySelectorAll('main[data-app-shell-main-surface]'), 'main surface', true);
+  if (confirmedComposer && (!main || !active(main))) throw workspaceError('workspace_host_drift', 'The confirmed composer has no active main surface');
   if (!main) return null;
-  const composer = one(main.querySelectorAll('[data-codex-composer-root]'), 'main composer', true);
+  const composer = confirmedComposer ?? one(main.querySelectorAll('[data-codex-composer-root]'), 'main composer', true);
   const scroller = composer?.closest('.thread-scroll-container') ?? one(main.querySelectorAll('.thread-scroll-container'), 'thread scroller', true);
   if (scroller && !main.contains(scroller)) throw workspaceError('workspace_host_drift', 'The main thread scroller changed ownership');
   const content = scroller?.closest('[data-includes-composer]') ?? null;
