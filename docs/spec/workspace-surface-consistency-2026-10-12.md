@@ -25,10 +25,24 @@ bundle 重建，相关 **158/158 测试通过，0 失败、0 跳过**。日志 `
 
 ## 最小 Native 后续实验
 
-当前是源码和离线验证完成的候选，**尚未重新 Native 验证**。不自行启动共享 profile；下一次由单一启动者约定时机后，使用新的完整包快照与已核验独立 Target：
+635cce3 交付时是源码和离线验证完成的候选，Native 验证待后续最小实验；下方归档了随后由消费者独立完成的限定结果。Adapter 侧未自行启动共享 profile。原最小计划为：
 
 1. 只使用 ledger 的 fixture0/1；先打开0，随后1，再回0。保持 document visible 以覆盖 rAF 路径。
 2. 每次 await committed、显式 revision focus；在同一续体立即比较 `getSurface().composer.element.contains(document.activeElement)`，再在一个 frame 后比较一次。记录 available、element 身份是否稳定、非零 layout、是否包含焦点及已知合成文本匹配的布尔值，不记录文本内容。
 3. 退出并核验临时监听/slot/lease/自有 DOM 为0，移除临时包、正常关闭及用新身份算法退役。无 turn、草稿/附件写入或恢复操作，不增加 UI 拖拽/矩阵；如要 Computer Use，应继续遵守用户在分屏会话给出的模型/代理要求。
 
 这是输入器选择与发布时机检查，不是 durable-save ACK、精确 paint 或前台 P95 测量。原消费者失败及只读观测保留；不因为 candidate 离线通过就宣布 Native 分歧已实测消失。
+
+## 后续有限 Native 结果（2026-10-13）
+
+消费者在 coordinator `1791820455182-54408` 独立执行了上述最小检查。Adapter 侧只读核对原报告和退出记录，将文件哈希、结果及包验证追加归档到 `.artifacts/workspace-surface-native-evidence-2026-10-13-2.json`，未改原始证据。两个样本的六个包文件字节彼此完全相同；两个执行文件及 host 字节与 Git 635cce3 对应文件一致，三个 JSON 文件仅 CRLF/LF 行尾不同，规范化后六个文件均一致。
+
+旧准备失败 `consumer-d8b2880c-350b-4b85-b043-9f3c293469f9/driver/report.json` 保留。冻结夹具源码在 await ready 后立即用 `inputApi!==1 || snapshot.features.navigationInput!==true` 合并判断，但失败报告没有分别记录两项。635 没改 feature load/ready/publish 顺序；它没有新增此门禁。
+
+成功新样本 `consumer-d5bd2f0a-26e3-4571-9c72-34f1661937dc/driver/report.json` 记录：await ready 当下 inputApi=1，visible，snapshot revision=1，navigation/navigationInput 均 false，diagnosticCode=null；保留 inputApi 硬条件并有界等待公开 feature 后，revision=2，两项均 true。该实际观测支持“discovery ready 与帧批处理 feature publication 不同”的夹具诊断。没有改 Adapter 的 ready/发布语义，也没有放松 gate。
+
+随后在 fixture **0→1→0** 中，每步 committed 同一续体与真实下一 rAF 共 **六份观测全部通过**：available、routeMatches、focusReceipt、containsFocused、nonzeroLayout、plainTextMatches、sameElement 均 true，document visible、textRecorded=false。无 Native errors、额外 editor=0、sentTurns=0、draftWrites=0；consumer roots/listeners/panes/transcripts/containers 全为0，controlCleanup=retired。
+
+仅此可说明本次小范围 Native 输入器/surface 一致性检查通过。报告仍为 foregroundMeasured=false / paintMeasured=false，不建立精确显示帧、P95、长历史、流式负载、真实 IME、上传或持久化 ACK 结论；更早的 surface 失败与 635 准备失败均继续保留。
+
+消费端逆序移除四个包、scoped list 为空。Adapter 侧读到新版 `retirement-1791820455182-54408.closed.json`：identity ancestry 方法 v1，capturedProcesses=27，remainingOwnedProcesses=[]，coordinator closed。PID/HWND/Target 仅作历史证据；profile 关闭，本侧没有启动或占用计划。
