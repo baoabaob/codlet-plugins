@@ -45,11 +45,16 @@ export function findWorkspaceSurface(document, confirmedComposer = null) {
   if (confirmedComposer && (!main || !active(main))) throw workspaceError('workspace_host_drift', 'The confirmed composer has no active main surface');
   if (!main) return null;
   const composer = confirmedComposer ?? one(main.querySelectorAll('[data-codex-composer-root]'), 'main composer', true);
-  const scroller = composer?.closest('.thread-scroll-container') ?? one(main.querySelectorAll('.thread-scroll-container'), 'thread scroller', true);
+  const scroller = composer ? composer.closest('.thread-scroll-container') : one(main.querySelectorAll('.thread-scroll-container'), 'thread scroller', true);
   if (scroller && !main.contains(scroller)) throw workspaceError('workspace_host_drift', 'The main thread scroller changed ownership');
-  const content = scroller?.closest('[data-includes-composer]') ?? (!composer ? one(main.querySelectorAll('[data-app-shell-main-content-layout]'), 'main content layout', true) ?? main : null);
-  const footer = composer?.closest('[data-thread-scroll-footer]') ?? null;
-  if (composer && (!scroller || !content || !footer || !scroller.contains(footer)))
+  // Native home has an explicit composer placement and no thread scroll/footer.
+  // Its composer root includes the input and utility controls. Keep that exact
+  // region as its footer; do not manufacture a thread footer or move the input.
+  const home = !!composer?.matches('[data-composer-placement="home"]') && !scroller;
+  const content = scroller?.closest('[data-includes-composer]') ?? (home ? composer.closest('[data-app-shell-main-content-layout]') ?? main :
+    !composer ? one(main.querySelectorAll('[data-app-shell-main-content-layout]'), 'main content layout', true) ?? main : null);
+  const footer = home ? composer : composer?.closest('[data-thread-scroll-footer]') ?? null;
+  if (composer && (!content || !content.contains(composer) || !footer || !home && (!scroller || !scroller.contains(footer))))
     throw workspaceError('workspace_host_drift', 'The thread body and composer footer no longer match the workspace contract');
   const header = one(document.querySelectorAll('[data-app-shell-main-titlebar]'), 'main titlebar', true);
   const rightPanel = one(document.querySelectorAll('aside[data-app-shell-focus-area="right-panel"]'), 'right resource panel', true);
@@ -207,9 +212,22 @@ export function createSurfaceControl() {
       if (hidden || disabled) { fields.set('inert', ''); fields.set('aria-hidden', 'true'); }
     }
     if (surface?.composer) for (const lease of leases) {
-      if (lease.options.hideBody) for (const node of surface.scroller.children)
-        if (node !== surface.footer && !node.contains(surface.composer) && !node.matches(OWNED) &&
-            !surface.floatingContent?.some(region=>region===node||node.contains(region))) suppress(node, true, true);
+      if (lease.options.hideBody) {
+        const protectedNodes=[surface.composer,surface.footer,surface.header,surface.rightPanel,...surface.floatingContent??[]].filter(Boolean);
+        const bodyNode=node=>!node.matches(OWNED)&&!protectedNodes.some(region=>region===node||node.contains(region));
+        if(surface.scroller)for(const node of surface.scroller.children){if(bodyNode(node))suppress(node,true,true);}
+        else if(surface.content?.contains(surface.composer)){
+          // Hide only siblings along the home input's ancestry. Its controller,
+          // attachments and controls stay under their original Native parents.
+          let child=surface.composer,depth=0;
+          while(child!==surface.content){
+            const parent=child.parentElement;
+            if(!parent||depth++>=32)throw workspaceError('workspace_host_drift','The home composer branch exceeds the surface boundary');
+            for(const node of parent.children)if(node!==child&&bodyNode(node))suppress(node,true,true);
+            child=parent;
+          }
+        }
+      }
       suppress(surface.header, lease.options.hideHeader, false);
       suppress(surface.footer, lease.options.hideComposer, !lease.options.composerEnabled);
       suppress(surface.composer, false, !lease.options.composerEnabled);

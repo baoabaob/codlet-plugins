@@ -10,5 +10,6 @@ export async function inspectNativeInputOwnership(document) {
   const phases=[],diagnose=value=>{if(phases.length<16)phases.push(value);};diagnose.countsOnly=true;
   const input=nativeMainInput(document,native,diagnose);
   return Object.freeze({inputPresent:!!input,kind:input?.scope.value.kind??null,entrypoint:input?.scope.value.entrypoint??null,
+    homePlacement:input?.input.getAttribute('data-composer-placement')==='home',
     draftConfirmed:!!input?.draft,composing:input?.controller.view.composing===true,phases:Object.freeze(phases)});
 }

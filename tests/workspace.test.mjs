@@ -54,6 +54,30 @@ test('a Native main page without a composer exposes page content and header for 
   const overlay=session.createSlot('workspace.overlay');assert.equal(overlay.container.parentElement,f.document.getElementById('root'));overlay.dispose();
 });
 
+test('Native home exposes its real composer and content without a thread scroller, preserving input state under body leases',async t=>{
+  const f=fixture(t),main=f.document.querySelector('main');
+  main.innerHTML='<div data-app-shell-main-content-layout><section id="greeting">Greeting</section><div><div id="above">Suggestions</div><div><div data-codex-composer-root data-composer-placement="home"><div contenteditable="true">unsent draft</div><button>Native utility</button></div><section id="below">Tips</section></div></div></div>';
+  f.navigator.location.pathname='/';const session=f.connect().session;await f.flush();
+  const surface=session.getSurface(),layout=main.firstElementChild,composer=main.querySelector('[data-codex-composer-root]'),editable=composer.firstElementChild;
+  layout.getBoundingClientRect=()=>({x:100,y:90,left:100,right:1100,top:90,bottom:890,width:1000,height:800});
+  const actual=f.window.WorkspaceDom.findWorkspaceSurface(f.document,composer);
+  assert.equal(actual.scroller,null);assert.equal(actual.footer,composer);assert.equal(actual.content,layout);
+  assert.equal(surface.composer.element,composer);assert.equal(surface.footer.element,composer);assert.equal(surface.scroller,null);assert.equal(session.getSnapshot().features.surface,true);
+  assert.equal(f.window.WorkspaceDom.workspaceBodyGeometry(f.document,actual).bodyViewport.rect.height,800);
+  const originalParent=composer.parentElement,lease=session.acquireSurface({hideBody:true,composerEnabled:false});
+  for(const id of ['greeting','above','below'])assert.equal(f.document.getElementById(id).style.visibility,'hidden');
+  assert.equal(composer.style.visibility,'');assert.equal(composer.hasAttribute('inert'),true);assert.equal(composer.parentElement,originalParent);assert.equal(editable.textContent,'unsent draft');assert.equal(composer.querySelector('button').isConnected,true);
+  assert.equal(layout.hasAttribute('inert'),false);assert.equal(f.document.querySelector('[data-app-shell-main-titlebar]').style.visibility,'');
+  lease.dispose();for(const id of ['greeting','above','below'])assert.equal(f.document.getElementById(id).style.visibility,'');assert.equal(composer.hasAttribute('inert'),false);
+  const hide=session.acquireSurface({hideComposer:true});assert.equal(composer.style.visibility,'hidden');hide.dispose();assert.equal(composer.style.visibility,'');
+});
+
+test('a malformed thread composer cannot borrow the home fallback or an unrelated scroller',t=>{
+  const f=fixture(t),main=f.document.querySelector('main');
+  main.innerHTML='<div data-app-shell-main-content-layout><div data-codex-composer-root></div><div class="thread-scroll-container"><footer data-thread-scroll-footer></footer></div></div>';
+  assert.throws(()=>f.window.WorkspaceDom.findWorkspaceSurface(f.document,main.querySelector('[data-codex-composer-root]')),{code:'workspace_host_drift'});
+});
+
 test('body viewport follows Native motion and floating edge regions without a fixed summary width',t=>{
   const f=fixture(t),scroller=f.document.querySelector('.thread-scroll-container'),floating=f.document.createElement('div');f.document.querySelector('main').append(floating);
   const bounds={x:100,y:50,left:100,right:1300,top:50,bottom:950,width:1200,height:900};scroller.getBoundingClientRect=()=>bounds;
