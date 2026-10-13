@@ -77,6 +77,19 @@ test('threads.loaded is registered on Desktop Read and returns bounded summaries
     f.dispose();
 });
 
+test('permission RPC writes require a separate single-use write ticket and a live owner registration',async()=>{
+    const f=fixture(1,true),owner=f.owner('permission-consumer'),publicApi=f.scope[Symbol.for('codlet.codex.desktop.v1')],invocation={caller:{pluginId:owner.ctx.pluginId,generation:owner.ctx.generation},signal:new AbortController().signal};
+    assert.ok(f.endpoints.has('codex.backend.read:permissions.get'));assert.ok(f.endpoints.has('codex.backend.write:permissions.update'));
+    const readTicket=f.endpoints.get('codex.backend.events:getApi')({},invocation);
+    assert.throws(()=>publicApi.registerPermissions(owner.ctx,readTicket.ticket),{code:'api_ticket_retired'});
+    const writeTicket=f.endpoints.get('codex.backend.write:getApi')({},invocation);
+    const registration=publicApi.registerPermissions(owner.ctx,writeTicket.ticket);assert.equal(typeof registration,'function');
+    assert.throws(()=>publicApi.registerPermissions(owner.ctx,writeTicket.ticket),{code:'api_ticket_retired'});
+    owner.stop();
+    await assert.rejects(f.endpoints.get('codex.backend.write:permissions.update')({threadId:'thread-a',selection:{kind:'agent-mode',mode:'auto'},expectedRevision:1},invocation),{code:'invalid_owner'});
+    assert.equal(f.requestCalls.length,0);f.dispose();
+});
+
 test('native integer JSON-RPC errors remain valid public failures without retiring the adapter', async () => {
     const f=fixture();
     f.responses.set('thread/turns/list',Object.assign(new Error('Thread has no persisted turns'),{code:-32600}));
@@ -234,7 +247,7 @@ test('bounded event stream preserves UI ids, reports overflow, cancels waits, an
 test('public page API exposes only callbacks and requires one-use tickets from the declared Core capability', () => {
     const f = fixture(), owner = f.owner('consumer'), other = f.owner('other');
     const exposed = f.scope[Symbol.for('codlet.codex.desktop.v1')];
-    assert.deepEqual(Object.keys(exposed).sort(), ['api', 'onEvent', 'registerPreSubmit', 'registerThreadConfiguration']);
+    assert.deepEqual(Object.keys(exposed).sort(), ['api', 'onEvent', 'registerPermissions', 'registerPreSubmit', 'registerThreadConfiguration']);
     const ticket = f.endpoints.get('codex.ui.preSubmit:getApi')({}, { caller: { pluginId: 'consumer', generation: 1 } }).ticket;
     assert.throws(() => exposed.registerPreSubmit(other.ctx, ticket, { id: 'test' }, () => {}), { code: 'api_ticket_retired' });
     assert.throws(() => exposed.onEvent(owner.ctx, ticket, () => {}), { code: 'api_ticket_retired' });

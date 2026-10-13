@@ -10363,6 +10363,122 @@ function createWorkspaceViewports({ load, check, isConfirmed, isCurrentContext =
   } };
 }
 
+// src/adapter/workspace-composer-controls.js
+function createComposerControls({ document: document2, surface, check, isConfirmed, changed }) {
+  let record, disposed = false;
+  const restoreNode = (native, journal2) => {
+    if (native.style.getPropertyValue("display") === "none" && native.style.getPropertyPriority("display") === "important")
+      journal2.display ? native.style.setProperty("display", journal2.display, journal2.priority) : native.style.removeProperty("display");
+    for (const [name, applied] of [["inert", ""], ["aria-hidden", "true"]]) if (native.getAttribute(name) === applied)
+      journal2[name] == null ? native.removeAttribute(name) : native.setAttribute(name, journal2[name]);
+  };
+  const restore = () => {
+    if (record?.native) restoreNode(record.native, record.journal);
+    if (record) {
+      record.native = null;
+      record.journal = null;
+    }
+  };
+  const mask = (native) => {
+    native.style.setProperty("display", "none", "important");
+    native.setAttribute("inert", "");
+    native.setAttribute("aria-hidden", "true");
+  };
+  const journal = (native) => ({ display: native.style.getPropertyValue("display"), priority: native.style.getPropertyPriority("display"), inert: native.getAttribute("inert"), "aria-hidden": native.getAttribute("aria-hidden") });
+  function options4(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value) || Object.keys(value).some((key2) => !["control", "threadId"].includes(key2)) || value.control !== void 0 && value.control !== "permissions" || value.threadId !== null && (typeof value.threadId !== "string" || !/^[\w-]{1,256}$/.test(value.threadId)))
+      throw workspaceError("invalid_argument", "Invalid composer control binding");
+    if (value.threadId !== null && !isConfirmed(value.threadId)) throw workspaceError("workspace_selection_not_confirmed", "Native input does not match composer control");
+    return value.threadId;
+  }
+  function reconcile() {
+    if (!record?.active) return;
+    const input = surface()?.composer;
+    const candidates = input ? [...input.querySelectorAll('[data-composer-navigation-target="permissions"]')].filter((node) => !node.closest(OWNED)) : [];
+    if (candidates.length > 1) {
+      record.container.setAttribute("inert", "");
+      for (const native2 of candidates) {
+        if (native2 !== record.native && !record.blocked.has(native2)) record.blocked.set(native2, journal(native2));
+        mask(native2);
+      }
+      record.failed = true;
+      throw workspaceError("workspace_control_unsupported", "Native permission trigger is ambiguous");
+    }
+    if (record.failed) throw workspaceError("workspace_control_unsupported", "Native permission trigger ownership failed; release the control lease");
+    const native = candidates[0];
+    if (!native?.isConnected) {
+      record.container.setAttribute("inert", "");
+      record.container.remove();
+      if (record.native && !record.native.isConnected) restore();
+      return;
+    }
+    if (native !== record.native) {
+      restore();
+      record.native = native;
+      record.journal = journal(native);
+    } else {
+      if (native.style.getPropertyValue("display") !== "none" || native.style.getPropertyPriority("display") !== "important") {
+        record.journal.display = native.style.getPropertyValue("display");
+        record.journal.priority = native.style.getPropertyPriority("display");
+      }
+      if (native.getAttribute("inert") !== "") record.journal.inert = native.getAttribute("inert");
+      if (native.getAttribute("aria-hidden") !== "true") record.journal["aria-hidden"] = native.getAttribute("aria-hidden");
+    }
+    if (record.container.parentElement !== native.parentElement || record.container.nextSibling !== native) native.before(record.container);
+    mask(native);
+    const confirmed = record.threadId !== null && isConfirmed(record.threadId);
+    if (confirmed) record.container.removeAttribute("inert");
+    else record.container.setAttribute("inert", "");
+    record.container.setAttribute("aria-disabled", String(!confirmed));
+  }
+  function acquire(value, owner2, live) {
+    check();
+    live();
+    if (disposed) throw workspaceError("workspace_retired", "Composer control provider retired");
+    if (record) throw workspaceError("workspace_control_owned", "Native permission control already has an owner");
+    const threadId = options4(value), container = document2.createElement("span");
+    container.dataset.codletWorkspaceOwned = owner2;
+    container.style.display = "contents";
+    const stop = (event) => event.stopPropagation(), events = ["click", "pointerdown", "keydown"];
+    for (const event of events) container.addEventListener(event, stop);
+    record = { active: true, threadId, container, native: null, journal: null, blocked: /* @__PURE__ */ new Map(), failed: false };
+    const owned = record;
+    const dispose = () => {
+      if (!owned.active) return;
+      owned.active = false;
+      restore();
+      for (const [native, journal2] of owned.blocked) restoreNode(native, journal2);
+      owned.blocked.clear();
+      container.remove();
+      for (const event of events) container.removeEventListener(event, stop);
+      record = null;
+      changed();
+    };
+    owned.dispose = dispose;
+    try {
+      reconcile();
+      if (!owned.native) throw workspaceError("workspace_control_unsupported", "Native permission trigger is not mounted");
+    } catch (error) {
+      dispose();
+      throw error;
+    }
+    changed();
+    return Object.freeze({ container, ready: Promise.resolve(), updateBinding(value2) {
+      check();
+      live();
+      if (!owned.active) throw workspaceError("workspace_retired", "Composer control retired");
+      owned.threadId = options4(value2);
+      reconcile();
+      changed();
+      return Promise.resolve();
+    }, dispose });
+  }
+  return { acquire, reconcile, dispose() {
+    disposed = true;
+    record?.dispose();
+  } };
+}
+
 // src/adapter/workspace.js
 var WORKSPACE_CAPABILITY = Object.freeze({ name: "codex.ui.workspace", api: 1, scope: "target" });
 var WORKSPACE_SYMBOL = "codlet.codex.ui.workspace.v1";
@@ -10441,6 +10557,7 @@ function createWorkspace(context, {
     changed: (value) => value?.input ? refreshConfirmedSurface(value.input) : publish(true)
   });
   const selection = createWorkspaceSelection({ document: doc, surface: () => surface, snapshot: () => snapshot, check, isConfirmed: (id) => navigation.matchesCurrentThread(id), changed: () => schedule(false) });
+  const composerControls = createComposerControls({ document: doc, surface: () => surface, check, isConfirmed: (id) => navigation.matchesCurrentThread(id), changed: () => schedule(false) });
   const viewports = createWorkspaceViewports({ load: () => typeof discovery.viewport === "function" ? discovery.viewport() : Promise.reject(workspaceError("workspace_viewport_unsupported", "Native viewport driver is unavailable")), prepared: () => {
     features = { ...features, independentViewport: true };
     schedule(false);
@@ -10495,6 +10612,7 @@ function createWorkspace(context, {
     snapshot = Object.freeze({ ...next, revision: ++revision, route: route && Object.freeze(route), features: Object.freeze({ ...features }), diagnostic: diagnostic && Object.freeze({ ...diagnostic }) });
     for (const session of sessions) for (const listener of session.listeners) callback(listener, snapshot);
     selection.reconcile();
+    composerControls.reconcile();
   }
   let previousGeometry = "";
   let microtaskSequence = 0;
@@ -10614,6 +10732,7 @@ function createWorkspace(context, {
       }
       control.reconcile(surface);
       selection.reconcile();
+      composerControls.reconcile();
       let anchor = activity?.isConnected ? activityPlacement(activity).anchor : null;
       if (anchor?.isConnected) for (const slot of slots) {
         if (slot.name !== "activity.before") continue;
@@ -10846,6 +10965,9 @@ function createWorkspace(context, {
       acquireSelectionPresentation(options4) {
         return own("selection", 1, () => selection.acquire(options4, ownerKey, live));
       },
+      acquireComposerControl(options4) {
+        return own("composerControl", 1, () => composerControls.acquire(options4, ownerKey, live));
+      },
       createViewport(options4) {
         return own("viewport", 1, () => viewports.create(options4, live));
       },
@@ -10897,6 +11019,7 @@ function createWorkspace(context, {
     control.dispose();
     locations.dispose();
     selection.dispose();
+    composerControls.dispose();
     viewports.dispose();
     navigation.dispose();
     actions.dispose();

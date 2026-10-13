@@ -11,6 +11,7 @@ import { createWorkspaceMetrics } from './workspace-metrics.js';
 import { createWorkspaceLocations } from './workspace-location.js';
 import { createWorkspaceSelection } from './workspace-selection.js';
 import { createWorkspaceViewports } from './workspace-viewport.js';
+import { createComposerControls } from './workspace-composer-controls.js';
 
 export const WORKSPACE_CAPABILITY = Object.freeze({ name: 'codex.ui.workspace', api: 1, scope: 'target' });
 export const WORKSPACE_SYMBOL = 'codlet.codex.ui.workspace.v1';
@@ -46,6 +47,7 @@ export function createWorkspace(context, { locate, baseNative, discovery: suppli
   const locations=createWorkspaceLocations({document:doc,host:()=>host,load:()=>navigation.prepare().then(value=>{features={...features,locationRestore:typeof value.restoreLocation==='function'};schedule(false);return value;}),check,
     beforeCapture:()=>navigation.assertNotComposing(),beforeRestore:()=>navigation.beginLocationRestore(),retainGuard:()=>navigation.retainGuard(),changed:value=>value?.input?refreshConfirmedSurface(value.input):publish(true)});
   const selection=createWorkspaceSelection({document:doc,surface:()=>surface,snapshot:()=>snapshot,check,isConfirmed:id=>navigation.matchesCurrentThread(id),changed:()=>schedule(false)});
+  const composerControls=createComposerControls({document:doc,surface:()=>surface,check,isConfirmed:id=>navigation.matchesCurrentThread(id),changed:()=>schedule(false)});
   const viewports=createWorkspaceViewports({load:()=>typeof discovery.viewport==='function'?discovery.viewport():Promise.reject(workspaceError('workspace_viewport_unsupported','Native viewport driver is unavailable')),prepared:()=>{features={...features,independentViewport:true};schedule(false);},failed:error=>{features={...features,independentViewport:false};diagnostic=errorValue(error);schedule(false);},check,isConfirmed:id=>navigation.matchesCurrentThread(id),isCurrentContext:id=>snapshot.threadId===id&&(id===null||navigation.matchesCurrentThread(id)),report});
   const actions=createWorkspaceActions({document:doc,load:()=>featureLoad('action',discovery.action),activity:()=>activity??=findActivity(doc),check,report});
   const composers=createComposers({document:doc,load:()=>featureLoad('composer',discovery.composer),surface:()=>surface,check,report,metrics});
@@ -75,6 +77,7 @@ export function createWorkspace(context, { locate, baseNative, discovery: suppli
     snapshot = Object.freeze({ ...next, revision: ++revision, route: route && Object.freeze(route), features: Object.freeze({ ...features }), diagnostic: diagnostic && Object.freeze({ ...diagnostic }) });
     for (const session of sessions) for (const listener of session.listeners) callback(listener, snapshot);
     selection.reconcile();
+    composerControls.reconcile();
   }
   let previousGeometry = '';
   let microtaskSequence = 0;
@@ -157,6 +160,7 @@ export function createWorkspace(context, { locate, baseNative, discovery: suppli
       }
       control.reconcile(surface);
       selection.reconcile();
+      composerControls.reconcile();
       let anchor = activity?.isConnected ? activityPlacement(activity).anchor : null;
       if (anchor?.isConnected) for (const slot of slots) {
         if (slot.name !== 'activity.before') continue;
@@ -291,6 +295,7 @@ export function createWorkspace(context, { locate, baseNative, discovery: suppli
       createNavigation() { return own('navigation',1,()=>navigation.create(live)); },
       captureLocation() { return own('location',4,()=>locations.capture(live)); },
       acquireSelectionPresentation(options) { return own('selection',1,()=>selection.acquire(options,ownerKey,live)); },
+      acquireComposerControl(options) { return own('composerControl',1,()=>composerControls.acquire(options,ownerKey,live)); },
       createViewport(options) { return own('viewport',1,()=>viewports.create(options,live)); },
       registerAction(options) { return own('action',16,()=>actions.register(options,ownerKey,live)); },
       registerShortcut(options) { return own('shortcut', 16, () => { if (host?.auxiliary) throw workspaceError('workspace_shortcuts_unavailable', 'Auxiliary windows have no shortcut workspace'); schedule(true); return shortcuts.register(options, ownerKey); }); },
@@ -311,7 +316,7 @@ export function createWorkspace(context, { locate, baseNative, discovery: suppli
   function dispose() {
     if (!alive) return;
     for (const record of [...sessions]) record.session.dispose();
-    alive = false; tickets.clear(); stopObserving(); control.dispose(); locations.dispose(); selection.dispose(); viewports.dispose(); navigation.dispose(); actions.dispose();composers.dispose();transcripts.dispose(); shortcuts.dispose(); discovery.dispose();
+    alive = false; tickets.clear(); stopObserving(); control.dispose(); locations.dispose(); selection.dispose(); composerControls.dispose(); viewports.dispose(); navigation.dispose(); actions.dispose();composers.dispose();transcripts.dispose(); shortcuts.dispose(); discovery.dispose();
     if (globalThis[symbol] === publicApi) delete globalThis[symbol];
   }
   const releaseProvider = context.onDeactivate(dispose);

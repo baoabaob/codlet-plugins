@@ -5,6 +5,8 @@ import { createThreadRestoration } from './thread-restoration.js';
 import { createLoadedThreads } from './loaded-threads.js';
 import { createThreadOpener } from './thread-navigation.js';
 import { reviewedNavigator } from '../native-navigation.js';
+import { createPermissions } from './permissions.js';
+import { loadNativePermissions } from './native-permissions.js';
 import { desktopDocument, hostFibers, createScopeLocator, loadedAsset, localConnection, uniqueExport } from '../host-discovery.js';
 'use strict';
 
@@ -396,6 +398,7 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
         } catch (error) { navigationUnavailable(error); }
     }
     const openThread = createThreadOpener({ manager, selection, navigation: () => navigation, request: nativeRequest });
+    const permissions=createPermissions({manager,client,check,selection,emit,load:()=>loadNativePermissions({document,manager})});
 
     const orderedHooks = () => [...hooks.values()].sort((a, b) => a.priority - b.priority || (a.pluginId < b.pluginId ? -1 : a.pluginId > b.pluginId ? 1 : 0) || a.order - b.order);
     const hookInfo = hook => ({ pluginId: hook.pluginId, generation: hook.generation, id: hook.name, priority: hook.priority, timeoutMs: hook.timeoutMs, enabled: hook.enabled, calls: hook.calls, failures: hook.failures, lastDurationMs: hook.lastDurationMs, totalDurationMs: hook.totalDurationMs, lastFailure: hook.lastFailure && { ...hook.lastFailure } });
@@ -430,13 +433,17 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
         if (alive && message?.type === 'mcp-request' && message.hostId === 'local' && ['turn/start', 'turn/steer'].includes(message.request?.method) && threadReconfiguration.busy(message.request.params?.threadId)) {
             client.onError(message.request.id, fail('desktop_thread_busy', 'This task is applying a provider configuration')); return;
         }
-        if (alive && message?.type === 'mcp-request' && message.hostId === 'local' && ['thread/start', 'thread/resume'].includes(message.request?.method)) return threadConfiguration.intercept(message, next => originalPost.call(this, next, ...rest));
+        if (alive && message?.type === 'mcp-request' && message.hostId === 'local' && ['thread/start', 'thread/resume'].includes(message.request?.method)) return threadConfiguration.intercept(message, next => dispatchNative.call(this, next, ...rest));
         if (alive && message?.type === 'mcp-request' && message.hostId === 'local' && message.request?.method === 'turn/start') return threadConfiguration.intercept(message, next => interceptSubmit.call(this, next, ...rest));
-        return originalPost.call(this, message, ...rest);
+        return dispatchNative.call(this, message, ...rest);
+    }
+
+    function dispatchNative(message, ...rest) {
+        return permissions.intercept(message, next => originalPost.call(this, next, ...rest));
     }
 
     function interceptSubmit(message, ...rest) {
-        if (!alive || message?.type !== 'mcp-request' || message.hostId !== 'local' || message.request?.method !== 'turn/start') return originalPost.call(this, message, ...rest);
+        if (!alive || message?.type !== 'mcp-request' || message.hostId !== 'local' || message.request?.method !== 'turn/start') return dispatchNative.call(this, message, ...rest);
         const submission = submissions.get(message.request.params?.clientUserMessageId);
         if (submission?.signal?.aborted || pendingSubmits.size >= 16) {
             client.onError(message.request.id, fail('submission_rejected', submission?.signal?.aborted ? 'Codlet submission was cancelled before dispatch' : 'Codlet has 16 pending submission interceptors'));
@@ -454,7 +461,7 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
         runInterceptors(message, pending).then(next => {
             check();
             if (pending.controller.signal.aborted || !client.requestPromises.has(message.request.id)) throw fail('submission_retired', 'Desktop submission retired before dispatch');
-            originalPost.call(receiver, next, ...rest);
+            dispatchNative.call(receiver, next, ...rest);
         }).catch(error => {
             if (client.requestPromises.has(message.request.id)) client.onError(message.request.id, fail(error.code ?? 'interceptor_failed', `Codlet: ${error.message ?? String(error)}`));
             emit({ type: 'submission.blocked', threadId: optionalText(message.request.params?.threadId, 256), pluginId: error.pluginId ?? null, message: optionalText(error.message) });
@@ -520,6 +527,7 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
         const pagination = () => ({ limit: bounded(args.limit, 20, 100), ...(args.cursor == null ? {} : { cursor: str(args.cursor, 'cursor', 4096) }) });
         switch (method) {
             case 'selection.get': fields(args, []); return selection();
+            case 'permissions.get': return permissions.get(args);
             case 'threads.loaded': return loadedThreads.read(args);
             case 'threads.configuration': {
                 fields(args, ['threadId']);
@@ -581,8 +589,9 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
         }
     };
 
-    const write = async (method, args = {}, signal) => {
+    const write = async (method, args = {}, signal, principal) => {
         check(); obj(args);
+        if(method==='permissions.update')return permissions.update(args,signal,principal);
         if (method === 'approvals.respond') return respondApproval(args, signal);
         if (method === 'threads.open') return openThread(args, signal);
         if (method === 'threads.reconfigure') return threadReconfiguration.apply(args, signal);
@@ -760,6 +769,7 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
         tickets.delete(token);
     }
     const publicApi = Object.freeze({ api: 1,
+        registerPermissions(ctx, ticket) { claimTicket(ctx, ticket, CAPS.write); return permissions.register(ctx); },
         registerPreSubmit(ctx, ticket, options, handler) { claimTicket(ctx, ticket, CAPS.submit); return registerPreSubmit(ctx, options, handler); },
         registerThreadConfiguration(ctx, ticket, options, handler) { claimTicket(ctx, ticket, CAPS.write); return threadConfiguration.register(ctx, options, handler); },
         onEvent(ctx, ticket, handler) { claimTicket(ctx, ticket, CAPS.events); return onEvent(ctx, handler); }
@@ -772,7 +782,7 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
         if (restoration?.reloadRequired) reloadReason ??= restoration.reason;
         for (const pending of pendingSubmits) pending.controller.abort(fail('adapter_deactivated', 'Desktop adapter was deactivated'));
         for (const hook of hooks.values()) hook.active = false;
-        hooks.clear(); listeners.clear(); approvals.clear(); retiredApprovals.clear(); tickets.clear(); loadedThreads.dispose(); events.length = 0; eventBytes = 0;
+        hooks.clear(); listeners.clear(); approvals.clear(); retiredApprovals.clear(); tickets.clear(); loadedThreads.dispose(); permissions.dispose(); events.length = 0; eventBytes = 0;
         for (const wake of [...waiters]) wake();
         for (const cleanup of cleanups.splice(0).reverse()) { try { cleanup(); } catch (error) { reloadReason ??= String(error.message ?? error); } }
         if (postbox.postMessage === intercept) postbox.postMessage = originalPost;
@@ -785,7 +795,7 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
         postbox.postMessage = intercept;
         Object.defineProperty(globalThis, symbol, { value: publicApi, configurable: true });
         cleanups.push(manager.addNotificationCallback(['thread/started', 'turn/started', 'turn/completed', 'item/started', 'item/completed', 'item/agentMessage/delta', 'item/commandExecution/outputDelta', 'serverRequest/resolved'], receive));
-        cleanups.push(manager.addConversationStateCallback(threadId => { try { check(); syncApprovals(threadId); loadedThreads.refresh(threadId); refreshSelection(threadId); } catch (error) { markUnavailable(fail(error.code ?? 'desktop_approval_schema_drift', error.message)); } }));
+        cleanups.push(manager.addConversationStateCallback(threadId => { try { check(); syncApprovals(threadId); loadedThreads.refresh(threadId); refreshSelection(threadId); permissions.observe(threadId); } catch (error) { markUnavailable(fail(error.code ?? 'desktop_approval_schema_drift', error.message)); } }));
         if (typeof manager.addConversationRemovedCallback === 'function') cleanups.push(manager.addConversationRemovedCallback(threadId => {
             try { check(); loadedThreads.refresh(threadId); } catch (error) { markUnavailable(error); }
         }));
@@ -801,8 +811,8 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
         context.rpc.provide(CAPS.submit, 'interceptors.list', args => listInterceptors(args));
         context.rpc.provide(CAPS.write, 'getApi', (_args, invocation) => issueTicket(CAPS.write, invocation));
         context.rpc.provide(CAPS.write, 'configurations.list', args => threadConfiguration.list(args ?? {}));
-        for (const method of ['selection.get', 'threads.list', 'threads.loaded', 'threads.get', 'threads.configuration', 'turns.list', 'items.list', 'models.list', 'skills.list', 'providers.list', 'approvals.list']) context.rpc.provide(CAPS.read, method, (args, invocation) => read(method, args ?? {}, invocation.signal));
-        for (const method of ['threads.open', 'threads.reconfigure', 'turns.start', 'turns.steer', 'turns.interrupt', 'approvals.respond']) context.rpc.provide(CAPS.write, method, (args, invocation) => write(method, args ?? {}, invocation.signal));
+        for (const method of ['selection.get', 'permissions.get', 'threads.list', 'threads.loaded', 'threads.get', 'threads.configuration', 'turns.list', 'items.list', 'models.list', 'skills.list', 'providers.list', 'approvals.list']) context.rpc.provide(CAPS.read, method, (args, invocation) => read(method, args ?? {}, invocation.signal));
+        for (const method of ['permissions.update', 'threads.open', 'threads.reconfigure', 'turns.start', 'turns.steer', 'turns.interrupt', 'approvals.respond']) context.rpc.provide(CAPS.write, method, (args, invocation) => write(method, args ?? {}, invocation.signal,invocation.caller));
         context.rpc.provide(CAPS.events, 'read', (args, invocation) => readEvents(args ?? {}, invocation.signal));
         context.rpc.provide(CAPS.events, 'getApi', (_args, invocation) => issueTicket(CAPS.events, invocation));
         emit({ type: 'adapter.ready', connection: 'existing-desktop-local' });

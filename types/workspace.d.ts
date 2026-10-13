@@ -79,12 +79,14 @@ export interface WorkspaceSession {
   createNavigation(): NavigationSession;
   captureLocation(): WorkspaceLocationHandle;
   acquireSelectionPresentation(options: SelectionPresentationOptions): SelectionPresentationHandle;
+  acquireComposerControl(options: {control:'permissions';threadId:string|null}): ComposerControlHandle;
   /** Optional Native driver; ready rejects if independent nonpolluting state cannot be established. */
   createViewport(options?: IndependentViewportOptions): IndependentViewportHandle;
 }
 export interface WorkspaceLocationHandle { readonly ready: Promise<void>; readonly kind: 'thread'|'page'; restore(options?: {signal?:AbortSignal}): Promise<Readonly<{restored:true;kind:'thread'|'page'}>>; dispose():void }
 export interface SelectionPresentationOptions { threadId: string|null; emptyLabel?: string }
 export interface SelectionPresentationHandle { update(options: Partial<SelectionPresentationOptions>):void; dispose():void }
+export interface ComposerControlHandle {readonly container:HTMLElement;readonly ready:Promise<void>;updateBinding(options:{threadId:string|null}):Promise<void>;dispose():void}
 export interface IndependentViewportOptions { open?:boolean; width?:number }
 export interface IndependentViewportSnapshot { readonly independent:true; readonly open:boolean; readonly width:number; readonly threadId:string|null; readonly hostId:'local'|null }
 export interface IndependentViewportHandle {
