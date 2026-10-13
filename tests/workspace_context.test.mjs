@@ -123,3 +123,9 @@ test('correctly owned target input with a different Native draft namespace fails
   f.navigator.location={pathname:'/settings',state:null};f.setInput(f.makeInput({...f.draft,key:'different-draft'}));
   await assert.rejects(handle.restore(),{code:'workspace_location_state_evicted'});
 });
+
+test('viewport capability is published only after Native readiness and incomplete preparation still closes its allocation',async()=>{
+  let prepared=0,closed=0;const view={ready:Promise.reject(Object.assign(Error('layout unavailable'),{code:'workspace_viewport_unsupported'})),bind(){},update(){},subscribe(){return()=>{};},close(){closed++;}};view.ready.catch(()=>{});
+  const provider=createWorkspaceViewports({load:async()=>({api:1,independent:true,restoresSettings:true,avoidsThreadPersistence:true,notifiesChanges:true,create:()=>view}),prepared(){prepared++;},check(){},isConfirmed:()=>true,report(){}});
+  const handle=provider.create({},()=>{});await assert.rejects(handle.ready,{code:'workspace_viewport_unsupported'});assert.equal(prepared,0);await handle.close();assert.equal(closed,1);await provider.cleanup();provider.dispose();
+});

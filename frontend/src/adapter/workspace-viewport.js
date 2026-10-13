@@ -12,7 +12,7 @@ export function createWorkspaceViewports({load,check,isConfirmed,report,prepared
     if(disposed)throw workspaceError('workspace_retired','Viewport provider retired');
     if(value?.api!==1||value.independent!==true||value.restoresSettings!==true||value.avoidsThreadPersistence!==true||value.notifiesChanges!==true||typeof value.create!=='function')
       throw workspaceError('workspace_viewport_unsupported','A verified independent Native viewport driver is unavailable');
-    driver=value;onPrepared?.();return value;
+    driver=value;return value;
   });
   function create(initial,live){
     check();live();if(disposed)throw workspaceError('workspace_retired','Viewport provider retired');
@@ -24,10 +24,11 @@ export function createWorkspaceViewports({load,check,isConfirmed,report,prepared
     const notify=()=>{if(entry.active)for(const listener of entry.listeners)callback(listener,snapshot());};
     const receive=value=>{if(!entry.active)return;try{const next=options(value,entry.state);if(next.open===entry.state.open&&next.width===entry.state.width)return;entry.state=next;notify();}catch(error){report(error);}};
     const ready=ensure().then(async value=>{
-      valid();const view=await value.create({...entry.state});entry.view=view;
+      valid();const view=await value.create({...entry.state},{onError:error=>{report(error);void close();}});entry.view=view;
       if(!view||!['bind','update','subscribe','close'].every(name=>typeof view[name]==='function'))throw workspaceError('workspace_viewport_unsupported','Native viewport lifecycle is incomplete');
-      valid();entry.unlisten=view.subscribe(receive);
+      await view.ready;valid();entry.unlisten=view.subscribe(receive);
       if(typeof entry.unlisten!=='function')throw workspaceError('workspace_viewport_unsupported','Native viewport notifications cannot be released');
+      onPrepared?.();
     });ready.catch(()=>{});
     const close=()=>{
       if(entry.closing)return entry.closing;

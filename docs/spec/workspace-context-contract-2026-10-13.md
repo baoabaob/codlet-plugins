@@ -28,7 +28,7 @@ Default exit can await entry.restore then dispose. An explicit enter-conversatio
 
 `close():Promise<void>` is the required awaited exit path: restore each visited Native context to its own original viewport state and remove all owned overrides/persistence before releasing ownership. Explicit exit must not write the entry thread's width/open state into a different target thread. `dispose()` starts bounded cleanup and makes the handle unusable; Core owner cleanup must await the same pending close. A cleanup failure is reported and must not be treated as restored. Native resizer/control actions must not write any original per-thread open/width settings. A DOM-only width override does not satisfy this feature, and no fallback enables it.
 
-The Native route/thread signal, width configuration and persisted-atom writer paths are currently under static inspection. This contract permits consumer/mock work now, without representing an unverified Native width/persistence mapping as available.
+The Native route/thread signal, width configuration and persisted-atom writer have a concrete optional driver candidate, documented in [independent viewport mapping](workspace-independent-viewport-2026-10-13.md). It leaves existing content intact and publishes the feature only after driver readiness; its source/offline verification does not substitute for consumer-owned Native persistence/content acceptance.
 
 ## Existing controls and resources
 

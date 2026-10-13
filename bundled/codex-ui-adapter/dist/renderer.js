@@ -6639,7 +6639,8 @@ function ancestry(node, limit = 64) {
 }
 function providersFor(node) {
   const result = [], seen = /* @__PURE__ */ new Set();
-  for (const fiber of ancestry(node, 180)) {
+  const current3 = currentElementAncestry(node, node?.ownerDocument?.getElementById("root"));
+  for (const fiber of current3 ? [...current3].reverse() : ancestry(node, 180)) {
     let count = 0;
     for (let dep = fiber.dependencies?.firstContext; dep && count++ < 128; dep = dep.next) {
       if (!dep.context || seen.has(dep.context)) continue;
@@ -7193,6 +7194,454 @@ function createNativeNavigation(signal, connection, dispatch, scope) {
   } };
 }
 
+// src/adapter/workspace-native-viewport.js
+var unavailable = (message) => workspaceError("workspace_viewport_unsupported", message);
+function visit2(node, callback) {
+  if (!node || typeof node !== "object") return;
+  if (node.type) callback(node);
+  for (const [key2, value] of Object.entries(node)) if (!["start", "end"].includes(key2)) {
+    if (Array.isArray(value)) value.forEach((item) => visit2(item, callback));
+    else if (value && typeof value === "object") visit2(value, callback);
+  }
+}
+function exportOf(source, local) {
+  const pattern = new RegExp("(?:\\{|,)\\s*" + local.replace(/\$/g, "\\$&") + "\\s+as\\s+([A-Za-z_$][\\w$]*)\\s*(?=,|\\})", "g");
+  const values = [...source.slice(source.lastIndexOf("export")).matchAll(pattern)].map((match) => match[1]);
+  if (values.length !== 1) throw unavailable("Native viewport state export is missing or ambiguous");
+  return values[0];
+}
+function viewportSignalExports(source) {
+  const candidates = /* @__PURE__ */ new Map();
+  for (const match of source.matchAll(/window-resize/g)) {
+    const declarations = [...source.slice(0, match.index).matchAll(/\bfunction\s+[A-Za-z_$][\w$]*\s*\(/g)], start = declarations.at(-1)?.index;
+    if (start == null || match.index - start > 32768) continue;
+    const ast2 = parseExpressionAt2(source, start, { ecmaVersion: "latest" }), text = source.slice(ast2.start, ast2.end);
+    if (ast2.end <= match.index || text.length > 32768 || !["closeReason", ".stop()", "animate"].every((marker) => text.includes(marker))) continue;
+    candidates.set(start, ast2);
+  }
+  if (candidates.size !== 1) throw unavailable("Native content viewport action is missing or ambiguous");
+  const ast = [...candidates.values()][0], scope = ast.params[0]?.name, open = ast.params[1]?.name;
+  const call = (node, method) => node.type === "CallExpression" && node.callee.type === "MemberExpression" && node.callee.object.name === scope && node.callee.property.name === method && node.arguments[0]?.type === "Identifier";
+  const flags = [], opened = /* @__PURE__ */ new Set(), motions = /* @__PURE__ */ new Set();
+  visit2(ast.body.body[0]?.consequent, (node) => {
+    if (call(node, "set")) flags.push(node.arguments[0].name);
+  });
+  visit2(ast, (node) => {
+    if (call(node, "set") && node.arguments[1]?.name === open) opened.add(node.arguments[0].name);
+    if (node.type === "VariableDeclarator" && node.id.type === "Identifier" && node.init && call(node.init, "get")) {
+      let stops = false;
+      visit2(ast, (child) => {
+        if (child.type === "CallExpression" && child.callee.type === "MemberExpression" && child.callee.object.name === node.id.name && child.callee.property.name === "stop") stops = true;
+      });
+      if (stops) motions.add(node.init.arguments[0].name);
+    }
+  });
+  if (!scope || !open || flags.length !== 2 || new Set(flags).size !== 2 || opened.size !== 1 || motions.size !== 1)
+    throw unavailable("Native content viewport action contract changed");
+  return Object.freeze({
+    setOpen: exportOf(source, ast.id.name),
+    expanded: exportOf(source, flags[0]),
+    fullWidth: exportOf(source, flags[1]),
+    open: exportOf(source, [...opened][0]),
+    motion: exportOf(source, [...motions][0])
+  });
+}
+function viewportPersistenceExport(source) {
+  const candidates = [];
+  for (const match of source.matchAll(/\bfunction\s+[A-Za-z_$][\w$]*\s*\(\{[^{}]{0,512}\}/g)) {
+    const header = match[0];
+    if (!["mainContentWidth", "storageKey", "widthMode"].every((key3) => header.includes(key3))) continue;
+    const ast = parseExpressionAt2(source, match.index, { ecmaVersion: "latest" });
+    const properties = ast.params[0]?.properties ?? [], names = properties.map((value) => value.key?.name);
+    if (ast.end - ast.start > 4096 || ast.params.length !== 1 || names.length !== 4 || !["mainContentWidth", "storageKey", "width", "widthMode"].every((key3) => names.includes(key3))) continue;
+    const expression = ast.body.body[0]?.expression, key2 = properties.find((value) => value.key.name === "storageKey")?.value.name;
+    if (ast.body.body.length === 1 && expression?.type === "CallExpression" && expression.callee.type === "Identifier" && expression.arguments[0]?.name === key2) candidates.push(expression.callee.name);
+  }
+  if (candidates.length !== 1) throw unavailable("Native viewport persistence action is missing or ambiguous");
+  const local = candidates[0], matches = [];
+  for (const match of source.slice(0, 262144).matchAll(/\bimport\s*\{([^}]*)\}\s*from\s*["']([^"']+)["']/g)) {
+    if (match[0].length > 131072) throw unavailable("Native viewport persistence import exceeds its boundary");
+    if (!/^\.\/app-shared-[A-Za-z0-9_-]+\.js$/.test(match[2])) continue;
+    for (const spec of match[1].split(",")) {
+      const parsed = /^\s*([A-Za-z_$][\w$]*)(?:\s+as\s+([A-Za-z_$][\w$]*))?\s*$/.exec(spec);
+      if (parsed && (parsed[2] ?? parsed[1]) === local) matches.push(parsed[1]);
+    }
+  }
+  if (matches.length !== 1) throw unavailable("Native viewport persistence import is missing or ambiguous");
+  return matches[0];
+}
+function nativeViewportContext(document2, native, pins = /* @__PURE__ */ new WeakMap()) {
+  const root = document2.getElementById("root"), input = nativeMainInput(document2, native);
+  const main = input?.input.closest("main[data-app-shell-main-surface]") ?? [...document2.querySelectorAll("main[data-app-shell-main-surface]")].find((node) => !node.closest(OWNED + ',[data-app-shell-active-page="false"]'));
+  if (!root || !main?.isConnected) throw workspaceError("workspace_host_pending", "Native main viewport is not mounted");
+  const valid = (facade2) => facade2 && typeof facade2.get === "function" && typeof facade2.set === "function" && typeof facade2.watch === "function" && facade2.chain?.get(native.RouteScope.id)?.token === native.RouteScope && facade2.chain?.get(native.ThreadScope.id)?.token === native.ThreadScope;
+  let facade = valid(input?.scope) ? input.scope : null;
+  if (!facade) for (const fiber of currentElementAncestry(main, root) ?? []) {
+    for (let hook = fiber.memoizedState, count = 0; hook && count++ < 128; hook = hook.next) if (valid(hook.memoizedState?.current)) facade = hook.memoizedState.current;
+  }
+  if (!facade) throw workspaceError("workspace_host_pending", "Native viewport scope is not mounted");
+  const chain = new Map(facade.chain), routeNode = chain.get(native.RouteScope.id), threadNode = chain.get(native.ThreadScope.id);
+  let pinned = pins.get(routeNode);
+  if (!pinned || pinned.chain.get(native.ThreadScope.id) !== threadNode) {
+    if (typeof native.useScope !== "function") throw unavailable("Native pinned viewport context is unavailable");
+    const box = document2.createElement("div");
+    box.dataset.codletWorkspaceOwned = "viewport-context:" + crypto.randomUUID();
+    box.style.display = "none";
+    document2.body.append(box);
+    let captured, failure, captureRoot;
+    const Capture = () => {
+      captured = native.useScope(native.RouteScope);
+      return null;
+    };
+    try {
+      const providers = providersFor(main);
+      if (!providers.length) throw unavailable("Native viewport providers are unavailable");
+      captureRoot = native.Client.createRoot(box, { onUncaughtError: (error) => {
+        failure = error;
+      }, onCaughtError: (error) => {
+        failure = error;
+      } });
+      native.DOM.flushSync(() => captureRoot.render(wrapProviders(native, providers, native.React.createElement(Capture))));
+      if (failure) throw failure;
+      if (!captured || captured === facade || captured.node !== routeNode || !valid(captured)) throw unavailable("Native pinned viewport context changed ownership");
+      captured.chain = new Map(captured.chain);
+      pinned = captured;
+    } finally {
+      try {
+        if (captureRoot) native.DOM.flushSync(() => captureRoot.unmount());
+      } finally {
+        box.remove();
+      }
+    }
+    pins.set(routeNode, pinned);
+  }
+  if (!valid(pinned) || pinned.chain.get(native.RouteScope.id) !== routeNode || pinned.chain.get(native.ThreadScope.id) !== threadNode)
+    throw unavailable("Native pinned viewport context changed ownership");
+  return {
+    root,
+    main,
+    facade: pinned,
+    routeNode,
+    threadNode,
+    threadId: input ? nativeInputBinding(input, native)?.threadId ?? null : null
+  };
+}
+function nativeViewportLayout(context) {
+  const shell = (currentElementAncestry(context.main, context.root) ?? []).find((fiber) => {
+    const text = componentSource(fiber.type);
+    return text.includes("data-app-shell-main-surface") && text.includes("contentPaneWidthRatio");
+  });
+  if (!shell) throw workspaceError("workspace_host_pending", "Native viewport layout is not mounted");
+  const pending = [shell.child], seen = /* @__PURE__ */ new Set(), candidates = [];
+  while (pending.length) {
+    const fiber = pending.pop();
+    if (!fiber || seen.has(fiber)) continue;
+    if (seen.size >= 512) throw unavailable("Native viewport layout exceeds the discovery boundary");
+    seen.add(fiber);
+    if (fiber.sibling) pending.push(fiber.sibling);
+    const props = fiber.memoizedProps, text = componentSource(fiber.type);
+    if (text.includes("pane_resize") && text.includes("contentPaneWidthRatio") && text.includes("data-app-shell-focus-area")) {
+      if (typeof props?.isContentPaneOpen !== "boolean" || !["contentPaneWidth", "contentPaneWidthRatio", "workspaceWidth"].every((key2) => typeof props[key2]?.get === "function") || typeof props.contentPaneWidth?.on !== "function")
+        throw unavailable("Native viewport motion/layout contract changed");
+      candidates.push(props);
+      continue;
+    }
+    if (fiber.stateNode === context.main || fiber.stateNode?.matches?.('aside[data-app-shell-focus-area="right-panel"]')) continue;
+    if (fiber.child) pending.push(fiber.child);
+  }
+  if (candidates.length !== 1) throw workspaceError("workspace_host_pending", "A unique Native viewport layout is required");
+  return candidates[0];
+}
+function learnNativeViewportWidth(document2, native, context) {
+  const box = document2.createElement("div"), owner2 = "viewport-discovery:" + crypto.randomUUID();
+  box.dataset.codletWorkspaceOwned = owner2;
+  box.style.display = "none";
+  document2.body.append(box);
+  const R = native.React, h = R.createElement, config = Object.freeze({ defaultWidth: 360, storageKey: owner2 });
+  let root;
+  try {
+    const providers = providersFor(context.main);
+    if (!providers.length) throw unavailable("Native viewport providers are unavailable");
+    const route = native.routeDescription({ pathname: "/local/codlet-viewport-discovery", search: "?codletViewport=" + encodeURIComponent(owner2) });
+    const child = h(
+      native.Scope,
+      { scope: native.ThreadScope, value: { clientThreadId: owner2 } },
+      h(native.Scope, { scope: native.RouteScope, value: route }, h(native.Shell.RightPanelOutlet, { presentation: "over-tabs", paneWidth: config, children: h("span") }))
+    );
+    let failure;
+    root = native.Client.createRoot(box, { onUncaughtError: (error) => {
+      failure = error;
+    }, onCaughtError: (error) => {
+      failure = error;
+    } });
+    native.DOM.flushSync(() => root.render(wrapProviders(native, providers, child)));
+    if (failure) throw failure;
+    const key2 = Object.keys(box).find((key3) => key3.startsWith("__reactContainer$")), container = key2 && box[key2], current3 = container?.stateNode?.current ?? container;
+    const pending = [current3], seen = /* @__PURE__ */ new Set(), signals = /* @__PURE__ */ new Set();
+    while (pending.length) {
+      const fiber = pending.pop();
+      if (!fiber || seen.has(fiber)) continue;
+      if (seen.size >= 128) throw unavailable("Native viewport outlet exceeds the discovery boundary");
+      seen.add(fiber);
+      const props = fiber.memoizedProps;
+      if (props?.value === config && props.signal?.scope === native.RouteScope && props.signal.cache === "signal" && typeof props.signal.resolve === "function") signals.add(props.signal);
+      if (fiber.sibling) pending.push(fiber.sibling);
+      if (fiber.child) pending.push(fiber.child);
+    }
+    if (signals.size !== 1) throw unavailable("Native viewport width registration is missing or ambiguous");
+    return [...signals][0];
+  } finally {
+    try {
+      if (root) native.DOM.flushSync(() => root.unmount());
+    } finally {
+      box.remove();
+    }
+  }
+}
+function createNativeViewportDriver({
+  document: document2,
+  native,
+  signals,
+  readContext,
+  readLayout = nativeViewportLayout,
+  learnWidth = (context) => learnNativeViewportWidth(document2, native, context)
+}) {
+  for (const key2 of ["open", "fullWidth", "expanded", "motion"]) if (signals[key2]?.scope !== native.ThreadScope || signals[key2].cache !== "signal" || typeof signals[key2].resolve !== "function") throw unavailable("Native viewport signals belong to another scope");
+  if (typeof signals.setOpen !== "function" || typeof native.writeAtom !== "function") throw unavailable("Native viewport state/persistence controls are unavailable");
+  const pins = /* @__PURE__ */ new WeakMap();
+  readContext ??= () => nativeViewportContext(document2, native, pins);
+  let widthSignal;
+  return Object.freeze({
+    api: 1,
+    independent: true,
+    restoresSettings: true,
+    avoidsThreadPersistence: true,
+    notifiesChanges: true,
+    async create(initial, { onError = () => {
+    } } = {}) {
+      native.check?.();
+      const first = readContext();
+      readLayout(first);
+      widthSignal ??= learnWidth(first);
+      if (widthSignal?.scope !== native.RouteScope || widthSignal.cache !== "signal" || typeof widthSignal.resolve !== "function") throw unavailable("Native independent width signal changed scope");
+      const key2 = "codlet.workspace.viewport." + crypto.randomUUID(), entries = /* @__PURE__ */ new Map(), listeners = /* @__PURE__ */ new Set();
+      let active2 = true, current3, state = { ...initial }, bound = false, unwatch, unmotion, masked, restoreMask, queued = false;
+      const notify = () => {
+        if (active2) for (const listener of listeners) listener(Object.freeze({ ...state }));
+      };
+      const journal = (context) => {
+        let entry = entries.get(context.routeNode);
+        if (!entry) {
+          for (const signal of [widthSignal, ...["open", "fullWidth", "expanded", "motion"].map((role) => signals[role])]) {
+            const node = context.facade.chain.get(signal.scope.id);
+            if (!node?.signalBindings?.has(signal)) throw workspaceError("workspace_host_pending", "Native viewport state is not bound");
+          }
+          const flags = Object.fromEntries(["open", "fullWidth", "expanded"].map((role) => [role, context.facade.get(signals[role])]));
+          if (Object.values(flags).some((value) => typeof value !== "boolean")) throw unavailable("Native viewport state has changed shape");
+          entry = { context, flags, config: context.facade.get(widthSignal), applied: null, leased: false };
+          entries.set(context.routeNode, entry);
+        }
+        return entry;
+      };
+      const unmask = () => {
+        restoreMask?.();
+        restoreMask = null;
+        masked = null;
+      };
+      const mask = () => {
+        const panel = bound ? null : [...document2.querySelectorAll('aside[data-app-shell-focus-area="right-panel"]')].find((node) => !node.closest(OWNED + ',[data-app-shell-active-page="false"]'));
+        if (masked === panel) return;
+        unmask();
+        if (!panel) return;
+        masked = panel;
+        const visibility = [panel.style.getPropertyValue("visibility"), panel.style.getPropertyPriority("visibility")], inert = panel.getAttribute("inert"), hidden = panel.getAttribute("aria-hidden");
+        panel.style.setProperty("visibility", "hidden", "important");
+        panel.setAttribute("inert", "");
+        panel.setAttribute("aria-hidden", "true");
+        restoreMask = () => {
+          if (panel.style.getPropertyValue("visibility") === "hidden" && panel.style.getPropertyPriority("visibility") === "important") visibility[0] ? panel.style.setProperty("visibility", ...visibility) : panel.style.removeProperty("visibility");
+          if (panel.getAttribute("inert") === "") inert == null ? panel.removeAttribute("inert") : panel.setAttribute("inert", inert);
+          if (panel.getAttribute("aria-hidden") === "true") hidden == null ? panel.removeAttribute("aria-hidden") : panel.setAttribute("aria-hidden", hidden);
+        };
+      };
+      const restore = (entry) => {
+        if (!entry.leased) return;
+        const facade = entry.context.facade;
+        for (const signal of [widthSignal, ...["open", "fullWidth", "expanded"].map((role) => signals[role])])
+          if (!facade.chain.get(signal.scope.id)?.signalBindings?.has(signal)) throw workspaceError("workspace_viewport_state_evicted", "Native evicted the leased viewport state");
+        native.DOM.flushSync(() => {
+          if (facade.get(widthSignal) === entry.applied) facade.set(widthSignal, entry.config);
+          signals.setOpen(facade, entry.flags.open, { animate: false, closeReason: "window-resize" });
+          facade.set(signals.fullWidth, entry.flags.fullWidth);
+          facade.set(signals.expanded, entry.flags.expanded);
+        });
+        entry.leased = false;
+      };
+      const stop = () => {
+        const callbacks = [unwatch, unmotion, restoreMask], errors = [];
+        unwatch = unmotion = restoreMask = null;
+        masked = null;
+        for (const callback of callbacks) try {
+          callback?.();
+        } catch (error) {
+          errors.push(error);
+        }
+        if (errors.length) throw Object.assign(new AggregateError(errors, "Native viewport listeners could not be released"), { code: "workspace_viewport_cleanup_failed" });
+      };
+      const width = () => {
+        const layout = readLayout(current3.context), value = layout.contentPaneWidth.get();
+        if (Number.isFinite(value) && value >= 240 && value <= 1600 && state.width !== value) {
+          state = { ...state, width: value };
+          notify();
+        }
+        mask();
+        return layout;
+      };
+      const onWidth = (value) => {
+        if (!active2) return;
+        if (Number.isFinite(value) && value >= 240 && value <= 1600 && state.width !== value) {
+          state = { ...state, width: value };
+          notify();
+        }
+        mask();
+      };
+      const apply = () => {
+        const facade = current3.context.facade;
+        current3.applied = Object.freeze({ defaultWidth: state.width, storageKey: key2 });
+        current3.leased = true;
+        native.DOM.flushSync(() => {
+          facade.set(widthSignal, current3.applied);
+          facade.set(signals.fullWidth, false);
+          facade.set(signals.expanded, false);
+          signals.setOpen(facade, state.open, { animate: false, closeReason: "window-resize" });
+        });
+        const layout = width();
+        if (layout.widthMode === "full") throw unavailable("Native full viewport layout could not be leased independently");
+        if (unmotion) {
+          unmotion();
+          unmotion = layout.contentPaneWidth.on("change", onWidth);
+        }
+      };
+      const listen = () => {
+        unwatch = current3.context.facade.watch(({ get }) => {
+          const config = get(widthSignal), open = get(signals.open), full = get(signals.fullWidth), expanded = get(signals.expanded);
+          if (!active2) return;
+          if (state.open !== open) {
+            state = { ...state, open };
+            notify();
+          }
+          if ((config !== current3.applied || full || expanded) && !queued) {
+            if (config !== current3.applied) current3.config = config;
+            queued = true;
+            const entry = current3;
+            queueMicrotask(() => {
+              queued = false;
+              if (!active2 || current3 !== entry || !entry.leased) return;
+              try {
+                apply();
+              } catch (error) {
+                onError(error);
+                void close().catch(onError);
+              }
+            });
+          }
+        });
+        unmotion = readLayout(current3.context).contentPaneWidth.on("change", onWidth);
+        if (typeof unwatch !== "function" || typeof unmotion !== "function") throw unavailable("Native viewport notifications cannot be released");
+      };
+      let closing;
+      const close = () => {
+        if (closing) return closing;
+        active2 = false;
+        return closing = Promise.resolve().then(() => {
+          listeners.clear();
+          const errors = [];
+          try {
+            stop();
+          } catch (error) {
+            errors.push(error);
+          }
+          for (const entry of entries.values()) try {
+            restore(entry);
+          } catch (error) {
+            errors.push(error);
+          }
+          try {
+            native.writeAtom(key2, void 0);
+          } catch (error) {
+            errors.push(error);
+          }
+          if (errors.length) throw Object.assign(new AggregateError(errors, "Native viewport restoration failed"), { code: "workspace_viewport_cleanup_failed" });
+          entries.clear();
+          current3 = null;
+        });
+      };
+      const ready = Promise.resolve().then(() => {
+        if (!active2) throw workspaceError("workspace_retired", "Native viewport retired during readiness");
+        const now = readContext();
+        if (now.routeNode !== first.routeNode || now.threadNode !== first.threadNode) throw workspaceError("workspace_viewport_superseded", "Native context changed during viewport readiness");
+        current3 = journal(first);
+        apply();
+        listen();
+      }).catch(async (error) => {
+        await close();
+        throw error;
+      });
+      ready.catch(() => {
+      });
+      const valid = (signal) => {
+        if (!active2) throw workspaceError("workspace_retired", "Native viewport retired");
+        native.check?.();
+        if (signal?.aborted) throw workspaceError("invocation_cancelled", "Native viewport update cancelled");
+      };
+      return Object.freeze({
+        ready,
+        subscribe(listener) {
+          valid();
+          listeners.add(listener);
+          listener(Object.freeze({ ...state }));
+          return () => listeners.delete(listener);
+        },
+        async bind(identity2, { signal } = {}) {
+          valid(signal);
+          const context = readContext();
+          if (identity2 && context.threadId !== identity2.threadId) throw workspaceError("workspace_selection_not_confirmed", "Native viewport selection changed");
+          try {
+            if (current3.context.routeNode !== context.routeNode) {
+              stop();
+              restore(current3);
+              current3 = journal(context);
+            } else stop();
+            bound = identity2 !== null;
+            apply();
+            listen();
+            notify();
+          } catch (error) {
+            await close();
+            throw error;
+          }
+        },
+        async update(next, { signal } = {}) {
+          valid(signal);
+          try {
+            stop();
+            if (next.width !== state.width) native.writeAtom(key2, void 0);
+            state = { ...next };
+            apply();
+            listen();
+            notify();
+            return Object.freeze({ ...state });
+          } catch (error) {
+            await close();
+            throw error;
+          }
+        },
+        close
+      });
+    }
+  });
+}
+
 // src/adapter/workspace-discovery.js
 async function readWorkspaceAsset(url, signal) {
   const response = await fetch(url, { credentials: "omit", signal });
@@ -7223,12 +7672,12 @@ function assetReferences(source, parent, role) {
   const pattern = new RegExp("[\"'`]((?:\\./)?" + role + "-[A-Za-z0-9_-]+\\.js)[\"'`]", "g");
   return [...new Set([...source.matchAll(pattern)].map((match) => new URL(match[1], parent).href))].filter((url) => /^app:\/\/-\/assets\/[A-Za-z0-9_-]+\.js$/.test(url));
 }
-function visit2(node, fn) {
+function visit3(node, fn) {
   if (!node || typeof node !== "object") return;
   if (node.type) fn(node);
   for (const [key2, value] of Object.entries(node)) if (!["start", "end"].includes(key2)) {
-    if (Array.isArray(value)) value.forEach((item) => visit2(item, fn));
-    else if (value && typeof value === "object") visit2(value, fn);
+    if (Array.isArray(value)) value.forEach((item) => visit3(item, fn));
+    else if (value && typeof value === "object") visit3(value, fn);
   }
 }
 function keymapExport(initial, source) {
@@ -7238,7 +7687,7 @@ function keymapExport(initial, source) {
   if (start == null) throw workspaceError("workspace_shortcuts_unavailable", "Native keymap declaration is unavailable");
   const ast = parseExpressionAt2(source, start, { ecmaVersion: "latest" }), candidates = /* @__PURE__ */ new Set();
   if (ast.end <= markerAt || ast.end - ast.start > 32768) throw workspaceError("workspace_shortcuts_unavailable", "Native keymap declaration exceeds the discovery boundary");
-  visit2(ast, (node) => {
+  visit3(ast, (node) => {
     if (node.type !== "AssignmentExpression" || node.left.type !== "Identifier" || node.right.type !== "CallExpression" || node.right.arguments.length !== 2) return;
     const part = source.slice(node.right.start, node.right.end);
     if (part.includes("primaryNumberShortcutTarget") && (part.includes(".data") || /\bdata\s*:/.test(part))) candidates.add(node.left.name);
@@ -7256,7 +7705,7 @@ var markers = (value, list) => {
 };
 function createWorkspaceDiscovery(baseNative, { load = (url) => import(url), read = readWorkspaceAsset, connect = localConnection } = {}) {
   const controller = new AbortController(), sources = /* @__PURE__ */ new Map(), modules = /* @__PURE__ */ new Map();
-  let common, transcript, shortcuts, connection, threadModule, composer, primaryModule, composerParts;
+  let common, transcript, shortcuts, connection, threadModule, composer, primaryModule, composerParts, viewport;
   const source = (url) => {
     if (!sources.has(url)) sources.set(url, read(url, controller.signal));
     return sources.get(url);
@@ -7285,11 +7734,14 @@ function createWorkspaceDiscovery(baseNative, { load = (url) => import(url), rea
     // persistent cleanup. No archived Native profile has passed those checks.
     // A future reviewed profile can prepare its driver here, before any mount.
     composerCapabilities: async () => ({ rebind: false }),
-    // The current Native resizer persists through its atom store. No reviewed
-    // independent state/persistence lifecycle has been established yet.
-    viewport: async () => {
-      throw workspaceError("workspace_viewport_unsupported", "Native independent viewport persistence isolation is not verified");
-    },
+    viewport: () => viewport ??= (async () => {
+      const native = await api.transcript(), graph = await source(native.initialUrl), roles = viewportSignalExports(graph);
+      const Shell = uniqueExport(native.initial, (value) => value?.RightPanelOutlet && value?.DetailPanelOutlet && value?.HeaderToolbar && value?.MainContentLayout, "Native viewport namespace");
+      const signals = Object.fromEntries(Object.entries(roles).map(([role, key2]) => [role, native.initial[key2]]));
+      const writeAtom = native.shared[viewportPersistenceExport(graph)];
+      const useScope = uniqueExport(native.shared, (value) => markers(value, ["useContext", "getOwnValue", "queryClient", "Missing query client"]), "scope facade hook");
+      return createNativeViewportDriver({ document: globalThis.document, native: { ...native, Shell, writeAtom, useScope, check: existing }, signals });
+    })(),
     navigation: async () => {
       const native = await getCommon(), connection2 = existing();
       const composerScope = uniqueExport(native.shared, (value) => value?.__scopeBrand === "ComposerScope" && typeof value.id === "symbol", "composer scope");
@@ -7401,7 +7853,7 @@ function createWorkspaceDiscovery(baseNative, { load = (url) => import(url), rea
       sources.clear();
       modules.clear();
       connection = null;
-      common = transcript = shortcuts = composer = threadModule = primaryModule = composerParts = null;
+      common = transcript = shortcuts = composer = threadModule = primaryModule = composerParts = viewport = null;
     }
   };
   return api;
@@ -9625,7 +10077,6 @@ function createWorkspaceViewports({ load, check, isConfirmed, report, prepared: 
     if (value?.api !== 1 || value.independent !== true || value.restoresSettings !== true || value.avoidsThreadPersistence !== true || value.notifiesChanges !== true || typeof value.create !== "function")
       throw workspaceError("workspace_viewport_unsupported", "A verified independent Native viewport driver is unavailable");
     driver = value;
-    onPrepared?.();
     return value;
   });
   function create(initial, live) {
@@ -9664,12 +10115,17 @@ function createWorkspaceViewports({ load, check, isConfirmed, report, prepared: 
     };
     const ready = ensure().then(async (value) => {
       valid();
-      const view = await value.create({ ...entry.state });
+      const view = await value.create({ ...entry.state }, { onError: (error) => {
+        report(error);
+        void close();
+      } });
       entry.view = view;
       if (!view || !["bind", "update", "subscribe", "close"].every((name) => typeof view[name] === "function")) throw workspaceError("workspace_viewport_unsupported", "Native viewport lifecycle is incomplete");
+      await view.ready;
       valid();
       entry.unlisten = view.subscribe(receive);
       if (typeof entry.unlisten !== "function") throw workspaceError("workspace_viewport_unsupported", "Native viewport notifications cannot be released");
+      onPrepared?.();
     });
     ready.catch(() => {
     });
@@ -10340,17 +10796,17 @@ function locateHost() {
   if (navigator.location.pathname === "/avatar-overlay" || navigator.location.pathname.startsWith("/avatar-overlay/"))
     return { navigator, tree, rootNode: document.getElementById("root"), auxiliary: true };
   const candidates = [], objects = !tree.props;
-  const visit3 = (element) => {
+  const visit4 = (element) => {
     const props = objects ? element : element?.props;
     if (!props) return;
     const children = props.children;
     if (Array.isArray(children)) {
       const path2 = (child) => objects ? child?.path : child?.props?.path;
       if (children.some((child) => path2(child) === "/inbox") && children.some((child) => path2(child) === "/connector/oauth_callback")) candidates.push(children);
-      children.forEach(visit3);
-    } else visit3(children);
+      children.forEach(visit4);
+    } else visit4(children);
   };
-  visit3(tree);
+  visit4(tree);
   if (candidates.length !== 1 || Object.isFrozen(candidates[0]) || !Object.isExtensible(candidates[0]))
     throw fail7("ui_host_drift", "The reviewed authenticated route collection is unavailable");
   return { navigator, routes: candidates[0], Route: tree.type, objects, tree, rootNode: document.getElementById("root") };

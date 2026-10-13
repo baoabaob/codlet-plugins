@@ -11,7 +11,8 @@ export function ancestry(node, limit = 64) {
 }
 export function providersFor(node) {
   const result = [], seen = new Set();
-  for (const fiber of ancestry(node, 180)) {
+  const current = currentElementAncestry(node, node?.ownerDocument?.getElementById('root'));
+  for (const fiber of current ? [...current].reverse() : ancestry(node, 180)) {
     let count = 0;
     for (let dep = fiber.dependencies?.firstContext; dep && count++ < 128; dep = dep.next) {
       if (!dep.context || seen.has(dep.context)) continue;

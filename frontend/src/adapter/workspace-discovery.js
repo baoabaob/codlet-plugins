@@ -3,6 +3,7 @@ import { loadedAsset, localConnection, uniqueExport, componentSource } from '../
 import { workspaceError } from './workspace-dom.js';
 import { createNativeComposerDriver } from './workspace-native-composer.js';
 import { createNativeNavigation, navigationSignalExport, nativeNavigationScope } from './workspace-native-navigation.js';
+import { createNativeViewportDriver, viewportSignalExports, viewportPersistenceExport } from './workspace-native-viewport.js';
 
 export async function readWorkspaceAsset(url, signal) {
   const response = await fetch(url, { credentials: 'omit', signal });
@@ -55,7 +56,7 @@ const markers = (value, list) => { const source = componentSource(value); return
 // One cache per provider lifetime; lazy modules never initialize in pet windows.
 export function createWorkspaceDiscovery(baseNative, { load = url => import(url), read = readWorkspaceAsset, connect = localConnection } = {}) {
   const controller = new AbortController(), sources = new Map(), modules = new Map();
-  let common, transcript, shortcuts, connection, threadModule, composer, primaryModule, composerParts;
+  let common, transcript, shortcuts, connection, threadModule, composer, primaryModule, composerParts, viewport;
   const source = url => { if (!sources.has(url)) sources.set(url, read(url, controller.signal)); return sources.get(url); };
   const module = url => { if (!modules.has(url)) modules.set(url, load(url)); return modules.get(url); };
   const existing = () => {
@@ -78,9 +79,14 @@ export function createWorkspaceDiscovery(baseNative, { load = url => import(url)
     // persistent cleanup. No archived Native profile has passed those checks.
     // A future reviewed profile can prepare its driver here, before any mount.
     composerCapabilities: async () => ({ rebind: false }),
-    // The current Native resizer persists through its atom store. No reviewed
-    // independent state/persistence lifecycle has been established yet.
-    viewport: async () => { throw workspaceError('workspace_viewport_unsupported','Native independent viewport persistence isolation is not verified'); },
+    viewport: () => viewport ??= (async () => {
+      const native = await api.transcript(), graph = await source(native.initialUrl), roles = viewportSignalExports(graph);
+      const Shell = uniqueExport(native.initial, value => value?.RightPanelOutlet && value?.DetailPanelOutlet && value?.HeaderToolbar && value?.MainContentLayout, 'Native viewport namespace');
+      const signals = Object.fromEntries(Object.entries(roles).map(([role, key]) => [role, native.initial[key]]));
+      const writeAtom = native.shared[viewportPersistenceExport(graph)];
+      const useScope = uniqueExport(native.shared, value => markers(value, ['useContext', 'getOwnValue', 'queryClient', 'Missing query client']), 'scope facade hook');
+      return createNativeViewportDriver({ document: globalThis.document, native: { ...native, Shell, writeAtom, useScope, check: existing }, signals });
+    })(),
     navigation: async () => {
       const native = await getCommon(), connection = existing();
       const composerScope = uniqueExport(native.shared, value => value?.__scopeBrand === 'ComposerScope' && typeof value.id === 'symbol', 'composer scope');
@@ -90,8 +96,8 @@ export function createWorkspaceDiscovery(baseNative, { load = url => import(url)
       const dispatch = uniqueExport(native.initial, value => typeof value === 'function' && value.length === 7 && markers(value,
         ['sidebarThreadLocationId', 'orbitPrewarmId', '`sidebar`', 'threadId:']), 'thread navigation action');
       const parts = { manager: connection.manager, composerScope, ThreadScope, RouteScope, inputApi: 1, check: () => existing() };
-      // Native EditorProvider uses this semantic draft namespace as its key.
-      // View/controller references may change while this namespace persists.
+      // Native's EditorProvider key is the draft namespace, independent of a
+      // particular ProseMirror controller. Optional for older navigation hosts.
       parts.draftKey = uniqueExport(native.shared, value => typeof value === 'function' && value.length === 1 && markers(value,
         ['gpt-draft:', 'draftThreadLocationId', 'library-preview:', 'widget-overlay:', 'clientThreadId']), 'composer draft identity', true);
       return { ...parts, ...createNativeNavigation(signal, existing, dispatch, () => nativeNavigationScope(existing())) };
@@ -179,7 +185,7 @@ export function createWorkspaceDiscovery(baseNative, { load = url => import(url)
           return connection.node.store.get(keymap.resolve(connection.node, connection.chain));
         } };
     })(),
-    dispose() { controller.abort(); sources.clear(); modules.clear(); connection = null; common = transcript = shortcuts = composer = threadModule = primaryModule = composerParts = null; },
+    dispose() { controller.abort(); sources.clear(); modules.clear(); connection = null; common = transcript = shortcuts = composer = threadModule = primaryModule = composerParts = viewport = null; },
   };
   return api;
 }
