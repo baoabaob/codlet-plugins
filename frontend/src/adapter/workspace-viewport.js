@@ -6,7 +6,7 @@ function options(value={},previous={open:false,width:360}){
   if(typeof next.open!=='boolean'||!Number.isFinite(next.width)||next.width<240||next.width>1600)throw workspaceError('invalid_argument','Invalid viewport openness or width');
   return next;
 }
-export function createWorkspaceViewports({load,check,isConfirmed,report,prepared:onPrepared}){
+export function createWorkspaceViewports({load,check,isConfirmed,isCurrentContext=id=>id==null||isConfirmed(id),report,prepared:onPrepared,failed:onFailed}){
   let record,prepared,driver,disposed=false;const cleanup=new Set();
   const ensure=()=>prepared??=Promise.resolve().then(load).then(value=>{
     if(disposed)throw workspaceError('workspace_retired','Viewport provider retired');
@@ -17,14 +17,14 @@ export function createWorkspaceViewports({load,check,isConfirmed,report,prepared
   function create(initial,live){
     check();live();if(disposed)throw workspaceError('workspace_retired','Viewport provider retired');
     if(record)throw workspaceError('workspace_viewport_owned','Independent viewport already has an owner');
-    const entry={active:true,state:options(initial),threadId:null,view:null,operation:null,closing:null,listeners:new Set()};record=entry;
-    const valid=()=>{check();live();if(!entry.active)throw workspaceError('workspace_retired','Viewport handle retired');};
+    const entry={active:true,state:options(initial),threadId:null,view:null,operation:null,closing:null,failure:null,listeners:new Set()};record=entry;
+    const valid=()=>{check();live();if(!entry.active)throw entry.failure ?? workspaceError('workspace_retired','Viewport handle retired');};
     const snapshot=()=>Object.freeze({independent:true,...entry.state,threadId:entry.threadId,hostId:entry.threadId?'local':null});
     const callback=(listener,value)=>{try{Promise.resolve(listener(value)).catch(report);}catch(error){report(error);}};
     const notify=()=>{if(entry.active)for(const listener of entry.listeners)callback(listener,snapshot());};
     const receive=value=>{if(!entry.active)return;try{const next=options(value,entry.state);if(next.open===entry.state.open&&next.width===entry.state.width)return;entry.state=next;notify();}catch(error){report(error);}};
     const ready=ensure().then(async value=>{
-      valid();const view=await value.create({...entry.state},{onError:error=>{report(error);void close();}});entry.view=view;
+      valid();const view=await value.create({...entry.state},{isCurrentContext,onError:error=>{entry.failure??=error;onFailed?.(entry.failure);report(error);void close();}});entry.view=view;
       if(!view||!['bind','update','subscribe','close'].every(name=>typeof view[name]==='function'))throw workspaceError('workspace_viewport_unsupported','Native viewport lifecycle is incomplete');
       await view.ready;valid();entry.unlisten=view.subscribe(receive);
       if(typeof entry.unlisten!=='function')throw workspaceError('workspace_viewport_unsupported','Native viewport notifications cannot be released');
@@ -52,7 +52,8 @@ export function createWorkspaceViewports({load,check,isConfirmed,report,prepared
         }else{const next=options(value,entry.state);const applied=await entry.view.update(next,{signal:controller.signal});valid();entry.state=options(applied??next,entry.state);}
         notify();
         if(controller.signal.aborted)throw workspaceError('outcome_unknown','Viewport caller cancelled after Native application');return snapshot();
-      }finally{signal?.removeEventListener('abort',abort);if(entry.operation===controller)entry.operation=null;}
+      }catch(error){if(entry.failure&&error!==entry.failure&&!error?.errors?.includes(entry.failure))throw entry.failure;throw error;}
+      finally{signal?.removeEventListener('abort',abort);if(entry.operation===controller)entry.operation=null;}
     }
     const run=(action,value,invocation)=>{const pending=apply(action,value,invocation);entry.inflight=pending;const clear=()=>{if(entry.inflight===pending)entry.inflight=null;};pending.then(clear,clear);return pending;};
     entry.handle=Object.freeze({ready,getSnapshot(){valid();return snapshot();},subscribe(listener){valid();if(typeof listener!=='function'||entry.listeners.size>=32)throw workspaceError('invalid_argument','Expected a viewport listener (at most 32)');entry.listeners.add(listener);callback(listener,snapshot());return()=>entry.listeners.delete(listener);},bind:(value,invocation)=>run('bind',value,invocation),update:(value,invocation)=>run('update',value,invocation),close,dispose(){void close();}});return entry.handle;

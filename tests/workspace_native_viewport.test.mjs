@@ -72,6 +72,25 @@ test('Native viewer changes retain their own pane configuration after the owned 
   await view.close();assert.equal(f.a.facade.get(f.widthSignal),next);assert.equal(f.a.watchers.size+f.a.motions.size,0);
 });
 
+test('null binding during navigation never adopts an unconfirmed shell or runs a queued old-context override',async t=>{
+  const f=fixture(t),errors=[];let confirmed='thread-a';
+  const view=await f.driver.create({open:true,width:520},{onError:error=>errors.push(error),isCurrentContext:id=>id===confirmed});await view.ready;await view.bind({threadId:'thread-a'});
+  f.a.facade.set(f.widthSignal,{defaultWidth:810,storageKey:'native:new-viewer'});
+  confirmed=null;f.setCurrent(f.b);f.a.layout.widthMode='full';
+  const before=f.b.facade.get(f.widthSignal);await view.bind(null);await tick();
+  assert.equal(f.b.facade.get(f.widthSignal),before,'null selection cannot lease a target before confirmation');assert.deepEqual(errors,[]);
+  confirmed='thread-b';await view.bind({threadId:'thread-b'});assert.equal(f.b.facade.get(f.widthSignal).defaultWidth,520);assert.equal(f.a.facade.get(f.widthSignal).storageKey,'native:new-viewer');
+  await view.close();assert.equal(f.b.facade.get(f.widthSignal),before);assert.equal(f.a.watchers.size+f.b.watchers.size+f.a.motions.size+f.b.motions.size,0);
+});
+
+test('a failed binding retains the primary error even if restoration also fails',async t=>{
+  const f=fixture(t),reported=[],view=await f.driver.create({open:true,width:520},{onError:error=>reported.push(error)});await view.ready;
+  f.setCurrent(f.b);f.b.layout.widthMode='full';f.a.routeNode.signalBindings.delete(f.widthSignal);
+  await assert.rejects(view.bind({threadId:'thread-b'}),error=>error.code==='workspace_viewport_state_evicted'&&error.cause?.code==='workspace_viewport_state_evicted'&&error.errors?.length===2);
+  assert.equal(reported[0].code,'workspace_viewport_state_evicted');assert.ok(reported[0].message.includes('binding failed'));
+  await assert.rejects(view.bind({threadId:'thread-b'}),error=>error===reported[0],'subsequent calls expose the first failure, not a generic retired error');
+});
+
 test('Native selection changed during readiness fails before mutating another thread and retires notifications',async t=>{
   const f=fixture(t),allocating=f.driver.create({open:true,width:360});f.setCurrent(f.b);const view=await allocating;
   await assert.rejects(view.ready,{code:'workspace_viewport_superseded'});await view.close();
@@ -96,7 +115,7 @@ test('a Native layout drift during deferred configuration releases the owned lea
   const f=fixture(t),errors=[],view=await f.driver.create({open:true,width:360},{onError:error=>errors.push(error)});await view.ready;
   f.a.layout.widthMode='full';f.a.facade.set(f.widthSignal,{defaultWidth:900,storageKey:'native:new-viewer'});await tick();await view.close();
   assert.equal(errors[0].code,'workspace_viewport_unsupported');assert.equal(f.a.facade.get(f.widthSignal).storageKey,'native:new-viewer');assert.equal(f.a.watchers.size+f.a.motions.size,0);
-  await assert.rejects(view.update({open:false,width:400}),{code:'workspace_retired'});
+  await assert.rejects(view.update({open:false,width:400}),error=>error.code==='workspace_viewport_unsupported'&&error.message.includes('notification failed'),'retirement retains its original cause');
 });
 
 const driverBundle=(await build({entryPoints:[fileURLToPath(new URL('../frontend/src/adapter/workspace-native-viewport.js',import.meta.url))],bundle:true,write:false,format:'iife',globalName:'Viewport',platform:'browser'})).outputFiles[0].text;

@@ -174,12 +174,22 @@ export function createNativeViewportDriver({ document, native, signals, readCont
   const pins = new WeakMap(); readContext ??= () => nativeViewportContext(document, native, pins);
   let widthSignal;
   return Object.freeze({ api: 1, independent: true, restoresSettings: true, avoidsThreadPersistence: true, notifiesChanges: true,
-    async create(initial, { onError = () => {} } = {}) {
+    async create(initial, { onError = () => {}, isCurrentContext = () => true } = {}) {
       native.check?.(); const first = readContext(); readLayout(first);
       widthSignal ??= learnWidth(first);
       if (widthSignal?.scope !== native.RouteScope || widthSignal.cache !== 'signal' || typeof widthSignal.resolve !== 'function') throw unavailable('Native independent width signal changed scope');
       const key = 'codlet.workspace.viewport.' + crypto.randomUUID(), entries = new Map(), listeners = new Set();
-      let active = true, current, state = { ...initial }, bound = false, unwatch, unmotion, masked, restoreMask, queued = false;
+      let active = true, current, state = { ...initial }, bound = false, unwatch, unmotion, masked, restoreMask, queued = false, failure;
+      const remember = (error, phase) => {
+        failure ??= Object.assign(workspaceError(error?.code ?? 'workspace_viewport_failed', `Native viewport ${phase} failed: ${String(error?.message ?? error)}`), { cause: error });
+        return failure;
+      };
+      const retireFailed = async (error, phase) => {
+        const primary = remember(error, phase);
+        try { onError(primary); } catch {}
+        try { await close(); } catch (cleanup) { throw Object.assign(new AggregateError([primary, cleanup], primary.message + '; viewport cleanup also failed', { cause: primary }), { code: primary.code }); }
+        throw primary;
+      };
       const notify = () => { if (active) for (const listener of listeners) listener(Object.freeze({ ...state })); };
       const journal = context => {
         let entry = entries.get(context.routeNode);
@@ -230,7 +240,7 @@ export function createNativeViewportDriver({ document, native, signals, readCont
         mask(); return layout;
       };
       const onWidth = value => {
-        if (!active) return;
+        if (!active || !isCurrentContext(current.context.threadId)) return;
         if (Number.isFinite(value) && value >= 240 && value <= 1600 && state.width !== value) { state = { ...state, width: value }; notify(); }
         mask();
       };
@@ -247,8 +257,8 @@ export function createNativeViewportDriver({ document, native, signals, readCont
       };
       const listen = () => {
         unwatch = current.context.facade.watch(({ get }) => {
+          if (!active || !isCurrentContext(current.context.threadId)) return;
           const config = get(widthSignal), open = get(signals.open), full = get(signals.fullWidth), expanded = get(signals.expanded);
-          if (!active) return;
           if (state.open !== open) { state = { ...state, open }; notify(); }
           if ((config !== current.applied || full || expanded) && !queued) {
             // A Native viewer may change its normal pane configuration. Keep
@@ -257,7 +267,19 @@ export function createNativeViewportDriver({ document, native, signals, readCont
             queued = true;const entry = current;
             queueMicrotask(() => {
               queued = false; if (!active || current !== entry || !entry.leased) return;
-              try { apply(); } catch (error) { onError(error); void close().catch(onError); }
+              try {
+                // Navigation can publish a new Native shell before the caller
+                // binds its new identity. Old-context signals must not reapply
+                // an override against that new shell's live layout.
+                if (!isCurrentContext(entry.context.threadId)) return;
+                let now;
+                try { now = readContext(); } catch (error) {
+                  if (['workspace_host_pending','workspace_composer_binding_drift'].includes(error?.code)) return;
+                  throw error;
+                }
+                if (now.routeNode !== entry.context.routeNode || now.threadNode !== entry.context.threadNode) return;
+                apply();
+              } catch (error) { const primary=remember(error,'notification');onError(primary);void close().catch(onError); }
             });
           }
         });
@@ -279,29 +301,37 @@ export function createNativeViewportDriver({ document, native, signals, readCont
         const now = readContext();
         if (now.routeNode !== first.routeNode || now.threadNode !== first.threadNode) throw workspaceError('workspace_viewport_superseded', 'Native context changed during viewport readiness');
         current = journal(first); apply(); listen();
-      }).catch(async error => { await close(); throw error; });
+      }).catch(error => retireFailed(error,'readiness'));
       ready.catch(() => {});
       const valid = signal => {
-        if (!active) throw workspaceError('workspace_retired', 'Native viewport retired'); native.check?.();
+        if (!active) throw failure ?? workspaceError('workspace_retired', 'Native viewport retired'); native.check?.();
         if (signal?.aborted) throw workspaceError('invocation_cancelled', 'Native viewport update cancelled');
       };
       return Object.freeze({
         ready,
         subscribe(listener) { valid(); listeners.add(listener); listener(Object.freeze({ ...state })); return () => listeners.delete(listener); },
         async bind(identity, { signal } = {}) {
-          valid(signal); const context = readContext();
+          valid(signal);
+          if (identity === null) {
+            // Null clears presentation during a route transition. It is not
+            // permission to adopt an unconfirmed context or reapply old flags
+            // to the new shell. Confirmed bind will restore/adopt contexts.
+            if (!isCurrentContext(current.context.threadId)) stop();
+            bound = false; mask(); notify(); return;
+          }
+          const context = readContext();
           if (identity && context.threadId !== identity.threadId) throw workspaceError('workspace_selection_not_confirmed', 'Native viewport selection changed');
           try {
           if (current.context.routeNode !== context.routeNode) { stop(); restore(current); current = journal(context); }
           else stop();
           bound = identity !== null; apply(); listen(); notify();
-          } catch (error) { await close(); throw error; }
+          } catch (error) { return retireFailed(error,'binding'); }
         },
         async update(next, { signal } = {}) {
           valid(signal);try { stop();
           if (next.width !== state.width) native.writeAtom(key, undefined);
           state = { ...next }; apply(); listen(); notify(); return Object.freeze({ ...state });
-          } catch (error) { await close(); throw error; }
+          } catch (error) { return retireFailed(error,'update'); }
         },
         close,
       });

@@ -71,6 +71,17 @@ test('Native viewport resize/close notifications push state and null binding pre
   await handle.close();notify({open:true});assert.equal(unsubscribed,1);assert.equal(closed,1);await provider.cleanup();provider.dispose();
 });
 
+test('viewport driver failure retires readiness, keeps its primary cause and completes cleanup without a pending-bind deadlock',async()=>{
+  const primary=Object.assign(Error('Native binding failed'),{code:'workspace_viewport_state_evicted'}),reported=[];let failed,closed=0;
+  const provider=createWorkspaceViewports({load:async()=>({api:1,independent:true,restoresSettings:true,avoidsThreadPersistence:true,notifiesChanges:true,
+    create(_initial,{onError}){return{subscribe(){return()=>{};},async bind(){onError(primary);throw Object.assign(Error('Native retired'),{code:'workspace_retired'});},update(){},close(){closed++;}};}}),
+    check(){},isConfirmed:()=>true,failed:error=>{failed=error;},report:error=>reported.push(error)});
+  const handle=provider.create({},()=>{});await handle.ready;
+  await assert.rejects(handle.bind({threadId:'thread-a'}),error=>error===primary);
+  await handle.close();await provider.cleanup();assert.equal(failed,primary);assert.equal(reported[0],primary);assert.equal(closed,1);
+  assert.throws(()=>handle.getSnapshot(),error=>error===primary);
+});
+
 test('location restoration waits for an asynchronous Native route commit and releases its route guard on cancellation',async t=>{
   const dom=new JSDOM('<div id="root"></div>'),document=dom.window.document;t.after(()=>dom.window.close());
   const navigator={location:{pathname:'/',state:{private:'original'}}},host={navigator,rootNode:document.getElementById('root')};let pending,released=0;

@@ -7469,14 +7469,31 @@ function createNativeViewportDriver({
     avoidsThreadPersistence: true,
     notifiesChanges: true,
     async create(initial, { onError = () => {
-    } } = {}) {
+    }, isCurrentContext = () => true } = {}) {
       native.check?.();
       const first = readContext();
       readLayout(first);
       widthSignal ??= learnWidth(first);
       if (widthSignal?.scope !== native.RouteScope || widthSignal.cache !== "signal" || typeof widthSignal.resolve !== "function") throw unavailable("Native independent width signal changed scope");
       const key2 = "codlet.workspace.viewport." + crypto.randomUUID(), entries = /* @__PURE__ */ new Map(), listeners = /* @__PURE__ */ new Set();
-      let active2 = true, current3, state = { ...initial }, bound = false, unwatch, unmotion, masked, restoreMask, queued = false;
+      let active2 = true, current3, state = { ...initial }, bound = false, unwatch, unmotion, masked, restoreMask, queued = false, failure;
+      const remember = (error, phase) => {
+        failure ??= Object.assign(workspaceError(error?.code ?? "workspace_viewport_failed", `Native viewport ${phase} failed: ${String(error?.message ?? error)}`), { cause: error });
+        return failure;
+      };
+      const retireFailed = async (error, phase) => {
+        const primary = remember(error, phase);
+        try {
+          onError(primary);
+        } catch {
+        }
+        try {
+          await close();
+        } catch (cleanup) {
+          throw Object.assign(new AggregateError([primary, cleanup], primary.message + "; viewport cleanup also failed", { cause: primary }), { code: primary.code });
+        }
+        throw primary;
+      };
       const notify = () => {
         if (active2) for (const listener of listeners) listener(Object.freeze({ ...state }));
       };
@@ -7549,7 +7566,7 @@ function createNativeViewportDriver({
         return layout;
       };
       const onWidth = (value) => {
-        if (!active2) return;
+        if (!active2 || !isCurrentContext(current3.context.threadId)) return;
         if (Number.isFinite(value) && value >= 240 && value <= 1600 && state.width !== value) {
           state = { ...state, width: value };
           notify();
@@ -7575,8 +7592,8 @@ function createNativeViewportDriver({
       };
       const listen = () => {
         unwatch = current3.context.facade.watch(({ get }) => {
+          if (!active2 || !isCurrentContext(current3.context.threadId)) return;
           const config = get(widthSignal), open = get(signals.open), full = get(signals.fullWidth), expanded = get(signals.expanded);
-          if (!active2) return;
           if (state.open !== open) {
             state = { ...state, open };
             notify();
@@ -7589,9 +7606,19 @@ function createNativeViewportDriver({
               queued = false;
               if (!active2 || current3 !== entry || !entry.leased) return;
               try {
+                if (!isCurrentContext(entry.context.threadId)) return;
+                let now;
+                try {
+                  now = readContext();
+                } catch (error) {
+                  if (["workspace_host_pending", "workspace_composer_binding_drift"].includes(error?.code)) return;
+                  throw error;
+                }
+                if (now.routeNode !== entry.context.routeNode || now.threadNode !== entry.context.threadNode) return;
                 apply();
               } catch (error) {
-                onError(error);
+                const primary = remember(error, "notification");
+                onError(primary);
                 void close().catch(onError);
               }
             });
@@ -7634,14 +7661,11 @@ function createNativeViewportDriver({
         current3 = journal(first);
         apply();
         listen();
-      }).catch(async (error) => {
-        await close();
-        throw error;
-      });
+      }).catch((error) => retireFailed(error, "readiness"));
       ready.catch(() => {
       });
       const valid = (signal) => {
-        if (!active2) throw workspaceError("workspace_retired", "Native viewport retired");
+        if (!active2) throw failure ?? workspaceError("workspace_retired", "Native viewport retired");
         native.check?.();
         if (signal?.aborted) throw workspaceError("invocation_cancelled", "Native viewport update cancelled");
       };
@@ -7655,6 +7679,13 @@ function createNativeViewportDriver({
         },
         async bind(identity2, { signal } = {}) {
           valid(signal);
+          if (identity2 === null) {
+            if (!isCurrentContext(current3.context.threadId)) stop();
+            bound = false;
+            mask();
+            notify();
+            return;
+          }
           const context = readContext();
           if (identity2 && context.threadId !== identity2.threadId) throw workspaceError("workspace_selection_not_confirmed", "Native viewport selection changed");
           try {
@@ -7668,8 +7699,7 @@ function createNativeViewportDriver({
             listen();
             notify();
           } catch (error) {
-            await close();
-            throw error;
+            return retireFailed(error, "binding");
           }
         },
         async update(next, { signal } = {}) {
@@ -7683,8 +7713,7 @@ function createNativeViewportDriver({
             notify();
             return Object.freeze({ ...state });
           } catch (error) {
-            await close();
-            throw error;
+            return retireFailed(error, "update");
           }
         },
         close
@@ -10180,7 +10209,7 @@ function options3(value = {}, previous = { open: false, width: 360 }) {
   if (typeof next.open !== "boolean" || !Number.isFinite(next.width) || next.width < 240 || next.width > 1600) throw workspaceError("invalid_argument", "Invalid viewport openness or width");
   return next;
 }
-function createWorkspaceViewports({ load, check, isConfirmed, report, prepared: onPrepared }) {
+function createWorkspaceViewports({ load, check, isConfirmed, isCurrentContext = (id) => id == null || isConfirmed(id), report, prepared: onPrepared, failed: onFailed }) {
   let record, prepared, driver, disposed = false;
   const cleanup = /* @__PURE__ */ new Set();
   const ensure = () => prepared ??= Promise.resolve().then(load).then((value) => {
@@ -10195,12 +10224,12 @@ function createWorkspaceViewports({ load, check, isConfirmed, report, prepared: 
     live();
     if (disposed) throw workspaceError("workspace_retired", "Viewport provider retired");
     if (record) throw workspaceError("workspace_viewport_owned", "Independent viewport already has an owner");
-    const entry = { active: true, state: options3(initial), threadId: null, view: null, operation: null, closing: null, listeners: /* @__PURE__ */ new Set() };
+    const entry = { active: true, state: options3(initial), threadId: null, view: null, operation: null, closing: null, failure: null, listeners: /* @__PURE__ */ new Set() };
     record = entry;
     const valid = () => {
       check();
       live();
-      if (!entry.active) throw workspaceError("workspace_retired", "Viewport handle retired");
+      if (!entry.active) throw entry.failure ?? workspaceError("workspace_retired", "Viewport handle retired");
     };
     const snapshot = () => Object.freeze({ independent: true, ...entry.state, threadId: entry.threadId, hostId: entry.threadId ? "local" : null });
     const callback = (listener, value) => {
@@ -10226,7 +10255,9 @@ function createWorkspaceViewports({ load, check, isConfirmed, report, prepared: 
     };
     const ready = ensure().then(async (value) => {
       valid();
-      const view = await value.create({ ...entry.state }, { onError: (error) => {
+      const view = await value.create({ ...entry.state }, { isCurrentContext, onError: (error) => {
+        entry.failure ??= error;
+        onFailed?.(entry.failure);
         report(error);
         void close();
       } });
@@ -10293,6 +10324,9 @@ function createWorkspaceViewports({ load, check, isConfirmed, report, prepared: 
         notify();
         if (controller.signal.aborted) throw workspaceError("outcome_unknown", "Viewport caller cancelled after Native application");
         return snapshot();
+      } catch (error) {
+        if (entry.failure && error !== entry.failure && !error?.errors?.includes(entry.failure)) throw entry.failure;
+        throw error;
       } finally {
         signal?.removeEventListener("abort", abort);
         if (entry.operation === controller) entry.operation = null;
@@ -10410,7 +10444,11 @@ function createWorkspace(context, {
   const viewports = createWorkspaceViewports({ load: () => typeof discovery.viewport === "function" ? discovery.viewport() : Promise.reject(workspaceError("workspace_viewport_unsupported", "Native viewport driver is unavailable")), prepared: () => {
     features = { ...features, independentViewport: true };
     schedule(false);
-  }, check, isConfirmed: (id) => navigation.matchesCurrentThread(id), report });
+  }, failed: (error) => {
+    features = { ...features, independentViewport: false };
+    diagnostic = errorValue(error);
+    schedule(false);
+  }, check, isConfirmed: (id) => navigation.matchesCurrentThread(id), isCurrentContext: (id) => snapshot.threadId === id && (id === null || navigation.matchesCurrentThread(id)), report });
   const actions = createWorkspaceActions({ document: doc, load: () => featureLoad("action", discovery.action), activity: () => activity ??= findActivity(doc), check, report });
   const composers = createComposers({ document: doc, load: () => featureLoad("composer", discovery.composer), surface: () => surface, check, report, metrics });
   let composerFeatures, composerFeatureEpoch = 0;
