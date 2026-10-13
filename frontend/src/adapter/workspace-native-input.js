@@ -51,7 +51,9 @@ export function inspectNativeInput(native, input, root, register, diagnose) {
   }
   const candidates = [...new Set([...chain, ...branch])];
   const controllers = new Set();
-  const views = diagnose ? [] : null;
+  // Phase-only instrumentation needs no per-provider/dependency view details.
+  // Existing diagnostic callers keep their richer output by default.
+  const views = diagnose && !diagnose.countsOnly ? [] : null;
   for (const fiber of candidates) {
     const value = fiber.tag === 10 && fiber.memoizedProps?.value;
     if (views && value?.view?.dom) views.push({ kind: 'provider', sameDom: value.view.dom === editable, withinInput: input.contains(value.view.dom) });

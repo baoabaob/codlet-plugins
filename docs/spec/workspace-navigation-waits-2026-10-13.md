@@ -80,3 +80,5 @@ If observation delay is material, an operation-scoped rAF that rechecks pending 
 Preflight deduplication within one synchronous call and narrower pending-stage checks are secondary candidates. The current Native aggregate's pre-input interval is median 5ms/P95 11.9ms, so they do not explain or eliminate the dominant 179ms interval by themselves. Never cache across a changed committed root/editor/scope or bypass the cold-path post-await IME check, stale revision checks, full input ownership, or surface consistency.
 
 The result is a measured location for further work, not a claimed fix: **separate the executed-to-committed interval first**, then optimize only the stage shown to dominate it. Split retains layout/instance/cache policy and its own CPU/geometry/render budget; Adapter retains generic binding and observation costs.
+
+Private phase points and a bounded report reader have subsequently been implemented and verified offline; see [the precise definitions, retention limits and checks](workspace-navigation-phase-points-2026-10-13.md). The scheduling candidates above remain unimplemented and unmeasured in Native. The closed profile was not reopened.

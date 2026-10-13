@@ -2,9 +2,12 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createRequire } from 'node:module';
 import { createWorkspaceNavigation } from '../frontend/src/adapter/workspace-navigation.js';
+import { createWorkspaceMetrics } from '../frontend/src/adapter/workspace-metrics.js';
+import { inspectNativeInput } from '../frontend/src/adapter/workspace-native-input.js';
+import { summarizeNavigationTestPoints } from './fixtures/workspace-acceptance/summarize-navigation-test-points.mjs';
 
 const require = createRequire(new URL('../frontend/package.json', import.meta.url)), { JSDOM } = require('jsdom');
-function setup(t, { cold = false, inputApi = 1, nativeEntry = true } = {}) {
+function setup(t, { cold = false, inputApi = 1, nativeEntry = true, metrics, onInputRead, onBindingRead } = {}) {
   const dom = new JSDOM('<!doctype html><div id="root"><div data-codex-composer-root><div id="input" tabindex="0" contenteditable="true"></div></div></div>', { url: 'app://-/index.html' });
   const { window } = dom, { document } = window, editable = document.getElementById('input');
   const makeBinding = threadId => ({ threadId, hostId: 'local', clientThreadId: 'local:' + threadId,
@@ -12,13 +15,15 @@ function setup(t, { cold = false, inputApi = 1, nativeEntry = true } = {}) {
     scopeNode: {}, scopeValue: {}, threadNode: {}, threadValue: {}, routeNode: {}, routeValue: {} });
   const state = { binding: makeBinding('fixture-a'), alive: true }, calls = [], requests = [], checkedInputs = [], nativeCalls = [];
   const navigator = { location: { pathname: '/local/fixture-a', search: '', hash: '', state: null }, push(path) {
-    calls.push(path); this.location = { ...this.location, pathname: path }; state.binding = makeBinding(path.slice(7));
+    calls.push(path); this.location = { ...this.location, pathname: path }; const next = makeBinding(path.slice(7));
+    if (state.delayBinding) state.nextBinding = next; else state.binding = next;
   } };
   const manager = { getConversation: id => cold && id !== 'fixture-a' ? null : { id, hostId: 'local', resumeState: 'resumed' },
     sendRequest(method, args) { return new Promise(resolve => requests.push({ method, args, resolve })); } };
   const provider = createWorkspaceNavigation({ document, load: async () => ({ manager, inputApi, openLocalThread: nativeEntry ? id => { nativeCalls.push(id); navigator.push('/local/' + id); } : undefined }), host: () => ({ navigator }),
     check() { if (!state.alive) throw Object.assign(Error('retired'), { code: 'workspace_retired' }); }, changed() {},
-    readBinding: checked => { if (checked !== undefined) checkedInputs.push(checked); return state.binding; }, readCurrentInput: () => state.binding });
+    metrics, readBinding: checked => { onBindingRead?.(); if (checked !== undefined) checkedInputs.push(checked); return state.binding; },
+    readCurrentInput: () => { onInputRead?.(); return state.binding; } });
   const navigation = provider.create(() => {});
   t.after(() => { provider.dispose(); window.close(); });
   return { window, document, editable, state, calls, requests, navigator, provider, navigation, makeBinding, checkedInputs, nativeCalls };
@@ -98,4 +103,106 @@ test('strict input navigation refuses a missing Native lifecycle entry before di
   await assert.rejects(f.navigation.ready, { code: 'workspace_navigation_unsupported' });
   assert.equal(f.navigation.inputApi, 0);
   assert.deepEqual(f.calls, []);
+});
+
+test('opt-in navigation phases separate controlled waiting from checks and contain only private numeric aliases', async t => {
+  let clock = 0;
+  const metrics = createWorkspaceMetrics({ enabled: true, runId: 'navigation-phases', now: () => clock });
+  const f = setup(t, { metrics, onInputRead: () => { clock += 3; }, onBindingRead: () => { clock += 2; } });
+  const frames = new Map(); let nextFrame = 0;
+  f.window.requestAnimationFrame = callback => { frames.set(++nextFrame, callback); return nextFrame; };
+  f.window.cancelAnimationFrame = id => frames.delete(id);
+  await f.navigation.ready; f.state.delayBinding = true;
+  f.state.binding.controller.privateDraft = 'never-record-this-draft';
+  const operation = f.navigation.open({ threadId: 'fixture-b' }); await operation.executed; await Promise.resolve();
+  assert.equal(frames.size, 1, 'instrumentation did not add a pending polling loop');
+  assert.ok(metrics.report().counts['navigation.input.pending.identity'] >= 1);
+  clock = 200; f.state.binding = f.state.nextBinding;
+  const callback = [...frames.values()][0]; frames.clear(); callback();
+  const receipt = await operation.committed; assert.equal(f.navigation.focus({ revision: receipt.revision }), true);
+  const report = metrics.report(), sample = phase => report.samples.find(value => value.phase === phase);
+  assert.equal(sample('navigation.preflight').duration, 5, 'public call timing includes first input/IME inspection');
+  assert.ok(sample('navigation.confirmation.wait').duration > 150);
+  assert.equal(sample('navigation.input.inspect').duration, 2, 'checking cost is separate from controlled wait');
+  assert.ok(sample('navigation.input.confirmed').timestamp <= sample('navigation.surface').timestamp);
+  assert.ok(sample('navigation.surface').timestamp <= sample('navigation.committed').timestamp);
+  assert.equal(sample('navigation.focus').duration, 2);
+  assert.ok(report.samples.every(value => value.operationId === 1));
+  assert.equal(JSON.stringify(report).includes('fixture-b'), false); assert.equal(JSON.stringify(report).includes('never-record'), false);
+  assert.deepEqual(Object.keys(receipt), ['threadId', 'hostId', 'inputConfirmed', 'submitDisabled', 'revision']);
+  const decoded = summarizeNavigationTestPoints(report), phases = decoded.operations[0];
+  assert.equal(decoded.fullWindowRetained, true); assert.equal(phases.complete, true);
+  assert.equal(phases.metadataRequestsObserved, 0); assert.equal(phases.metadataMs, null, 'an unmeasured or unused stage is not reported as zero time');
+  assert.equal(phases.confirmationCheckCount, 2); assert.equal(phases.confirmationCheckMs, 4);
+  assert.equal(phases.unallocatedConfirmationMs, phases.confirmationWaitMs - 4, 'nested bind/read durations are not counted twice');
+  assert.equal(frames.size, 0); f.provider.dispose();
+  const written = metrics.report().written; await Promise.resolve(); assert.equal(metrics.report().written, written);
+});
+
+test('phase analysis marks wrapped or unfinished observations incomplete rather than filling missing times', () => {
+  let clock = 0;
+  const metrics = createWorkspaceMetrics({ enabled: true, runId: 'wrapped-navigation', capacity: 2, now: () => clock++ });
+  metrics.add('navigation.call', { operationId: 1 }); metrics.add('navigation.executed', { operationId: 1 });
+  metrics.add('navigation.input.confirmed', { operationId: 1 });
+  metrics.end('navigation.confirmation.wait', 0, { operationId: 1 });
+  metrics.end('navigation.committed', 0, { operationId: 1 });
+  const summary = summarizeNavigationTestPoints(metrics.report());
+  assert.equal(summary.fullWindowRetained, false); assert.equal(summary.omittedEarlierPoints, 3);
+  assert.equal(summary.operations[0].complete, false); assert.equal(summary.operations[0].confirmationWaitMs, null);
+  assert.equal(summary.operations[0].unallocatedConfirmationMs, null);
+});
+
+test('cold metadata and synchronous IME rejection retain independent metric aliases without consuming public revisions', async t => {
+  let clock = 0;
+  const metrics = createWorkspaceMetrics({ enabled: true, runId: 'cold-navigation', now: () => clock });
+  const f = setup(t, { cold: true, metrics }); await f.navigation.ready;
+  const first = f.navigation.open({ threadId: 'fixture-cold' });
+  f.state.binding.controller.view.composing = true;
+  assert.throws(() => f.navigation.open({ threadId: 'fixture-rejected' }), { code: 'workspace_composer_busy' });
+  const rejected = metrics.report().samples.find(value => value.phase === 'navigation.preflight.failed');
+  assert.equal(rejected.operationId, 2); assert.deepEqual(f.calls, []);
+  f.state.binding.controller.view.composing = false; clock = 80;
+  f.requests[0].resolve({ thread: { id: 'fixture-cold' } });
+  const receipt = await first.committed; assert.equal(receipt.revision, 1);
+  const metadata = metrics.report().samples.find(value => value.phase === 'navigation.metadata');
+  assert.equal(metadata.operationId, 1); assert.equal(metadata.duration, 80);
+  assert.equal(f.requests.length, 1); assert.deepEqual(f.nativeCalls, ['fixture-cold']);
+  assert.equal(metrics.report().counts['navigation.dispatch.begin'], 1);
+});
+
+test('enabled and disabled navigation instrumentation preserve observer/frame lifecycle and the public contract', async t => {
+  const receipts = [], lifecycle = [];
+  for (const enabled of [false, true]) {
+    const metrics = createWorkspaceMetrics(enabled ? { enabled: true, runId: 'lifecycle-phases' } : { enabled: false, get now() { assert.fail('disabled clock read'); } });
+    const f = setup(t, { metrics }); let observers = 0, disconnects = 0, frames = 0, cancellations = 0;
+    const Observer = f.window.MutationObserver;
+    f.window.MutationObserver = class extends Observer { constructor(callback) { super(callback); observers++; } disconnect() { disconnects++; super.disconnect(); } };
+    f.window.requestAnimationFrame = () => ++frames; f.window.cancelAnimationFrame = () => cancellations++;
+    await f.navigation.ready; const operation = f.navigation.open({ threadId: 'fixture-b' });
+    receipts.push(await operation.committed); assert.equal(f.navigation.focus({ revision: receipts.at(-1).revision }), true);
+    f.provider.dispose(); lifecycle.push({ observers, disconnects, frames, cancellations });
+    assert.deepEqual(f.requests, []);
+  }
+  assert.deepEqual(receipts[0], receipts[1]);
+  assert.deepEqual(lifecycle[0], { observers: 1, disconnects: 1, frames: 1, cancellations: 1 });
+  assert.deepEqual(lifecycle[0], lifecycle[1]);
+});
+
+test('phase-only Native input diagnosis avoids richer view/hook reads while preserving pending ownership', t => {
+  const f = setup(t), root = f.document.getElementById('root'), input = f.editable.parentElement, scope = {};
+  let richHookReads = 0;
+  function ComposerMarker() { return 'onDocumentChange onDocumentDispose composerController'; }
+  const current = {}, model = { type: ComposerMarker, memoizedState: { memoizedState: { current: { scope, node: {} } } }, return: current };
+  const owner = { stateNode: input, return: model }, otherEditable = f.document.createElement('div');
+  const otherController = { view: { dom: otherEditable } }, hook = {};
+  Object.defineProperty(hook, 'controller', { get() { richHookReads++; return otherController; } });
+  const provider = { tag: 10, memoizedProps: { value: otherController }, memoizedState: { memoizedState: { current: hook } }, return: owner };
+  current.child = model; model.child = owner; owner.child = provider;
+  root.__reactContainer$phase = { stateNode: { current } }; input.__reactFiber$phase = owner;
+  const rich = [];
+  assert.equal(inspectNativeInput({ composerScope: scope }, input, root, undefined, value => rich.push(value)), null);
+  assert.equal(rich.at(-1).stage, 'controller'); assert.ok(rich.at(-1).views.length); assert.ok(richHookReads > 0);
+  richHookReads = 0; const light = [], diagnose = value => light.push(value); diagnose.countsOnly = true;
+  assert.equal(inspectNativeInput({ composerScope: scope }, input, root, undefined, diagnose), null);
+  assert.equal(light.at(-1).stage, 'controller'); assert.equal(light.at(-1).views, null); assert.equal(richHookReads, 0);
 });

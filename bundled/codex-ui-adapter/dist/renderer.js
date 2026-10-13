@@ -6554,7 +6554,7 @@ function inspectNativeInput(native, input, root, register, diagnose) {
   }
   const candidates = [.../* @__PURE__ */ new Set([...chain, ...branch])];
   const controllers = /* @__PURE__ */ new Set();
-  const views = diagnose ? [] : null;
+  const views = diagnose && !diagnose.countsOnly ? [] : null;
   for (const fiber of candidates) {
     const value = fiber.tag === 10 && fiber.memoizedProps?.value;
     if (views && value?.view?.dom) views.push({ kind: "provider", sameDom: value.view.dom === editable, withinInput: input.contains(value.view.dom) });
@@ -6712,13 +6712,13 @@ function nativeInputBinding(value, native) {
     routeValue
   };
 }
-function nativeMainInput(document2, native) {
+function nativeMainInput(document2, native, diagnose) {
   const root = document2.getElementById("root");
   if (!root) return null;
   const inputs = [...root.querySelectorAll("[data-codex-composer-root]")].filter((input) => !input.closest(OWNED + ',[data-app-shell-active-page="false"]'));
   const candidates = [];
   for (const input of inputs) {
-    const value = inspectNativeInput(native, input, root);
+    const value = inspectNativeInput(native, input, root, void 0, diagnose);
     if (!value) continue;
     if (value.scope.value?.placement === "main" || value.scope.value?.kind === "new" && value.scope.value.entrypoint === "home") candidates.push(value);
   }
@@ -8132,11 +8132,33 @@ function createWorkspaceNavigation({ document: document2, load, host, check, cha
     compositionRoots = /* @__PURE__ */ new WeakMap();
   }
   const stamp = () => JSON.stringify(host().navigator.location);
-  const input = () => readCurrentInput ? readCurrentInput() : nativeMainInput(document2, native);
-  const binding = (value) => readBinding ? readBinding(value) : nativeInputBinding(value === void 0 ? input() : value, native);
-  function composition() {
+  function input(measurement) {
+    const started = metrics?.start();
+    let diagnose;
+    if (metrics) {
+      diagnose = ({ stage }) => {
+        const name = stage === "editable" ? "editable" : stage === "committed-ancestry" ? "ancestry" : stage === "composer-scope" ? "scope" : stage === "controller" ? "controller" : stage === "submission" ? "submission" : "other";
+        metrics.add("navigation.input.pending." + name, measurement);
+      };
+      diagnose.countsOnly = true;
+    }
+    try {
+      return readCurrentInput ? readCurrentInput() : nativeMainInput(document2, native, diagnose);
+    } finally {
+      metrics?.end("navigation.input.read", started, measurement);
+    }
+  }
+  function binding(value, measurement) {
+    const started = metrics?.start();
+    try {
+      return readBinding ? readBinding(value) : nativeInputBinding(value === void 0 ? input(measurement) : value, native);
+    } finally {
+      metrics?.end("navigation.input.bind", started, measurement);
+    }
+  }
+  function composition(measurement) {
     if (native?.inputApi !== 1) return;
-    const value = input();
+    const value = input(measurement);
     if (value && (value.controller.view.composing === true || composing.get(value.input))) throw workspaceError("workspace_composer_busy", "Native main input is composing");
     return value;
   }
@@ -8148,9 +8170,11 @@ function createWorkspaceNavigation({ document: document2, load, host, check, cha
     microtask = false;
     queueEpoch++;
   }
-  function pulse() {
+  function pulse(wake) {
     const op = current3;
     if (!op || op.settled || !op.didExecute) return;
+    const started = metrics?.start();
+    metrics?.add(wake === "frame" ? "navigation.pulse.frame" : "navigation.pulse.microtask", op.measurement);
     try {
       check();
       const route = host().navigator.location.pathname;
@@ -8158,37 +8182,57 @@ function createWorkspaceNavigation({ document: document2, load, host, check, cha
         finish(op, "workspace_navigation_superseded", "Native selected another task");
         return;
       }
-      native.check?.();
-      const value = binding();
-      if (value?.threadId !== op.threadId || value.hostId !== "local") return;
+      let value;
+      const inspectStarted = metrics?.start();
+      try {
+        native.check?.();
+        value = binding(void 0, op.measurement);
+      } finally {
+        metrics?.end("navigation.input.inspect", inspectStarted, op.measurement);
+      }
+      if (value?.threadId !== op.threadId || value.hostId !== "local") {
+        metrics?.add(value ? "navigation.input.pending.identity" : "navigation.input.pending.binding", op.measurement);
+        return;
+      }
       if (native.inputApi === 1 && op.startedBinding && !sameNativeInput(op.startedBinding, value)) throw workspaceError("workspace_composer_binding_drift", "Native replaced the already-selected input during confirmation");
-      op.session.latest = { revision: op.sequence, routeStamp: stamp(), binding: value };
+      metrics?.end("navigation.confirmation.wait", op.executedAt, op.measurement);
+      metrics?.add("navigation.input.confirmed", op.measurement);
+      op.session.latest = { revision: op.sequence, routeStamp: stamp(), binding: value, measurement: op.measurement };
       op.settled = true;
       stop();
-      changed(value);
+      const surfaceStarted = metrics?.start();
+      try {
+        changed(value, op.measurement?.operationId);
+      } finally {
+        metrics?.end("navigation.surface", surfaceStarted, op.measurement);
+      }
       clearTimeout(op.timer);
       op.removeAbort?.();
-      metrics?.end("navigation.committed", op.started, { operationId: op.sequence });
+      metrics?.end("navigation.committed", op.started, op.measurement);
       op.session.operations.delete(op);
       op.resolveCommitted(Object.freeze({ threadId: op.threadId, hostId: "local", inputConfirmed: true, submitDisabled: value.submitDisabled, revision: op.sequence }));
     } catch (error) {
       if (!["workspace_host_pending", "ui_host_pending"].includes(error.code)) finish(op, error.code ?? "workspace_navigation_unavailable", error.message);
+      else metrics?.add("navigation.input.pending.host", op.measurement);
+    } finally {
+      metrics?.end("navigation.pulse", started, op.measurement);
     }
   }
-  function schedule() {
+  function schedule(reason) {
     if (disposed || !current3 || current3.settled || !current3.didExecute) return;
+    metrics?.add(reason === "executed" ? "navigation.wake.executed" : reason === void 0 ? "navigation.wake.workspace" : "navigation.wake.mutation", current3.measurement);
     if (!microtask) {
       microtask = true;
       const epoch = queueEpoch;
       queueMicrotask(() => {
         if (epoch !== queueEpoch) return;
         microtask = false;
-        pulse();
+        pulse("microtask");
       });
     }
     if (frame == null && document2.visibilityState !== "hidden" && document2.defaultView.requestAnimationFrame) frame = document2.defaultView.requestAnimationFrame(() => {
       frame = null;
-      pulse();
+      pulse("frame");
     });
   }
   function observe() {
@@ -8207,6 +8251,7 @@ function createWorkspaceNavigation({ document: document2, load, host, check, cha
     op.controller.abort(error);
     if (!op.didExecute) op.rejectExecuted(error);
     op.rejectCommitted(error);
+    metrics?.end("navigation.finished", op.started, op.measurement);
   }
   function ensure() {
     return prepared ??= Promise.resolve().then(load).then((value) => {
@@ -8228,18 +8273,32 @@ function createWorkspaceNavigation({ document: document2, load, host, check, cha
     const ready = ensure().then(() => void 0);
     ready.catch(() => {
     });
-    const makeOpener = () => createThreadOpener({ manager: { getConversation: (id) => native.manager.getConversation(id) }, selection: () => {
+    const makeOpener = (op) => createThreadOpener({ manager: { getConversation: (id) => native.manager.getConversation(id) }, selection: () => {
       valid();
       native.check?.();
       const match = /^\/local\/([\w-]+)\/?$/.exec(host().navigator.location.pathname), threadId = match?.[1] ?? null, thread = native.manager.getConversation(threadId);
       return { threadId, resumeState: thread?.resumeState === "resumed" ? "resumed" : "loading", streamRole: native.manager.getStreamRole?.(threadId)?.role ?? "none" };
     }, navigation: () => {
       const navigator = host().navigator;
-      return { stamp: () => JSON.stringify(navigator.location), open: (id) => native.inputApi === 1 ? native.openLocalThread(id) : navigator.push("/local/" + id) };
-    }, beforeNavigate: composition, request: async (method, args, signal) => {
-      const value = await native.manager.sendRequest(method, args, { timeoutMs: 1e4 });
-      if (signal?.aborted) throw workspaceError("invocation_cancelled", "Navigation validation was cancelled");
-      return value;
+      return { stamp: () => JSON.stringify(navigator.location), open(id) {
+        const started = metrics?.start();
+        metrics?.add("navigation.dispatch.begin", op.measurement);
+        try {
+          return native.inputApi === 1 ? native.openLocalThread(id) : navigator.push("/local/" + id);
+        } finally {
+          metrics?.end("navigation.dispatch", started, op.measurement);
+        }
+      } };
+    }, beforeNavigate: () => composition(op.measurement), request: async (method, args, signal) => {
+      const started = metrics?.start();
+      metrics?.add("navigation.metadata.begin", op.measurement);
+      try {
+        const value = await native.manager.sendRequest(method, args, { timeoutMs: 1e4 });
+        if (signal?.aborted) throw workspaceError("invocation_cancelled", "Navigation validation was cancelled");
+        return value;
+      } finally {
+        metrics?.end("navigation.metadata", started, op.measurement);
+      }
     } });
     return Object.freeze({
       ready,
@@ -8247,13 +8306,22 @@ function createWorkspaceNavigation({ document: document2, load, host, check, cha
         return native?.inputApi === 1 ? 1 : 0;
       },
       open(args, options3 = {}) {
-        valid();
-        if (!args || typeof args !== "object" || Array.isArray(args) || Object.keys(args).some((key2) => key2 !== "threadId") || typeof args.threadId !== "string" || !/^[\w-]{1,256}$/.test(args.threadId)) throw workspaceError("invalid_argument", "Invalid local navigation identity");
-        if (!options3 || typeof options3 !== "object" || Array.isArray(options3) || Object.keys(options3).some((key2) => key2 !== "signal")) throw workspaceError("invalid_argument", "Invalid navigation options");
-        const signal = options3.signal;
-        if (signal != null && (typeof signal.aborted !== "boolean" || typeof signal.addEventListener !== "function" || typeof signal.removeEventListener !== "function")) throw workspaceError("invalid_argument", "Invalid navigation signal");
-        const checked = !signal?.aborted && native ? composition() : void 0;
-        const before = !signal?.aborted && native?.inputApi === 1 ? binding(checked) : null;
+        const measurement = metrics ? { operationId: metrics.nextOperation(), started: metrics.start() } : void 0;
+        metrics?.add("navigation.call", measurement);
+        let signal, before;
+        try {
+          valid();
+          if (!args || typeof args !== "object" || Array.isArray(args) || Object.keys(args).some((key2) => key2 !== "threadId") || typeof args.threadId !== "string" || !/^[\w-]{1,256}$/.test(args.threadId)) throw workspaceError("invalid_argument", "Invalid local navigation identity");
+          if (!options3 || typeof options3 !== "object" || Array.isArray(options3) || Object.keys(options3).some((key2) => key2 !== "signal")) throw workspaceError("invalid_argument", "Invalid navigation options");
+          signal = options3.signal;
+          if (signal != null && (typeof signal.aborted !== "boolean" || typeof signal.addEventListener !== "function" || typeof signal.removeEventListener !== "function")) throw workspaceError("invalid_argument", "Invalid navigation signal");
+          const checked = !signal?.aborted && native ? composition(measurement) : void 0;
+          before = !signal?.aborted && native?.inputApi === 1 ? binding(checked, measurement) : null;
+        } catch (error) {
+          metrics?.end("navigation.preflight.failed", measurement?.started, measurement);
+          throw error;
+        }
+        metrics?.end("navigation.preflight", measurement?.started, measurement);
         const op = {
           threadId: args.threadId,
           sequence: ++sequence,
@@ -8261,7 +8329,8 @@ function createWorkspaceNavigation({ document: document2, load, host, check, cha
           didExecute: false,
           session,
           controller: new document2.defaultView.AbortController(),
-          started: metrics?.start(),
+          measurement,
+          started: measurement?.started,
           startedBinding: before?.threadId === args.threadId && host().navigator.location.pathname === "/local/" + args.threadId ? before : null
         };
         session.operations.add(op);
@@ -8291,23 +8360,29 @@ function createWorkspaceNavigation({ document: document2, load, host, check, cha
         function run() {
           if (op.settled) return;
           try {
-            composition();
+            composition(op.measurement);
           } catch (error) {
             finish(op, error.code ?? "workspace_navigation_unavailable", error.message);
             return;
           }
           const start = performance.now();
-          const result = makeOpener()(args, op.controller.signal), synchronousMs = performance.now() - start;
+          const result = makeOpener(op)(args, op.controller.signal), synchronousMs = performance.now() - start;
           Promise.resolve(result).then((receipt) => {
             if (op.settled) return;
             valid();
             op.didExecute = true;
-            changed();
+            const publishStarted = metrics?.start();
+            try {
+              changed();
+            } finally {
+              metrics?.end("navigation.execution.publish", publishStarted, op.measurement);
+            }
             op.resolveExecuted(Object.freeze({ ...receipt, synchronousMs, revision: op.sequence }));
-            metrics?.end("navigation.executed", op.started, { operationId: op.sequence });
+            metrics?.end("navigation.executed", op.started, op.measurement);
+            op.executedAt = metrics?.start();
             op.timer = setTimeout(() => finish(op, "workspace_navigation_commit_timeout", "Native composer did not confirm the selected task"), 5e3);
             observe();
-            schedule();
+            schedule("executed");
           }, (error) => finish(op, error.code ?? "workspace_navigation_unavailable", error.message)).catch((error) => finish(op, error.code ?? "workspace_retired", error.message));
         }
         if (native) run();
@@ -8323,17 +8398,20 @@ function createWorkspaceNavigation({ document: document2, load, host, check, cha
         if (!options3 || typeof options3 !== "object" || Array.isArray(options3) || Object.keys(options3).some((key2) => key2 !== "revision") || !Number.isSafeInteger(options3.revision) || options3.revision <= 0) throw workspaceError("invalid_argument", "Expected a navigation revision");
         if (native?.inputApi !== 1) throw workspaceError("workspace_navigation_unsupported", "Strict Native input navigation is unavailable");
         const pin = session.latest;
-        if (!pin || pin.revision !== options3.revision || current3?.sequence !== pin.revision || current3.session !== session) return false;
+        const started = metrics?.start();
         try {
+          if (!pin || pin.revision !== options3.revision || current3?.sequence !== pin.revision || current3.session !== session) return false;
           native.check?.();
           if (stamp() !== pin.routeStamp) return false;
-          const value = binding();
+          const value = binding(void 0, pin.measurement);
           if (!sameNativeInput(pin.binding, value) || value.submitDisabled || !value.editable.isConnected || value.editable.closest('[inert],[aria-hidden="true"]')) return false;
           if ((value.controller.view.composing || composing.get(value.input)) && document2.activeElement !== value.editable) return false;
           value.editable.focus({ preventScroll: true });
           return document2.activeElement === value.editable;
         } catch {
           return false;
+        } finally {
+          metrics?.end("navigation.focus", started, pin?.measurement);
         }
       },
       dispose() {
@@ -8351,7 +8429,7 @@ function createWorkspaceNavigation({ document: document2, load, host, check, cha
     check();
     if (native?.inputApi !== 1) return null;
     native.check?.();
-    return input();
+    return input(current3?.settled ? void 0 : current3?.measurement);
   }, dispose() {
     if (disposed) return;
     disposed = true;
@@ -9270,9 +9348,9 @@ function createWorkspace(context, {
     features = { ...features, navigationInput: value.inputApi === 1 };
     schedule(false);
     return value;
-  }), host: () => host, check, changed: (value) => {
+  }), host: () => host, check, changed: (value, operationId) => {
     if (value?.input) {
-      refreshConfirmedSurface(value.input);
+      refreshConfirmedSurface(value.input, operationId);
       return;
     }
     publish(true);
@@ -9325,7 +9403,8 @@ function createWorkspace(context, {
   }
   let previousGeometry = "";
   let microtaskSequence = 0;
-  function refreshGeometry() {
+  function refreshGeometry(operationId) {
+    const started = metrics?.start();
     geometryDirty = false;
     metrics?.add("surface.geometry");
     if (metrics) {
@@ -9333,6 +9412,7 @@ function createWorkspace(context, {
     }
     publicSurface = Object.freeze({ available: !!surface?.composer && !host?.auxiliary, ...Object.fromEntries(roleNames.map((key2) => [key2, geometry(surface?.[key2])])) });
     geometrySignature = JSON.stringify(roleNames.map((key2) => publicSurface[key2]?.rect ?? null));
+    metrics?.end("surface.geometry.complete", started, { operationId });
   }
   function observeSurface() {
     if (!resize) return;
@@ -9367,17 +9447,32 @@ function createWorkspace(context, {
     features = { ...features, surface: false };
     refreshGeometry();
   }
-  function refreshConfirmedSurface(input) {
+  function refreshConfirmedSurface(input, operationId) {
     try {
+      const scanStarted = metrics?.start();
       metrics?.add("surface.scan");
-      replaceSurface(findWorkspaceSurface(doc, input));
-      control.reconcile(surface);
+      try {
+        replaceSurface(findWorkspaceSurface(doc, input));
+      } finally {
+        metrics?.end("navigation.surface.scan", scanStarted, { operationId });
+      }
+      const controlStarted = metrics?.start();
+      try {
+        control.reconcile(surface);
+      } finally {
+        metrics?.end("navigation.surface.control", controlStarted, { operationId });
+      }
       if (diagnostic === surfaceFailure) diagnostic = surfaceFailure = null;
-      if (geometryDirty) refreshGeometry();
+      if (geometryDirty) refreshGeometry(operationId);
     } catch (error) {
       surfaceUnavailable(error);
     }
-    publish(true);
+    const publishStarted = metrics?.start();
+    try {
+      publish(true);
+    } finally {
+      metrics?.end("navigation.surface.publish", publishStarted, { operationId });
+    }
   }
   function reconcile() {
     frame = null;

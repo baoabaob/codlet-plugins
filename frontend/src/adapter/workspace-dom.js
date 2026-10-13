@@ -106,12 +106,12 @@ export function nativeInputBinding(value, native) {
   return { ...value, threadId: scope.value.conversationId, clientThreadId: scope.value.clientThreadId,
     hostId: 'local', scopeNode: scope.node, scopeValue: scope.node.value, threadNode, threadValue, routeNode, routeValue };
 }
-export function nativeMainInput(document, native) {
+export function nativeMainInput(document, native, diagnose) {
   const root = document.getElementById('root'); if (!root) return null;
   const inputs = [...root.querySelectorAll('[data-codex-composer-root]')].filter(input => !input.closest(OWNED + ',[data-app-shell-active-page="false"]'));
   const candidates = [];
   for (const input of inputs) {
-    const value = inspectNativeInput(native, input, root); if (!value) continue;
+    const value = inspectNativeInput(native, input, root, undefined, diagnose); if (!value) continue;
     if (value.scope.value?.placement === 'main' || value.scope.value?.kind === 'new' && value.scope.value.entrypoint === 'home') candidates.push(value);
   }
   if (candidates.length > 1) throw workspaceError('workspace_composer_binding_drift', 'Native main input is ambiguous');

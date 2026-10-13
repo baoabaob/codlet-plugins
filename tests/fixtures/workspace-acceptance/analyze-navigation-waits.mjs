@@ -7,6 +7,7 @@ import { randomUUID, createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { createWorkspaceNavigation } from '../../../frontend/src/adapter/workspace-navigation.js';
+import { createWorkspaceMetrics } from '../../../frontend/src/adapter/workspace-metrics.js';
 
 const repo = fileURLToPath(new URL('../../../', import.meta.url));
 const require = createRequire(new URL('../../../frontend/package.json', import.meta.url)), { JSDOM } = require('jsdom');
@@ -19,7 +20,8 @@ async function schedulerCase(readyAfterMs, notifyAfterMs) {
   let binding = { input, editable, controller: { view: { composing: false } }, threadId: 'synthetic-a', hostId: 'local', submitDisabled: false };
   let started, readyTimer, notifyTimer, reads = 0, checks = 0, backendRequests = 0;
   const marks = {}, mark = key => { marks[key] = performance.now() - started; };
-  const metrics = { start() { mark('operationStartAfterInitialPrecheck'); return performance.now(); }, end(name) { mark(name); } };
+  const recorded = createWorkspaceMetrics({ enabled: true, runId: 'offline-navigation-phases' });
+  const metrics = { ...recorded, end(name, started, detail) { recorded.end(name, started, detail); if (name === 'navigation.executed' || name === 'navigation.committed') mark(name); } };
   const native = { inputApi: 1, manager: { getConversation: id => ({ id, resumeState: 'resumed' }), getStreamRole: () => ({ role: 'owner' }), sendRequest() { backendRequests++; throw Error('Warm scheduler case must not read backend'); } },
     check() { checks++; }, openLocalThread(threadId) {
       navigator.location = { pathname: '/local/' + threadId, search: '', hash: '' }; mark('dispatchAccepted');
@@ -41,7 +43,7 @@ async function schedulerCase(readyAfterMs, notifyAfterMs) {
     assert.equal(backendRequests, 0);
     const result = { readyAfterMs, notifyAfterMs, marks, bindingProjectionReads: reads, nativeChecks: checks, backendRequests,
       bindingReadyToCommitMs: marks.committedObserved - marks.syntheticBindingReady,
-      focusAfterCommitMs: marks.focusCompleted - marks.committedObserved };
+      focusAfterCommitMs: marks.focusCompleted - marks.committedObserved, testPoints: recorded.report() };
     session.dispose(); provider.dispose();
     assert.throws(() => session.focus({ revision: receipt.revision }), { code: 'workspace_retired' });
     return result;

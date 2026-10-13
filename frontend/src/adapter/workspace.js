@@ -36,8 +36,8 @@ export function createWorkspace(context, { locate, baseNative, discovery: suppli
   const shortcuts = createShortcuts({ document: doc, load: () => featureLoad('shortcuts', discovery.shortcuts), surface: () => surface, activity: () => activity, check, report, changed: () => schedule(false) });
   const navigation = createWorkspaceNavigation({document:doc,load:()=>featureLoad('navigation',discovery.navigation).then(value=>{
     features={...features,navigationInput:value.inputApi===1};schedule(false);return value;
-  }),host:()=>host,check,changed:value=>{
-    if(value?.input){refreshConfirmedSurface(value.input);return;}
+  }),host:()=>host,check,changed:(value,operationId)=>{
+    if(value?.input){refreshConfirmedSurface(value.input,operationId);return;}
     publish(true);
   },metrics,...(navigationBinding?{readBinding:navigationBinding}:{})});
   const actions=createWorkspaceActions({document:doc,load:()=>featureLoad('action',discovery.action),activity:()=>activity??=findActivity(doc),check,report});
@@ -70,12 +70,14 @@ export function createWorkspace(context, { locate, baseNative, discovery: suppli
   }
   let previousGeometry = '';
   let microtaskSequence = 0;
-  function refreshGeometry() {
+  function refreshGeometry(operationId) {
+    const started=metrics?.start();
     geometryDirty = false;
     metrics?.add('surface.geometry');
     if (metrics) for (const key of roleNames) if (surface?.[key]) metrics.add('surface.layout.read');
     publicSurface = Object.freeze({ available: !!surface?.composer && !host?.auxiliary, ...Object.fromEntries(roleNames.map(key => [key, geometry(surface?.[key])])) });
     geometrySignature = JSON.stringify(roleNames.map(key => publicSurface[key]?.rect ?? null));
+    metrics?.end('surface.geometry.complete',started,{operationId});
   }
   function observeSurface() {
     if (!resize) return;
@@ -100,16 +102,23 @@ export function createWorkspace(context, { locate, baseNative, discovery: suppli
     if (surface) surfaceRevision++;
     surface = null; observeSurface(); control.reconcile(null); features = { ...features, surface: false }; refreshGeometry();
   }
-  function refreshConfirmedSurface(input) {
+  function refreshConfirmedSurface(input,operationId) {
     // Publish the same proven input before the committed receipt. A visible
     // document's queued rAF must not keep the previous cached composer public.
     try {
-      metrics?.add('surface.scan'); replaceSurface(findWorkspaceSurface(doc, input));
-      control.reconcile(surface);
+      const scanStarted=metrics?.start();
+      metrics?.add('surface.scan');
+      try{replaceSurface(findWorkspaceSurface(doc, input));}
+      finally{metrics?.end('navigation.surface.scan',scanStarted,{operationId});}
+      const controlStarted=metrics?.start();
+      try{control.reconcile(surface);}
+      finally{metrics?.end('navigation.surface.control',controlStarted,{operationId});}
       if (diagnostic === surfaceFailure) diagnostic = surfaceFailure = null;
-      if (geometryDirty) refreshGeometry();
+      if (geometryDirty) refreshGeometry(operationId);
     } catch (error) { surfaceUnavailable(error); }
-    publish(true);
+    const publishStarted=metrics?.start();
+    try{publish(true);}
+    finally{metrics?.end('navigation.surface.publish',publishStarted,{operationId});}
   }
   function reconcile() {
     frame = null; if (!alive || !sessions.size) return;

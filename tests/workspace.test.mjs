@@ -93,6 +93,12 @@ test('committed navigation publishes the confirmed composer before a queued visi
   assert.equal(session.getSurface().composer.element, secondInput, 'receipt cannot expose the old composer until rAF');
   assert.equal(session.getSurface().main.element, secondMain);
   assert.equal(session.getSnapshot().threadId, 'thread-b');
+  const points = f.workspace.readTestPoints().samples;
+  const committed = points.find(point => point.phase === 'navigation.committed');
+  const phases = ['navigation.input.confirmed', 'navigation.surface.scan', 'navigation.surface.control', 'surface.geometry.complete', 'navigation.surface.publish', 'navigation.surface', 'navigation.committed'];
+  const measured = phases.map(phase => points.find(point => point.phase === phase && point.operationId === committed.operationId));
+  assert.ok(measured.every(Boolean), 'surface and geometry phases correlate with the confirming navigation');
+  assert.ok(measured.every((point, index) => !index || point.timestamp >= measured[index - 1].timestamp));
   await f.flush();
   assert.equal(session.getSurface().composer.element, secondInput);
   assert.equal(f.workspace.readTestPoints().counts['surface.geometry'], geometryBefore + 1, 'the queued frame does not repeat committed geometry');
