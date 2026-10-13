@@ -54,6 +54,38 @@ test('a Native main page without a composer exposes page content and header for 
   const overlay=session.createSlot('workspace.overlay');assert.equal(overlay.container.parentElement,f.document.getElementById('root'));overlay.dispose();
 });
 
+test('body viewport follows Native motion and floating edge regions without a fixed summary width',t=>{
+  const f=fixture(t),scroller=f.document.querySelector('.thread-scroll-container'),floating=f.document.createElement('div');f.document.querySelector('main').append(floating);
+  const bounds={x:100,y:50,left:100,right:1300,top:50,bottom:950,width:1200,height:900};scroller.getBoundingClientRect=()=>bounds;
+  floating.getBoundingClientRect=()=>({x:1127,y:60,left:1127,right:1300,top:60,bottom:940,width:173,height:880});let shift=-86.5;
+  const surface={scroller,floatingContent:[floating],contentMotion:{get:()=>shift}};
+  assert.equal(f.window.WorkspaceDom.workspaceBodyGeometry(f.document,surface).bodyViewport.rect.width,1027);
+  shift=0;assert.equal(f.window.WorkspaceDom.workspaceBodyGeometry(f.document,surface).bodyViewport.rect.width,1027,'gutter mode retains Native floating space');
+  floating.setAttribute('inert','');const hidden=f.window.WorkspaceDom.workspaceBodyGeometry(f.document,surface);assert.equal(hidden.floatingContent[0].visible,false);assert.equal(hidden.bodyViewport.rect.width,1200);
+  shift=-41;assert.equal(f.window.WorkspaceDom.workspaceBodyGeometry(f.document,surface).bodyViewport.rect.width,1118,'Native animation displacement remains independent of floating visibility');
+});
+
+test('Native footer transform changes notify surface geometry without a full discovery scan',async t=>{
+  const f=fixture(t,{testPoints:{enabled:true,runId:'footer-transform'}}),session=f.connect().session,footer=f.document.querySelector('footer');await f.flush();let x=200;
+  footer.getBoundingClientRect=()=>({x,y:982,left:x,right:x+700,top:982,bottom:1096,width:700,height:114});
+  const before=f.workspace.readTestPoints().counts['surface.scan'],revision=session.getSnapshot().revision;
+  x=155;footer.style.transform='translateX(-45px)';await f.flush();
+  assert.equal(session.getSurface().footer.rect.x,155);assert.ok(session.getSnapshot().revision>revision);
+  assert.equal(f.workspace.readTestPoints().counts['surface.scan'],before);assert.ok(f.workspace.readTestPoints().counts['surface.style']>0);
+});
+
+test('Native content motion subscriptions retire on owner cleanup and do not add a polling loop',async t=>{
+  const f=fixture(t),input=f.document.querySelector('[data-codex-composer-root]'),listeners=new Set();let shift=0;
+  const motion={get:()=>shift,on(event,listener){assert.equal(event,'change');listeners.add(listener);return()=>listeners.delete(listener);}};
+  function NativeFrame(){return 'floatingContent contentX LocalConversationPage';}
+  const current={},frame={type:NativeFrame,memoizedProps:{contentX:motion},return:current},owner={stateNode:input,return:frame};current.child=frame;frame.child=owner;
+  f.document.getElementById('root').__reactContainer$motion={stateNode:{current}};input.__reactFiber$motion=owner;
+  const scroller=f.document.querySelector('.thread-scroll-container');scroller.getBoundingClientRect=()=>({x:100,y:50,left:100,right:1300,top:50,bottom:950,width:1200,height:900});
+  const connected=f.connect();await f.flush();assert.equal(listeners.size,1);assert.equal(f.frames.size,0);
+  shift=-64;for(const listener of listeners)listener(shift);await f.flush();assert.equal(connected.session.getSurface().bodyViewport.rect.width,1072);assert.equal(f.frames.size,0);
+  connected.ctx.retire();assert.equal(listeners.size,0);
+});
+
 test('a transcript can reuse Native shell providers on a page without a main conversation surface',async t=>{
   const f=fixture(t),N=native(f),rail=f.document.querySelector('nav');rail.dataset.appNavigationRail='true';
   rail.__reactFiber$fixture=f.document.querySelector('[data-includes-composer]').__reactFiber$providers;

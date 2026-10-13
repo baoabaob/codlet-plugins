@@ -1,6 +1,6 @@
 import { desktopDocument } from '../host-discovery.js';
 import { subscribeNativeRoute } from '../native-navigation.js';
-import { OWNED, workspaceError, findWorkspaceSurface, findActivity, activityPlacement, resolveThreadReference, geometry, createSurfaceControl, surfaceOptions } from './workspace-dom.js';
+import { OWNED, workspaceError, findWorkspaceSurface, workspaceBodyGeometry, findActivity, activityPlacement, resolveThreadReference, geometry, createSurfaceControl, surfaceOptions } from './workspace-dom.js';
 import { createWorkspaceDiscovery } from './workspace-discovery.js';
 import { createTranscripts } from './workspace-transcript.js';
 import { createShortcuts } from './workspace-shortcuts.js';
@@ -23,9 +23,9 @@ export function createWorkspace(context, { locate, baseNative, discovery: suppli
     apiSymbol=WORKSPACE_SYMBOL,capability=WORKSPACE_CAPABILITY,navigationBinding,transcriptIsolation=false,testPoints } = {}) {
   const symbol = Symbol.for(apiSymbol), tickets = new Map(), sessions = new Set(), slots = new Set(), control = createSurfaceControl();
   if (globalThis[symbol] !== undefined) throw workspaceError('workspace_host_drift', 'Another workspace provider owns this document');
-  let alive = true, frame = null, observer, resize, host, root, unroute, structural = true, surface, activity, features = emptyFeatures(), diagnostic = null, surfaceFailure = null, revision = 0;
+  let alive = true, frame = null, observer, resize, styleObserver, motion, unmotion, host, root, unroute, structural = true, surface, activity, features = emptyFeatures(), diagnostic = null, surfaceFailure = null, revision = 0;
   let snapshot = Object.freeze({ api: 1, revision, route: null, threadId: null, hostId: null, auxiliary: false, available: false, features: Object.freeze(features), diagnostic: null });
-  let publicSurface = Object.freeze({ available: false, ...Object.fromEntries(roleNames.map(key => [key, null])) }), geometrySignature = '';
+  let publicSurface = Object.freeze({ available: false, ...Object.fromEntries(roleNames.map(key => [key, null])), bodyViewport:null, floatingContent:Object.freeze([]) }), geometrySignature = '';
   const report = error => { try { context.reportDiagnostic?.({ ...errorValue(error), level: 'warning' }); } catch {} };
   const metrics = createWorkspaceMetrics(testPoints);
   const observedNodes = new Set();
@@ -83,24 +83,31 @@ export function createWorkspace(context, { locate, baseNative, discovery: suppli
     geometryDirty = false;
     metrics?.add('surface.geometry');
     if (metrics) for (const key of roleNames) if (surface?.[key]) metrics.add('surface.layout.read');
-    publicSurface = Object.freeze({ available: !!surface?.composer && !host?.auxiliary, ...Object.fromEntries(roleNames.map(key => [key, geometry(surface?.[key])])) });
-    geometrySignature = JSON.stringify(roleNames.map(key => publicSurface[key]?.rect ?? null));
+    const roles = Object.fromEntries(roleNames.map(key => [key, geometry(surface?.[key])])), base = roles.scroller ?? roles.content ?? roles.main;
+    if(metrics)for(const node of surface?.floatingContent??[])metrics.add('surface.layout.read');
+    const regions = workspaceBodyGeometry(doc,surface,base?.rect);
+    publicSurface = Object.freeze({ available: !!surface?.composer && !host?.auxiliary, ...roles, ...regions });
+    geometrySignature = JSON.stringify([...roleNames.map(key => publicSurface[key]?.rect ?? null),regions.bodyViewport?.rect??null,regions.floatingContent.map(node=>[node.rect,node.visible])]);
     metrics?.end('surface.geometry.complete',started,{operationId});
   }
   function observeSurface() {
-    if (!resize) return;
-    const next = new Set(roleNames.map(key => surface?.[key]).filter(Boolean));
+    const next = new Set([...roleNames.map(key => surface?.[key]),...surface?.floatingContent??[]].filter(Boolean));
+    const changed = next.size !== observedNodes.size || [...next].some(node=>!observedNodes.has(node));
     for (const node of observedNodes) if (!next.has(node)) {
-      resize.unobserve(node); observedNodes.delete(node); metrics?.add('surface.resize.unobserve');
+      resize?.unobserve(node); observedNodes.delete(node); metrics?.add('surface.resize.unobserve');
     }
     for (const node of next) if (!observedNodes.has(node)) {
-      resize.observe(node); observedNodes.add(node); metrics?.add('surface.resize.observe');
+      resize?.observe(node); observedNodes.add(node); metrics?.add('surface.resize.observe');
     }
+    if(changed&&styleObserver){styleObserver.disconnect();for(const node of next)styleObserver.observe(node,{attributes:true,attributeFilter:['style','class','inert','aria-hidden']});}
+    if(motion!==surface?.contentMotion){unmotion?.();motion=surface?.contentMotion;unmotion=motion?.on('change',()=>{geometryDirty=true;schedule(false);});}
   }
   function replaceSurface(next) {
     if (roleNames.some(key => surface?.[key] !== next?.[key])) {
-      surface = next; surfaceRevision++; geometryDirty = true;
+      surfaceRevision++; geometryDirty = true;
     }
+    if(surface?.contentMotion!==next?.contentMotion||surface?.floatingContent?.length!==next?.floatingContent?.length||next?.floatingContent?.some((node,index)=>surface?.floatingContent?.[index]!==node)){surfaceRevision++;geometryDirty=true;}
+    surface = next;
     features = { ...features, surface: !!surface?.composer };
     observeSurface();
   }
@@ -213,11 +220,12 @@ export function createWorkspace(context, { locate, baseNative, discovery: suppli
       if (!entries.some(entry => observedNodes.has(entry.target))) return;
       metrics?.add('surface.resize'); geometryDirty = true; schedule(false);
     });
+    styleObserver=new doc.defaultView.MutationObserver(()=>{geometryDirty=true;metrics?.add('surface.style');schedule(false);});
     doc.defaultView.addEventListener('resize', onResize);
   }
   const onResize = () => { geometryDirty = true; schedule(false); };
   function stopObserving() {
-    observer?.disconnect(); resize?.disconnect(); observer = resize = null; unroute?.(); unroute = null;
+    observer?.disconnect(); resize?.disconnect(); styleObserver?.disconnect();unmotion?.();motion=unmotion=null;observer = resize = styleObserver = null; unroute?.(); unroute = null;
     observedNodes.clear(); geometryDirty = true;
     composerFeatureEpoch++; composerFeatures = undefined;
     doc.defaultView.removeEventListener('resize', onResize);

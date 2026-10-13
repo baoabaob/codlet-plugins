@@ -6680,7 +6680,37 @@ function findWorkspaceSurface(document2, confirmedComposer = null) {
     throw workspaceError("workspace_host_drift", "The thread body and composer footer no longer match the workspace contract");
   const header = one(document2.querySelectorAll("[data-app-shell-main-titlebar]"), "main titlebar", true);
   const rightPanel = one(document2.querySelectorAll('aside[data-app-shell-focus-area="right-panel"]'), "right resource panel", true);
-  return { main, composer, content, scroller, footer, header, rightPanel };
+  const floatingContent = [...main.querySelectorAll('[class*="--thread-floating-content-top-inset"][class*="--thread-floating-content-bottom-inset"]')].filter(active);
+  let contentMotion = null;
+  for (const fiber of composer ? currentElementAncestry(composer, document2.getElementById("root")) ?? [] : []) {
+    const props = fiber.memoizedProps, text = componentSource(fiber.type);
+    if (text.includes("floatingContent") && text.includes("contentX") && text.includes("LocalConversationPage") && typeof props?.contentX?.get === "function" && typeof props.contentX.on === "function") contentMotion = props.contentX;
+  }
+  return { main, composer, content, scroller, footer, header, rightPanel, floatingContent, contentMotion };
+}
+function workspaceBodyGeometry(document2, surface, baseRect) {
+  const base = surface?.scroller ?? surface?.content ?? surface?.main;
+  if (!base) return { bodyViewport: null, floatingContent: Object.freeze([]) };
+  const bounds = baseRect ?? base.getBoundingClientRect(), regions = [], visible = [];
+  for (const element of surface.floatingContent ?? []) {
+    const rect2 = element.getBoundingClientRect(), style = document2.defaultView.getComputedStyle(element);
+    const shown = style.display !== "none" && style.visibility === "visible" && !element.closest('[inert],[aria-hidden="true"]') && rect2.width > 0 && rect2.height > 0;
+    const node = geometry(element, rect2);
+    regions.push(Object.freeze({ ...node, visible: shown }));
+    if (shown) visible.push(rect2);
+  }
+  let left = bounds.left, right = bounds.right;
+  const shift = surface.contentMotion?.get();
+  if (Number.isFinite(shift)) {
+    if (shift < 0) right = Math.max(left, right + shift * 2);
+    else if (shift > 0) left = Math.min(right, left + shift * 2);
+  }
+  for (const rect2 of visible) if (rect2.bottom > bounds.top && rect2.top < bounds.bottom) {
+    if (rect2.right >= bounds.right - 1 && rect2.left > bounds.left) right = Math.min(right, rect2.left);
+    else if (rect2.left <= bounds.left + 1 && rect2.right < bounds.right) left = Math.max(left, rect2.right);
+  }
+  const rect = Object.freeze({ x: left, y: bounds.top, width: Math.max(0, right - left), height: bounds.height, top: bounds.top, right, bottom: bounds.bottom, left });
+  return { bodyViewport: Object.freeze({ rect }), floatingContent: Object.freeze(regions) };
 }
 function findActivity(document2) {
   const matches = [];
@@ -6772,9 +6802,9 @@ function resolveThreadReference(document2, element, isCachedLocal = () => false)
   }
   return found.size === 1 ? [...found.values()][0] : null;
 }
-function geometry(element) {
+function geometry(element, captured) {
   if (!element) return null;
-  const rect = element.getBoundingClientRect();
+  const rect = captured ?? element.getBoundingClientRect();
   return Object.freeze({ element, rect: Object.freeze(Object.fromEntries(["x", "y", "width", "height", "top", "right", "bottom", "left"].map((key2) => [key2, rect[key2]]))) });
 }
 var optionDefaults = Object.freeze({ hideBody: false, hideHeader: false, hideComposer: false, composerEnabled: true, rightPanelEnabled: true });
@@ -6809,7 +6839,7 @@ function createSurfaceControl() {
     if (surface?.composer) for (const lease of leases) {
       if (lease.options.hideBody) {
         for (const node of surface.scroller.children)
-          if (node !== surface.footer && !node.contains(surface.composer) && !node.matches(OWNED)) suppress(node, true, true);
+          if (node !== surface.footer && !node.contains(surface.composer) && !node.matches(OWNED) && !surface.floatingContent?.some((region) => region === node || node.contains(region))) suppress(node, true, true);
       }
       suppress(surface.header, lease.options.hideHeader, false);
       suppress(surface.footer, lease.options.hideComposer, !lease.options.composerEnabled);
@@ -10240,9 +10270,9 @@ function createWorkspace(context, {
 } = {}) {
   const symbol = Symbol.for(apiSymbol), tickets = /* @__PURE__ */ new Map(), sessions = /* @__PURE__ */ new Set(), slots = /* @__PURE__ */ new Set(), control = createSurfaceControl();
   if (globalThis[symbol] !== void 0) throw workspaceError("workspace_host_drift", "Another workspace provider owns this document");
-  let alive = true, frame = null, observer, resize, host, root, unroute, structural = true, surface, activity, features = emptyFeatures(), diagnostic = null, surfaceFailure = null, revision = 0;
+  let alive = true, frame = null, observer, resize, styleObserver, motion, unmotion, host, root, unroute, structural = true, surface, activity, features = emptyFeatures(), diagnostic = null, surfaceFailure = null, revision = 0;
   let snapshot = Object.freeze({ api: 1, revision, route: null, threadId: null, hostId: null, auxiliary: false, available: false, features: Object.freeze(features), diagnostic: null });
-  let publicSurface = Object.freeze({ available: false, ...Object.fromEntries(roleNames.map((key2) => [key2, null])) }), geometrySignature = "";
+  let publicSurface = Object.freeze({ available: false, ...Object.fromEntries(roleNames.map((key2) => [key2, null])), bodyViewport: null, floatingContent: Object.freeze([]) }), geometrySignature = "";
   const report = (error) => {
     try {
       context.reportDiagnostic?.({ ...errorValue(error), level: "warning" });
@@ -10356,30 +10386,49 @@ function createWorkspace(context, {
     if (metrics) {
       for (const key2 of roleNames) if (surface?.[key2]) metrics.add("surface.layout.read");
     }
-    publicSurface = Object.freeze({ available: !!surface?.composer && !host?.auxiliary, ...Object.fromEntries(roleNames.map((key2) => [key2, geometry(surface?.[key2])])) });
-    geometrySignature = JSON.stringify(roleNames.map((key2) => publicSurface[key2]?.rect ?? null));
+    const roles = Object.fromEntries(roleNames.map((key2) => [key2, geometry(surface?.[key2])])), base = roles.scroller ?? roles.content ?? roles.main;
+    if (metrics) for (const node of surface?.floatingContent ?? []) metrics.add("surface.layout.read");
+    const regions = workspaceBodyGeometry(doc, surface, base?.rect);
+    publicSurface = Object.freeze({ available: !!surface?.composer && !host?.auxiliary, ...roles, ...regions });
+    geometrySignature = JSON.stringify([...roleNames.map((key2) => publicSurface[key2]?.rect ?? null), regions.bodyViewport?.rect ?? null, regions.floatingContent.map((node) => [node.rect, node.visible])]);
     metrics?.end("surface.geometry.complete", started, { operationId });
   }
   function observeSurface() {
-    if (!resize) return;
-    const next = new Set(roleNames.map((key2) => surface?.[key2]).filter(Boolean));
+    const next = new Set([...roleNames.map((key2) => surface?.[key2]), ...surface?.floatingContent ?? []].filter(Boolean));
+    const changed = next.size !== observedNodes.size || [...next].some((node) => !observedNodes.has(node));
     for (const node of observedNodes) if (!next.has(node)) {
-      resize.unobserve(node);
+      resize?.unobserve(node);
       observedNodes.delete(node);
       metrics?.add("surface.resize.unobserve");
     }
     for (const node of next) if (!observedNodes.has(node)) {
-      resize.observe(node);
+      resize?.observe(node);
       observedNodes.add(node);
       metrics?.add("surface.resize.observe");
+    }
+    if (changed && styleObserver) {
+      styleObserver.disconnect();
+      for (const node of next) styleObserver.observe(node, { attributes: true, attributeFilter: ["style", "class", "inert", "aria-hidden"] });
+    }
+    if (motion !== surface?.contentMotion) {
+      unmotion?.();
+      motion = surface?.contentMotion;
+      unmotion = motion?.on("change", () => {
+        geometryDirty = true;
+        schedule(false);
+      });
     }
   }
   function replaceSurface(next) {
     if (roleNames.some((key2) => surface?.[key2] !== next?.[key2])) {
-      surface = next;
       surfaceRevision++;
       geometryDirty = true;
     }
+    if (surface?.contentMotion !== next?.contentMotion || surface?.floatingContent?.length !== next?.floatingContent?.length || next?.floatingContent?.some((node, index) => surface?.floatingContent?.[index] !== node)) {
+      surfaceRevision++;
+      geometryDirty = true;
+    }
+    surface = next;
     features = { ...features, surface: !!surface?.composer };
     observeSurface();
   }
@@ -10510,6 +10559,11 @@ function createWorkspace(context, {
       geometryDirty = true;
       schedule(false);
     });
+    styleObserver = new doc.defaultView.MutationObserver(() => {
+      geometryDirty = true;
+      metrics?.add("surface.style");
+      schedule(false);
+    });
     doc.defaultView.addEventListener("resize", onResize);
   }
   const onResize = () => {
@@ -10519,7 +10573,10 @@ function createWorkspace(context, {
   function stopObserving() {
     observer?.disconnect();
     resize?.disconnect();
-    observer = resize = null;
+    styleObserver?.disconnect();
+    unmotion?.();
+    motion = unmotion = null;
+    observer = resize = styleObserver = null;
     unroute?.();
     unroute = null;
     observedNodes.clear();

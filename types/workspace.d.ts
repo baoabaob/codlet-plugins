@@ -10,6 +10,9 @@ export interface WorkspaceNode { element: HTMLElement; rect: Readonly<{ x: numbe
 export interface WorkspaceSurface {
   available: boolean; main: WorkspaceNode | null; content: WorkspaceNode | null; scroller: WorkspaceNode | null;
   composer: WorkspaceNode | null; footer: WorkspaceNode | null; header: WorkspaceNode | null; rightPanel: WorkspaceNode | null;
+  /** Effective region for replacement body UI; leaves Native floating areas intact. */
+  bodyViewport?: Readonly<{rect:WorkspaceNode['rect']}>|null;
+  floatingContent?: ReadonlyArray<WorkspaceNode & {readonly visible:boolean}>;
 }
 export interface SurfaceOptions { hideBody?: boolean; hideHeader?: boolean; hideComposer?: boolean; composerEnabled?: boolean; rightPanelEnabled?: boolean }
 export interface TranscriptState { phase: 'loading' | 'ready' | 'error' | 'disposed'; threadId: string; hostId: 'local'; diagnostic: WorkspaceDiagnostic | null }

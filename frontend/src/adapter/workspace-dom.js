@@ -51,7 +51,43 @@ export function findWorkspaceSurface(document, confirmedComposer = null) {
     throw workspaceError('workspace_host_drift', 'The thread body and composer footer no longer match the workspace contract');
   const header = one(document.querySelectorAll('[data-app-shell-main-titlebar]'), 'main titlebar', true);
   const rightPanel = one(document.querySelectorAll('aside[data-app-shell-focus-area="right-panel"]'), 'right resource panel', true);
-  return { main, composer, content, scroller, footer, header, rightPanel };
+  const floatingContent = [...main.querySelectorAll('[class*="--thread-floating-content-top-inset"][class*="--thread-floating-content-bottom-inset"]')].filter(active);
+  let contentMotion = null;
+  for (const fiber of composer ? currentElementAncestry(composer, document.getElementById('root')) ?? [] : []) {
+    const props = fiber.memoizedProps, text = componentSource(fiber.type);
+    if (text.includes('floatingContent') && text.includes('contentX') && text.includes('LocalConversationPage') &&
+        typeof props?.contentX?.get === 'function' && typeof props.contentX.on === 'function') contentMotion = props.contentX;
+  }
+  return { main, composer, content, scroller, footer, header, rightPanel, floatingContent, contentMotion };
+}
+
+// Native scroll layout keeps its original width while contentX moves its
+// centred body/footer by half a reserved side region. Read that live motion;
+// no panel width or transform offset is baked into the consumer contract.
+export function workspaceBodyGeometry(document, surface, baseRect) {
+  const base = surface?.scroller ?? surface?.content ?? surface?.main;
+  if (!base) return { bodyViewport: null, floatingContent: Object.freeze([]) };
+  const bounds = baseRect ?? base.getBoundingClientRect(), regions = [], visible = [];
+  for (const element of surface.floatingContent ?? []) {
+    const rect = element.getBoundingClientRect(), style = document.defaultView.getComputedStyle(element);
+    const shown = style.display !== 'none' && style.visibility === 'visible' && !element.closest('[inert],[aria-hidden="true"]') && rect.width > 0 && rect.height > 0;
+    const node = geometry(element,rect); regions.push(Object.freeze({ ...node, visible: shown }));
+    if (shown) visible.push(rect);
+  }
+  let left = bounds.left, right = bounds.right;
+  const shift = surface.contentMotion?.get();
+  if (Number.isFinite(shift)) {
+    if (shift < 0) right = Math.max(left, right + shift * 2);
+    else if (shift > 0) left = Math.min(right, left + shift * 2);
+  }
+  // Inline floating regions also occupy the outer gutter when no translation
+  // is needed. Only carve rectangles touching an edge of this Native body.
+  for (const rect of visible) if (rect.bottom > bounds.top && rect.top < bounds.bottom) {
+    if (rect.right >= bounds.right - 1 && rect.left > bounds.left) right = Math.min(right, rect.left);
+    else if (rect.left <= bounds.left + 1 && rect.right < bounds.right) left = Math.max(left, rect.right);
+  }
+  const rect = Object.freeze({ x:left, y:bounds.top, width:Math.max(0,right-left), height:bounds.height, top:bounds.top, right, bottom:bounds.bottom, left });
+  return { bodyViewport:Object.freeze({rect}), floatingContent:Object.freeze(regions) };
 }
 export function findActivity(document) {
   const matches = [];
@@ -139,9 +175,9 @@ export function resolveThreadReference(document, element, isCachedLocal = () => 
   }
   return found.size === 1 ? [...found.values()][0] : null;
 }
-export function geometry(element) {
+export function geometry(element, captured) {
   if (!element) return null;
-  const rect = element.getBoundingClientRect();
+  const rect = captured ?? element.getBoundingClientRect();
   return Object.freeze({ element, rect: Object.freeze(Object.fromEntries(['x', 'y', 'width', 'height', 'top', 'right', 'bottom', 'left'].map(key => [key, rect[key]]))) });
 }
 const optionDefaults = Object.freeze({ hideBody: false, hideHeader: false, hideComposer: false, composerEnabled: true, rightPanelEnabled: true });
@@ -170,7 +206,8 @@ export function createSurfaceControl() {
     }
     if (surface?.composer) for (const lease of leases) {
       if (lease.options.hideBody) for (const node of surface.scroller.children)
-        if (node !== surface.footer && !node.contains(surface.composer) && !node.matches(OWNED)) suppress(node, true, true);
+        if (node !== surface.footer && !node.contains(surface.composer) && !node.matches(OWNED) &&
+            !surface.floatingContent?.some(region=>region===node||node.contains(region))) suppress(node, true, true);
       suppress(surface.header, lease.options.hideHeader, false);
       suppress(surface.footer, lease.options.hideComposer, !lease.options.composerEnabled);
       suppress(surface.composer, false, !lease.options.composerEnabled);
