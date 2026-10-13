@@ -75,3 +75,15 @@ On 2026-10-13, fixture generation, exact protocol export, offline regression tes
 - Exact corrected protocol inspection: `.artifacts/workspace-history/protocol-f8ce913c-b2ca-4b7d-9132-b73667772937/report.json`. The first inspection `protocol-8703fb26-e972-4d8d-bfaf-16ac8ebd8626` incorrectly counted a comment mentioning `history:` as a declaration; it is superseded, preserved as-is and excluded from capability evidence. A regression covers that case.
 - Real-time VM replay: `.artifacts/workspace-history/replay-d61abfb0-0497-4290-ac47-0a16a3fe0940/report.json`. Both cases received all 1200/4800 deltas; actual elapsed times were 60.009/60.015 seconds, backend requests were zero, and callback/cleanup counts were zero after retirement. Dispatch quantiles and process CPU remain scoped to this Node harness; they are not Native performance limits or a cross-case scaling conclusion.
 - 8 new fixture/probe regressions and 37 existing Desktop Adapter regressions passed (45 total). The runtime Native gate has not been executed by the Adapter chat; only its synthetic request/identity/lifecycle tests passed.
+
+## Native backend gate executed by the split chat
+
+The split chat subsequently executed the prepared public probe in coordinator `1791857416908-16000`. Source reports are under `.artifacts/adapter-native/adapter-44f7b16a-5596-4bf0-b079-f70095b71696/history-probe-66c50233-dc70-4376-af5f-31dad76db160/`:
+
+- `report.json` records `nativeBackendTested:true`, two acknowledged injected model-context items, and successful `thread/read`, `thread/turns/list`, and `thread/items/list` calls that all return **0 turns / 0 items / 0 matching markers**.
+- `ledger.json` records one `thread/start`, one `thread/inject_items`, one `thread/delete`, no model turn, and state `closed`; fresh identity cleanup deleted only the new disposable thread `01a1332f-34ff-7c40-b94d-454edf22f2f6`.
+- The exact CLI hash remains `d13914ced6c7af174d8d638db938284231227312104b06a25e9608c632a7daec`.
+
+This is actual Native backend negative evidence for using `inject_items` to seed canonical UI-visible history on this version. It closes the probe's read-back uncertainty and leaves the Native 20/200/2000 completed-timeline and paced streaming gates unmet. It does not certify Native frontend history/streaming performance. The Adapter chat read and archived this result without operating the profile.
+
+The derived archive is `.artifacts/workspace-history/native-backend-negative-66c50233-dc70-4376-af5f-31dad76db160.json`. It pins `report.json` SHA-256 `cc9559737378b3186c8201fc6385b3dbed2a666991f2b702c0ef37f8519a2a47` and `ledger.json` SHA-256 `a8cb2ec78dc347223e3038173442a79c81492e156d023c52dc44faa067af9704`; both original files remain intact.
