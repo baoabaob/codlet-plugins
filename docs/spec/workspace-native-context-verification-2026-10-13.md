@@ -18,8 +18,19 @@ All three report `additionalEditors:0`. The first two report preserved body node
 
 Saved receipt directory: `X:/codlet-split-workbench/.checks/native-comparison/consumer-75f4200e-b5b5-45e2-941e-96d1f591e07e/driver/`.
 
+## Verified Native home and pinned summary on a50
+
+The consumer's `consumer-c0a987a9-61d3-4ce2-ae5c-9bb05036c8da` used the complete `a50d29b` six-file snapshot. Adapter-side reads confirm:
+
+- Initial home entry (`1791897902993-093f223f-f03f-44b5-93df-5f78b524def1`): eight bodies, no additional editors, null selected/native identity, and empty consumer/input/integration errors. Native content/body viewport is top96/bottom1095; its real home composer/footer is top935/height144, with a null thread scroller.
+- Default exit (`1791897925412-a25b02cc-3fc5-4457-ae82-3646f69c851c`): zero bodies, null selected/native identity and empty errors, returning to Native home.
+- The later physical owned-marker check is documented in the consumer's `location-new-draft-ui.md`: an explicitly owned 28-character unsent marker survived public entry, selecting a different existing thread and default return to home. Fresh pixels and exact owned-marker comparison confirmed it. Only the still-owned marker was removed afterwards, restoring the empty baseline. No submission, permission change, existing thread draft edit or original user text copying occurred. This does not prove attachment/nonempty-user-draft cases or physical entry/exit-button acceptance.
+- The consumer's `summary-fixed-ui.md` and independently inspected `summary-after-settled.jpg` confirm actual summary visibility and restoration in selected fixture5/raw-grid. Settled public bounds reserve x1462/width308 for the visible summary, leaving bodyViewport x341/right1462/width1121. Composer x533.5/width736 centers at901.5, equal to the usable body center. Native footer translation is -154. Transient animation frames were not treated as persistent misalignment.
+
+The same sample's first independent-sidebar enable failed with `workspace_host_pending: A unique Native viewport layout is required`. That failure remains preserved; the sample is not an overall clean pass. The discovery boundary correction is documented separately and delivered in `09d016f` for a new consumer-owned Native check.
+
 ## Remaining Native checks
 
-Real new unsent-page restoration, independent right-pane open/resize/content/settings release, and summary visibility/body/footer alignment remain with the consumer-owned Native round. No complete release acceptance, numeric performance result or durable atom-store flush is inferred from the ordinary-thread receipts. User-confirmed manual window dragging is accepted; unsuccessful Computer Use window movement is not treated as a product failure.
+Independent right-pane open/resize/content/settings release, visible disabled heading actions in a real thread scene and independent permissions remain pending. No complete release acceptance, numeric performance result or durable atom-store flush is inferred from the recorded paths. User-confirmed manual window dragging is accepted; unsuccessful Computer Use window movement is not treated as a product failure.
 
 The earlier `ce737`/57098b2 sample remains failed for eight `Missing parent scope` body errors despite a successful ordinary route return. It is not upgraded by the corrected candidate's success. The nearest-provider ordering correction and the additional repeated-Context tests are documented separately.

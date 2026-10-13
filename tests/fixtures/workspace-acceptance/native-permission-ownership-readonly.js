@@ -13,9 +13,38 @@ function pickerFiber(chain) {
 }
 function committedPicker(trigger,input,root) {
   let committed=false,visited=0;
+  const diagnostics={triggerAttachments:0,attachedHostMatches:0,nearbyCurrentChains:0,triggerBranchHosts:0,triggerBranchCurrentChains:0,
+    sourceRoles:{conversation:0,legacy:0,account:0,selection:0,permissionNavigation:0},attachedRoots:[]};
+  const countRoles=chain=>{for(const fiber of chain??[]){
+    const source=componentSource(fiber.type);
+    if(source.includes('conversationId'))diagnostics.sourceRoles.conversation++;
+    if(source.includes('setAgentMode')&&source.includes('setPermissionProfileId'))diagnostics.sourceRoles.legacy++;
+    if(source.includes('workPreferences.composer.useWorkSettings'))diagnostics.sourceRoles.account++;
+    if(source.includes('selectedPermissionSelection')&&source.includes('updateThreadPermissions'))diagnostics.sourceRoles.selection++;
+    if(source.includes('data-composer-navigation-target'))diagnostics.sourceRoles.permissionNavigation++;
+  }};
+  // Counts distinguish stale DOM pointers, a foreign existing Native root and
+  // an unknown component predicate. No root, fiber, source or identity escapes.
+  for(const key of Object.keys(trigger).filter(key=>key.startsWith('__reactFiber$')).slice(0,4)){
+    diagnostics.triggerAttachments++;const attached=trigger[key];
+    if(attached?.stateNode===trigger)diagnostics.attachedHostMatches++;
+    for(const start of [attached,attached?.alternate]){
+      const seen=new Set();let fiber=start;
+      while(fiber&&!seen.has(fiber)&&seen.size<128){
+        seen.add(fiber);
+        if(fiber.tag===3){
+          const container=fiber.stateNode?.containerInfo,current=fiber.stateNode?.current;
+          diagnostics.attachedRoots.push({currentPresent:!!current,currentMatchesThisFiber:current===fiber,containerIsMainRoot:container===root,
+            containerConnected:container?.isConnected===true,containerOwnsTrigger:!!container?.contains?.(trigger),containerOwned:!!container?.closest?.(OWNED)});
+          break;
+        }
+        fiber=fiber.return;
+      }
+    }
+  }
   const inspect=(element,container,proof)=>{
-    const chain=currentElementAncestry(element,container);if(chain?.length)committed=true;
-    const fiber=pickerFiber(chain);return fiber?{fiber,proof,committed:true,visited}:null;
+    const chain=currentElementAncestry(element,container);if(chain?.length){committed=true;diagnostics.nearbyCurrentChains++;countRoles(chain);}
+    const fiber=pickerFiber(chain);return fiber?{fiber,proof,committed:true,visited,diagnostics}:null;
   };
   let found=inspect(trigger,root,'trigger');if(found)return found;
   // A cloned trigger may retain a detached DOM attachment. Prove a nearby
@@ -33,12 +62,14 @@ function committedPicker(trigger,input,root) {
   while(queue.length&&seen.size<2048){
     const fiber=queue.pop();if(!fiber||seen.has(fiber))continue;seen.add(fiber);visited++;
     if(fiber.stateNode===trigger){
+      diagnostics.triggerBranchHosts++;
       // currentElementAncestry resolves only the potentially stale DOM pointer;
       // this host was found through current child links, so verify it directly.
       const attached=Object.keys(root).find(key=>key.startsWith('__reactContainer$')),container=attached&&root[attached];
       const current=container?.stateNode?.current??container;
       const chain=currentAncestry(fiber,current),picker=pickerFiber(chain?[...chain]:null);
-      if(picker)return{fiber:picker,proof:'input-branch',committed:true,visited};
+      if(chain){committed=true;diagnostics.triggerBranchCurrentChains++;countRoles(chain);}
+      if(picker)return{fiber:picker,proof:'input-branch',committed:true,visited,diagnostics};
     }
     if(fiber.sibling)queue.push(fiber.sibling);if(fiber.child)queue.push(fiber.child);
   }
@@ -49,14 +80,14 @@ function committedPicker(trigger,input,root) {
       found=inspect(trigger,element,'native-container');if(found)return found;
     }
   }
-  return{fiber:null,proof:'unconfirmed',committed,visited};
+  return{fiber:null,proof:'unconfirmed',committed,visited,diagnostics};
 }
 
 // This test helper returns only projected evidence, including when Native DOM
 // attachments are stale. Unconfirmed identity comparisons are null, not false.
 export function permissionPickerEvidence(trigger,input,binding,root) {
-  const {fiber,proof,committed,visited}=committedPicker(trigger,input,root),source=componentSource(fiber?.type),props=fiber?.memoizedProps;
-  return{committed,proof,visited,implementationFound:!!fiber,
+  const {fiber,proof,committed,visited,diagnostics}=committedPicker(trigger,input,root),source=componentSource(fiber?.type),props=fiber?.memoizedProps;
+  return{committed,proof,visited,diagnostics,implementationFound:!!fiber,
     implementation:!fiber?'unknown':source.includes('workPreferences.composer.useWorkSettings')?'account':source.includes('selectedPermissionSelection')?'selection':'legacy',
     conversationPresent:props?typeof props.conversationId==='string':null,
     conversationMatchesInput:props?props.conversationId===(input?.scope.value.conversationId??null):null,

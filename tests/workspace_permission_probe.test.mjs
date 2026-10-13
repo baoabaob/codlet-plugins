@@ -25,6 +25,7 @@ test('permission evidence proves a current nearby host when the Native trigger a
 test('permission evidence searches only the committed input branch when nearby DOM attachments are absent',t=>{
   const f=fixture(t),result=permissionPickerEvidence(f.trigger,f.input,f.binding,f.root);
   assert.equal(result.proof,'input-branch');assert.equal(result.committed,true);assert.equal(result.conversationMatchesInput,true);assert.ok(result.visited<=2048);
+  assert.equal(result.diagnostics.triggerBranchHosts,1);assert.equal(result.diagnostics.triggerBranchCurrentChains,1);assert.ok(result.diagnostics.sourceRoles.legacy>0);
 });
 
 test('an unproven permission implementation reports unknown identity instead of a false binding mismatch',t=>{
