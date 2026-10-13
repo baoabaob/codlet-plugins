@@ -1,6 +1,6 @@
 // Test-only current input/picker identity evidence. No text, documents, actual
 // permission values, setters, backend requests, navigation or UI operations.
-import { loadedAsset, uniqueExport, componentSource, currentElementAncestry, currentAncestry, localConnection } from '../../../frontend/src/host-discovery.js';
+import { loadedAsset, uniqueExport, componentSource, currentElementAncestry, localConnection } from '../../../frontend/src/host-discovery.js';
 import { nativeMainInput, nativeInputBinding, OWNED } from '../../../frontend/src/adapter/workspace-dom.js';
 
 function pickerFiber(chain) {
@@ -14,6 +14,7 @@ function pickerFiber(chain) {
 function committedPicker(trigger,input,root) {
   let committed=false,visited=0;
   const diagnostics={triggerAttachments:0,attachedHostMatches:0,nearbyCurrentChains:0,triggerBranchHosts:0,triggerBranchCurrentChains:0,
+    inputChainDepth:0,maxRelativeDepth:0,truncatedDepth:0,nodeLimitReached:false,
     sourceRoles:{conversation:0,legacy:0,account:0,selection:0,permissionNavigation:0},attachedRoots:[]};
   const countRoles=chain=>{for(const fiber of chain??[]){
     const source=componentSource(fiber.type);
@@ -58,21 +59,24 @@ function committedPicker(trigger,input,root) {
   // Search only the already-proven current input's component branch, not other
   // conversations or the app tree. A matching host must also prove its own chain.
   const inputChain=input&&currentElementAncestry(input.input,root),owner=inputChain?.find(fiber=>fiber.stateNode===input.input);
-  const queue=owner?.child?[owner.child]:[],seen=new Set();
+  diagnostics.inputChainDepth=inputChain?.length??0;
+  const queue=owner?.child?[{fiber:owner.child,path:inputChain,depth:1}]:[],seen=new Set();
   while(queue.length&&seen.size<2048){
-    const fiber=queue.pop();if(!fiber||seen.has(fiber))continue;seen.add(fiber);visited++;
+    const {fiber,path,depth}=queue.pop();if(!fiber||seen.has(fiber))continue;seen.add(fiber);visited++;
+    diagnostics.maxRelativeDepth=Math.max(diagnostics.maxRelativeDepth,depth);
     if(fiber.stateNode===trigger){
       diagnostics.triggerBranchHosts++;
-      // currentElementAncestry resolves only the potentially stale DOM pointer;
-      // this host was found through current child links, so verify it directly.
-      const attached=Object.keys(root).find(key=>key.startsWith('__reactContainer$')),container=attached&&root[attached];
-      const current=container?.stateNode?.current??container;
-      const chain=currentAncestry(fiber,current),picker=pickerFiber(chain?[...chain]:null);
-      if(chain){committed=true;diagnostics.triggerBranchCurrentChains++;countRoles(chain);}
+      // The input owner's current ancestry is already proven. Every edge here
+      // came from that owner's actual child/sibling lists. Carry that path;
+      // Native's retained return pointers are not needed to reconstruct it.
+      const chain=[fiber,...path],picker=pickerFiber(chain);
+      committed=true;diagnostics.triggerBranchCurrentChains++;countRoles(chain);
       if(picker)return{fiber:picker,proof:'input-branch',committed:true,visited,diagnostics};
     }
-    if(fiber.sibling)queue.push(fiber.sibling);if(fiber.child)queue.push(fiber.child);
+    if(fiber.sibling)queue.push({fiber:fiber.sibling,path,depth});
+    if(fiber.child){if(depth<128)queue.push({fiber:fiber.child,path:[fiber,...path],depth:depth+1});else diagnostics.truncatedDepth++;}
   }
+  diagnostics.nodeLimitReached=queue.length>0;
   // Some Native control regions have their own React container. Its current
   // root must be inside this Native input and outside consumer-owned surfaces.
   for(let element=trigger.parentElement,depth=0;input?.input.contains(element)&&depth++<16;element=element.parentElement){

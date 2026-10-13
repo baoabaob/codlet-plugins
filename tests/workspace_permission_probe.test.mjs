@@ -12,7 +12,7 @@ function fixture(t){
   current.child=owner;owner.child=picker;picker.child=host;host.child=button;
   root.__reactContainer$probe={stateNode:{current}};input.__reactFiber$probe=owner;
   trigger.__reactFiber$probe={stateNode:trigger,return:host}; // Detached attachment.
-  return{root,input:{input,scope:{value:{conversationId:'fixture-five'}}},binding:{threadId:'fixture-five'},wrapper,trigger,host,picker};
+  return{root,current,owner,input:{input,scope:{value:{conversationId:'fixture-five'}}},binding:{threadId:'fixture-five'},wrapper,trigger,host,picker};
 }
 
 test('permission evidence proves a current nearby host when the Native trigger attachment is detached',t=>{
@@ -26,6 +26,22 @@ test('permission evidence searches only the committed input branch when nearby D
   const f=fixture(t),result=permissionPickerEvidence(f.trigger,f.input,f.binding,f.root);
   assert.equal(result.proof,'input-branch');assert.equal(result.committed,true);assert.equal(result.conversationMatchesInput,true);assert.ok(result.visited<=2048);
   assert.equal(result.diagnostics.triggerBranchHosts,1);assert.equal(result.diagnostics.triggerBranchCurrentChains,1);assert.ok(result.diagnostics.sourceRoles.legacy>0);
+});
+
+test('permission evidence carries proven child paths without requiring Native descendant return pointers',t=>{
+  const f=fixture(t);f.picker.return=null;f.host.return=null;f.host.child.return=null;
+  const result=permissionPickerEvidence(f.trigger,f.input,f.binding,f.root);
+  assert.equal(result.proof,'input-branch');assert.equal(result.committed,true);assert.equal(result.conversationMatchesStrictBinding,true);
+  assert.equal(result.diagnostics.triggerBranchCurrentChains,1);assert.equal(JSON.stringify(result).includes('fixture-five'),false);
+});
+
+test('permission branch depth is relative to the proven input rather than consuming its whole ancestor budget',t=>{
+  const f=fixture(t);let child=f.owner;
+  for(let i=0;i<254;i++){const parent={child};child.return=parent;child=parent;}
+  child.return=f.current;f.current.child=child;
+  const result=permissionPickerEvidence(f.trigger,f.input,f.binding,f.root);
+  assert.equal(result.diagnostics.inputChainDepth,256);assert.equal(result.proof,'input-branch');assert.equal(result.conversationMatchesStrictBinding,true);
+  assert.ok(result.diagnostics.maxRelativeDepth<=128);assert.equal(result.diagnostics.truncatedDepth,0);
 });
 
 test('an unproven permission implementation reports unknown identity instead of a false binding mismatch',t=>{
