@@ -63,7 +63,13 @@ export function createWorkspace(context, { locate, baseNative, discovery: suppli
     }).catch(error => { if (alive && sessions.size) report(error); });
   }
   function callback(listener, value) { try { Promise.resolve(listener(value)).catch(report); } catch (error) { report(error); } }
+  let composerControlFailure=null;
+  function reconcileComposerControls(){
+    try{composerControls.reconcile();if(diagnostic===composerControlFailure)diagnostic=composerControlFailure=null;}
+    catch(error){const value=errorValue(error);if(composerControlFailure?.code!==value.code||composerControlFailure?.message!==value.message)report(error);diagnostic=composerControlFailure=value;}
+  }
   function publish(routeChanged = false) {
+    reconcileComposerControls();
     const location = host?.navigator.location, route = location ? { pathname: location.pathname, search: location.search ?? '', hash: location.hash ?? '' } : null;
     const match = route && /^\/local\/([\w-]{8,256})\/?$/.exec(route.pathname), threadId = match?.[1] ?? null;
     const next = { api: 1, route, threadId, hostId: threadId ? 'local' : null, auxiliary: !!host?.auxiliary,
@@ -77,7 +83,6 @@ export function createWorkspace(context, { locate, baseNative, discovery: suppli
     snapshot = Object.freeze({ ...next, revision: ++revision, route: route && Object.freeze(route), features: Object.freeze({ ...features }), diagnostic: diagnostic && Object.freeze({ ...diagnostic }) });
     for (const session of sessions) for (const listener of session.listeners) callback(listener, snapshot);
     selection.reconcile();
-    composerControls.reconcile();
   }
   let previousGeometry = '';
   let microtaskSequence = 0;
@@ -160,7 +165,7 @@ export function createWorkspace(context, { locate, baseNative, discovery: suppli
       }
       control.reconcile(surface);
       selection.reconcile();
-      composerControls.reconcile();
+      reconcileComposerControls();
       let anchor = activity?.isConnected ? activityPlacement(activity).anchor : null;
       if (anchor?.isConnected) for (const slot of slots) {
         if (slot.name !== 'activity.before') continue;

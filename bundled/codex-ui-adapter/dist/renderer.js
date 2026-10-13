@@ -10589,7 +10589,19 @@ function createWorkspace(context, {
       report(error);
     }
   }
+  let composerControlFailure = null;
+  function reconcileComposerControls() {
+    try {
+      composerControls.reconcile();
+      if (diagnostic === composerControlFailure) diagnostic = composerControlFailure = null;
+    } catch (error) {
+      const value = errorValue(error);
+      if (composerControlFailure?.code !== value.code || composerControlFailure?.message !== value.message) report(error);
+      diagnostic = composerControlFailure = value;
+    }
+  }
   function publish(routeChanged = false) {
+    reconcileComposerControls();
     const location2 = host?.navigator.location, route = location2 ? { pathname: location2.pathname, search: location2.search ?? "", hash: location2.hash ?? "" } : null;
     const match = route && /^\/local\/([\w-]{8,256})\/?$/.exec(route.pathname), threadId = match?.[1] ?? null;
     const next = {
@@ -10612,7 +10624,6 @@ function createWorkspace(context, {
     snapshot = Object.freeze({ ...next, revision: ++revision, route: route && Object.freeze(route), features: Object.freeze({ ...features }), diagnostic: diagnostic && Object.freeze({ ...diagnostic }) });
     for (const session of sessions) for (const listener of session.listeners) callback(listener, snapshot);
     selection.reconcile();
-    composerControls.reconcile();
   }
   let previousGeometry = "";
   let microtaskSequence = 0;
@@ -10732,7 +10743,7 @@ function createWorkspace(context, {
       }
       control.reconcile(surface);
       selection.reconcile();
-      composerControls.reconcile();
+      reconcileComposerControls();
       let anchor = activity?.isConnected ? activityPlacement(activity).anchor : null;
       if (anchor?.isConnected) for (const slot of slots) {
         if (slot.name !== "activity.before") continue;

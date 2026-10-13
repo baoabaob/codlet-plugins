@@ -44,6 +44,15 @@ test('workspace tickets bind owner/generation, are single-use, and deactivation 
   assert.throws(() => session.getSnapshot(), { code: 'workspace_retired' });
 });
 
+test('a failed composer control is a bounded workspace diagnostic and disposal restores passive publishing',async t=>{
+  const f=fixture(t),input=f.document.querySelector('[data-codex-composer-root]'),button=f.document.createElement('button');button.dataset.composerNavigationTarget='permissions';input.append(button);
+  const session=f.connect().session,lease=session.acquireComposerControl({control:'permissions',threadId:null});
+  const duplicate=button.cloneNode(true);duplicate.removeAttribute('style');duplicate.removeAttribute('inert');duplicate.removeAttribute('aria-hidden');input.append(duplicate);
+  f.workspace.refresh();await f.flush();assert.equal(session.getSnapshot().diagnostic.code,'workspace_control_unsupported');assert.equal(session.getSnapshot().available,true);assert.equal(session.getSurface().composer.element,input);assert.equal(lease.container.hasAttribute('inert'),true);
+  f.workspace.refresh();await f.flush();assert.equal(f.diagnostics.length,1);assert.equal(f.frames.size,0);
+  lease.dispose();await f.flush();assert.equal(session.getSnapshot().diagnostic,null);assert.equal(button.style.display,'');assert.equal(duplicate.style.display,'');assert.equal(lease.container.isConnected,false);assert.equal(f.frames.size,0);
+});
+
 test('a Native main page without a composer exposes page content and header for workspace entry', async t => {
   const f=fixture(t),main=f.document.querySelector('main');main.replaceChildren();
   const layout=f.document.createElement('div');layout.dataset.appShellMainContentLayout='';main.append(layout);f.navigator.location.pathname='/settings';
