@@ -6575,13 +6575,38 @@ function inspectNativeInput(native, input, root, register, diagnose) {
     throw fail5("Native editor controller changed");
   const submission = candidates.find((fiber) => typeof fiber.memoizedProps?.onSubmitLocal === "function" && typeof fiber.memoizedProps?.submitDisabled === "boolean" && (register === void 0 || fiber.memoizedProps.registerSubmitHandler === register));
   if (!submission) return pending("submission", { ancestry: chain.length });
+  let draft = null;
+  if (typeof native.draftKey === "function") {
+    const key2 = native.draftKey(scope.value), providers = candidates.filter((fiber) => hasMarkers(
+      fiber,
+      ["getInitialContent", "getInitialInput", "onDocumentChange", "onDocumentDispose", "pending-input-ready"]
+    ));
+    const owners = providers.filter((fiber) => {
+      if (fiber.memoizedProps?.composerController === controller) return true;
+      for (let hook = fiber.memoizedState, count = 0; hook && count++ < 128; hook = hook.next)
+        if (hook.memoizedState?.current?.controller === controller) return true;
+      return false;
+    });
+    if (typeof key2 === "string" && key2.length && owners.length === 1 && owners[0].key === key2) {
+      const value = scope.value;
+      draft = Object.freeze({
+        key: key2,
+        kind: value.kind,
+        conversationId: value.conversationId ?? null,
+        clientThreadId: value.clientThreadId ?? null,
+        entrypoint: value.entrypoint ?? null,
+        routeKind: value.routeKind ?? null
+      });
+    }
+  }
   return {
     input,
     editable,
     controller,
     scope,
     submitHandler: submission.memoizedProps.onSubmitLocal,
-    submitDisabled: submission.memoizedProps.submitDisabled === true
+    submitDisabled: submission.memoizedProps.submitDisabled === true,
+    draft
   };
 }
 function sameNativeInput(left, right) {
@@ -7276,6 +7301,10 @@ function createWorkspaceDiscovery(baseNative, { load = (url) => import(url), rea
         ["sidebarThreadLocationId", "orbitPrewarmId", "`sidebar`", "threadId:"]
       ), "thread navigation action");
       const parts = { manager: connection2.manager, composerScope, ThreadScope, RouteScope, inputApi: 1, check: () => existing() };
+      parts.draftKey = uniqueExport(native.shared, (value) => typeof value === "function" && value.length === 1 && markers(
+        value,
+        ["gpt-draft:", "draftThreadLocationId", "library-preview:", "widget-overlay:", "clientThreadId"]
+      ), "composer draft identity", true);
       return { ...parts, ...createNativeNavigation(signal, existing, dispatch, () => nativeNavigationScope(existing())) };
     },
     action: async () => {
@@ -9350,7 +9379,7 @@ function createWorkspaceMetrics(options4) {
 }
 
 // src/adapter/workspace-location.js
-function createWorkspaceLocations({ document: document2, host, load, check, changed, beforeCapture, beforeRestore, retainGuard }) {
+function createWorkspaceLocations({ document: document2, host, load, check, changed, beforeCapture, beforeRestore, retainGuard, readInput = nativeMainInput, readBinding = nativeInputBinding }) {
   const handles = /* @__PURE__ */ new Set();
   let native, prepared, disposed = false;
   const ensure = () => prepared ??= Promise.resolve().then(load).then((value) => {
@@ -9374,8 +9403,10 @@ function createWorkspaceLocations({ document: document2, host, load, check, chan
       if (!record.active) throw workspaceError("workspace_retired", "Captured location retired");
       if (host().navigator !== source.navigator || host().navigator.location !== origin) throw workspaceError("workspace_location_superseded", "Native location changed before capture readiness");
       beforeCapture?.();
-      record.input = nativeMainInput(document2, native);
-      if (record.input?.controller.view.composing) throw workspaceError("workspace_composer_busy", "Native main input is composing");
+      const input = readInput(document2, native);
+      if (input?.controller.view.composing) throw workspaceError("workspace_composer_busy", "Native main input is composing");
+      if (input && !input.draft) throw workspaceError("workspace_host_pending", "Native draft identity and editor initialization are not confirmed");
+      record.draft = input?.draft ?? null;
     });
     ready.catch(() => {
     });
@@ -9386,7 +9417,7 @@ function createWorkspaceLocations({ document: document2, host, load, check, chan
       record.pending?.abort();
       record.releaseGuard?.();
       record.saved = null;
-      record.input = null;
+      record.draft = null;
       handles.delete(record);
     };
     return Object.freeze({
@@ -9415,7 +9446,7 @@ function createWorkspaceLocations({ document: document2, host, load, check, chan
           if (controller.signal.aborted) throw workspaceError("invocation_cancelled", "Location restoration cancelled");
           if (host().navigator !== source.navigator || host().rootNode !== source.rootNode) throw workspaceError("workspace_host_drift", "Captured page belongs to another Native host");
           releaseRestore = beforeRestore?.();
-          const current3 = nativeMainInput(document2, native);
+          const current3 = readInput(document2, native);
           if (current3?.controller.view.composing) throw workspaceError("workspace_composer_busy", "Native main input is composing");
           native.check?.();
           const restoringFrom = host().navigator.location;
@@ -9431,18 +9462,21 @@ function createWorkspaceLocations({ document: document2, host, load, check, chan
                   if (location2 === restoringFrom) return;
                   throw workspaceError("workspace_location_superseded", "Native selected another page during restoration");
                 }
-                if (record.input) {
-                  const restored = nativeMainInput(document2, native);
-                  if (!restored) return;
-                  const binding = nativeInputBinding(restored, native), old = record.input;
-                  if (restored.controller !== old.controller || restored.scope.node !== old.scope.node || restored.scope.value.clientThreadId !== old.scope.value.clientThreadId)
-                    throw workspaceError("workspace_location_state_evicted", "Native did not retain the captured input state");
+                if (record.draft) {
+                  const restored = readInput(document2, native);
+                  if (!restored?.draft) return;
+                  const old = record.draft, value = restored.scope.value;
+                  if (value.kind !== old.kind || (value.conversationId ?? null) !== old.conversationId || (value.entrypoint ?? null) !== old.entrypoint) return;
+                  const binding = readBinding(restored, native);
+                  if (old.conversationId !== null && (!binding || binding.threadId !== old.conversationId || binding.hostId !== "local")) return;
+                  if (restored.draft.key !== old.key || restored.draft.clientThreadId !== old.clientThreadId || restored.draft.routeKind !== old.routeKind)
+                    throw workspaceError("workspace_location_state_evicted", "Native restored a different draft namespace");
                   if (binding && kind === "thread") changed(binding);
                   else changed();
                 } else changed();
                 resolve();
               } catch (error) {
-                reject(error);
+                if (!["workspace_host_pending", "ui_host_pending", "workspace_composer_binding_drift"].includes(error.code)) reject(error);
               }
             };
             observer = new document2.defaultView.MutationObserver(inspect);
@@ -9471,7 +9505,7 @@ function createWorkspaceLocations({ document: document2, host, load, check, chan
       record.pending?.abort();
       record.releaseGuard?.();
       record.saved = null;
-      record.input = null;
+      record.draft = null;
     }
     handles.clear();
   } };

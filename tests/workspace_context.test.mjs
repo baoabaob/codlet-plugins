@@ -95,3 +95,31 @@ test('heading journal preserves a later unrelated Native property change',t=>{
   const handle=provider.acquire({threadId:null},'consumer',()=>{});title.style.setProperty('visibility','collapse');title.setAttribute('aria-hidden','false');provider.reconcile();
   handle.dispose();assert.equal(title.style.visibility,'collapse');assert.equal(title.getAttribute('aria-hidden'),'false');assert.equal(title.hasAttribute('inert'),false);
 });
+
+function draftLocation(t,{kind='local',conversationId='fixture-five',entrypoint=null,clientThreadId='local:fixture-five',routeKind='local-thread',key=clientThreadId}={}){
+  const dom=new JSDOM('<div id="root"></div>'),document=dom.window.document;t.after(()=>dom.window.close());
+  const draft=Object.freeze({key,kind,conversationId,clientThreadId,routeKind,entrypoint});
+  const makeInput=identity=>({scope:{node:{},value:{...identity}},controller:{view:{composing:false},getPersistedText(){assert.fail('must not read draft text');}},draft:Object.freeze({...identity})});
+  let input=makeInput(draft);const navigator={location:{pathname:kind==='local'?'/local/'+conversationId:'/',state:null,key:'original'}},host={navigator,rootNode:document.getElementById('root')};
+  const provider=createWorkspaceLocations({document,host:()=>host,load:async()=>({restoreLocation(value){navigator.location={...value};}}),check(){},changed(){},readInput:()=>input,readBinding:value=>value.scope.value.conversationId?{threadId:value.scope.value.conversationId,hostId:'local'}:null});t.after(()=>provider.dispose());
+  return{document,navigator,provider,draft,makeInput,setInput(value){input=value;},pulse(){document.getElementById('root').append(document.createElement('span'));}};
+}
+
+test('location waits for the correct Native input after URL publication and accepts a rebuilt controller in the same draft namespace',async t=>{
+  const f=draftLocation(t),handle=f.provider.capture(()=>{});await handle.ready;
+  f.navigator.location={pathname:'/local/fixture-zero',state:null};f.setInput(f.makeInput({...f.draft,conversationId:'fixture-zero',clientThreadId:'local:fixture-zero',key:'local:fixture-zero'}));
+  const restored=handle.restore();let done=false;restored.then(()=>done=true,()=>done=true);await tick();assert.equal(done,false,'URL alone and the transitional input cannot settle restore');
+  f.setInput(f.makeInput(f.draft));f.pulse();assert.deepEqual(await restored,{restored:true,kind:'thread'});
+});
+
+test('a new unsent page restores its Native namespace without requiring an old controller or scope object',async t=>{
+  const f=draftLocation(t,{kind:'new',conversationId:null,entrypoint:'home',clientThreadId:null,routeKind:null,key:'native-home-draft'}),handle=f.provider.capture(()=>{});await handle.ready;
+  f.navigator.location={pathname:'/local/fixture-zero',state:null};f.setInput(f.makeInput({...f.draft,kind:'local',conversationId:'fixture-zero',entrypoint:null,key:'local:fixture-zero'}));
+  const restored=handle.restore();await tick();f.setInput(f.makeInput(f.draft));f.pulse();assert.deepEqual(await restored,{restored:true,kind:'page'});
+});
+
+test('correctly owned target input with a different Native draft namespace fails instead of silently accepting a fresh document',async t=>{
+  const f=draftLocation(t),handle=f.provider.capture(()=>{});await handle.ready;
+  f.navigator.location={pathname:'/settings',state:null};f.setInput(f.makeInput({...f.draft,key:'different-draft'}));
+  await assert.rejects(handle.restore(),{code:'workspace_location_state_evicted'});
+});

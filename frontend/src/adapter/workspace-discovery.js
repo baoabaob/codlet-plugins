@@ -90,6 +90,10 @@ export function createWorkspaceDiscovery(baseNative, { load = url => import(url)
       const dispatch = uniqueExport(native.initial, value => typeof value === 'function' && value.length === 7 && markers(value,
         ['sidebarThreadLocationId', 'orbitPrewarmId', '`sidebar`', 'threadId:']), 'thread navigation action');
       const parts = { manager: connection.manager, composerScope, ThreadScope, RouteScope, inputApi: 1, check: () => existing() };
+      // Native EditorProvider uses this semantic draft namespace as its key.
+      // View/controller references may change while this namespace persists.
+      parts.draftKey = uniqueExport(native.shared, value => typeof value === 'function' && value.length === 1 && markers(value,
+        ['gpt-draft:', 'draftThreadLocationId', 'library-preview:', 'widget-overlay:', 'clientThreadId']), 'composer draft identity', true);
       return { ...parts, ...createNativeNavigation(signal, existing, dispatch, () => nativeNavigationScope(existing())) };
     },
     action: async () => { const native=await getCommon();if(!native.RailButton||!native.RailTooltip)throw workspaceError('workspace_action_unavailable','Native toolbar button or tooltip is unavailable');return{...native,Button:native.RailButton,Tooltip:native.RailTooltip}; },

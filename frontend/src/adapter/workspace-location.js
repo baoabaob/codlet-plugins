@@ -2,7 +2,7 @@ import { nativeMainInput, nativeInputBinding, workspaceError } from './workspace
 
 // The caller sees an opaque handle. Native state stays in this closure and is
 // neither serialized nor copied into a consumer-owned draft or router.
-export function createWorkspaceLocations({document,host,load,check,changed,beforeCapture,beforeRestore,retainGuard}) {
+export function createWorkspaceLocations({document,host,load,check,changed,beforeCapture,beforeRestore,retainGuard,readInput=nativeMainInput,readBinding=nativeInputBinding}) {
   const handles=new Set();let native,prepared,disposed=false;
   const ensure=()=>prepared??=Promise.resolve().then(load).then(value=>{
     if(disposed)throw workspaceError('workspace_retired','Location provider retired');
@@ -18,11 +18,13 @@ export function createWorkspaceLocations({document,host,load,check,changed,befor
     const ready=ensure().then(()=>{
       check();live();if(!record.active)throw workspaceError('workspace_retired','Captured location retired');
       if(host().navigator!==source.navigator||host().navigator.location!==origin)throw workspaceError('workspace_location_superseded','Native location changed before capture readiness');
-      beforeCapture?.();record.input=nativeMainInput(document,native);
-      if(record.input?.controller.view.composing)throw workspaceError('workspace_composer_busy','Native main input is composing');
+      beforeCapture?.();const input=readInput(document,native);
+      if(input?.controller.view.composing)throw workspaceError('workspace_composer_busy','Native main input is composing');
+      if(input&&!input.draft)throw workspaceError('workspace_host_pending','Native draft identity and editor initialization are not confirmed');
+      record.draft=input?.draft??null;
     });ready.catch(()=>{});
     const kind=/^\/local\/[\w-]+\/?$/.test(saved.pathname)?'thread':'page';
-    const dispose=()=>{if(!record.active)return;record.active=false;record.pending?.abort();record.releaseGuard?.();record.saved=null;record.input=null;handles.delete(record);};
+    const dispose=()=>{if(!record.active)return;record.active=false;record.pending?.abort();record.releaseGuard?.();record.saved=null;record.draft=null;handles.delete(record);};
     return Object.freeze({ready,kind,
       async restore(options={}){
         check();live();if(!record.active)throw workspaceError('workspace_retired','Captured location retired');
@@ -36,7 +38,7 @@ export function createWorkspaceLocations({document,host,load,check,changed,befor
         try{
           await ready;check();live();if(controller.signal.aborted)throw workspaceError('invocation_cancelled','Location restoration cancelled');
           if(host().navigator!==source.navigator||host().rootNode!==source.rootNode)throw workspaceError('workspace_host_drift','Captured page belongs to another Native host');
-          releaseRestore=beforeRestore?.();const current=nativeMainInput(document,native);
+          releaseRestore=beforeRestore?.();const current=readInput(document,native);
           if(current?.controller.view.composing)throw workspaceError('workspace_composer_busy','Native main input is composing');
           native.check?.();const restoringFrom=host().navigator.location;native.restoreLocation(record.saved);
           await new Promise((resolve,reject)=>{
@@ -47,13 +49,19 @@ export function createWorkspaceLocations({document,host,load,check,changed,befor
                 if(location===restoringFrom)return;
                 throw workspaceError('workspace_location_superseded','Native selected another page during restoration');
               }
-              if(record.input){const restored=nativeMainInput(document,native);if(!restored)return;
-                const binding=nativeInputBinding(restored,native),old=record.input;
-                if(restored.controller!==old.controller||restored.scope.node!==old.scope.node||restored.scope.value.clientThreadId!==old.scope.value.clientThreadId)
-                  throw workspaceError('workspace_location_state_evicted','Native did not retain the captured input state');
+              if(record.draft){const restored=readInput(document,native);if(!restored?.draft)return;
+                const old=record.draft,value=restored.scope.value;
+                // Router location publishes before the Native input commit.
+                // A transitional input belongs to the previous page, not an
+                // evicted target document. Wait for its semantic owner first.
+                if(value.kind!==old.kind||(value.conversationId??null)!==old.conversationId||(value.entrypoint??null)!==old.entrypoint)return;
+                const binding=readBinding(restored,native);
+                if(old.conversationId!==null&&(!binding||binding.threadId!==old.conversationId||binding.hostId!=='local'))return;
+                if(restored.draft.key!==old.key||restored.draft.clientThreadId!==old.clientThreadId||restored.draft.routeKind!==old.routeKind)
+                  throw workspaceError('workspace_location_state_evicted','Native restored a different draft namespace');
                 if(binding&&kind==='thread')changed(binding);else changed();
               }else changed();resolve();
-            }catch(error){reject(error);}};
+            }catch(error){if(!['workspace_host_pending','ui_host_pending','workspace_composer_binding_drift'].includes(error.code))reject(error);}};
             observer=new document.defaultView.MutationObserver(inspect);observer.observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:['data-app-shell-active-page','data-codex-composer-root']});
             timer=setTimeout(()=>reject(workspaceError('workspace_location_restore_timeout','Native page restoration was not confirmed')),5000);
             controller.signal.addEventListener('abort',inspect,{once:true});queueMicrotask(inspect);
@@ -62,5 +70,5 @@ export function createWorkspaceLocations({document,host,load,check,changed,befor
         }finally{observer?.disconnect();clearTimeout(timer);if(inspect)controller.signal.removeEventListener('abort',inspect);signal?.removeEventListener('abort',abort);releaseRestore?.();if(record.pending===controller)record.pending=null;}
       },dispose});
   }
-  return{capture,prepare:ensure,dispose(){disposed=true;for(const record of handles){record.active=false;record.pending?.abort();record.releaseGuard?.();record.saved=null;record.input=null;}handles.clear();}};
+  return{capture,prepare:ensure,dispose(){disposed=true;for(const record of handles){record.active=false;record.pending?.abort();record.releaseGuard?.();record.saved=null;record.draft=null;}handles.clear();}};
 }

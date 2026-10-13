@@ -75,8 +75,24 @@ export function inspectNativeInput(native, input, root, register, diagnose) {
   const submission = candidates.find(fiber => typeof fiber.memoizedProps?.onSubmitLocal === 'function' &&
     typeof fiber.memoizedProps?.submitDisabled === 'boolean' && (register === undefined || fiber.memoizedProps.registerSubmitHandler === register));
   if (!submission) return pending('submission', { ancestry: chain.length });
+  let draft = null;
+  if (typeof native.draftKey === 'function') {
+    const key = native.draftKey(scope.value), providers = candidates.filter(fiber => hasMarkers(fiber,
+      ['getInitialContent', 'getInitialInput', 'onDocumentChange', 'onDocumentDispose', 'pending-input-ready']));
+    const owners = providers.filter(fiber => {
+      if (fiber.memoizedProps?.composerController === controller) return true;
+      for (let hook = fiber.memoizedState, count = 0; hook && count++ < 128; hook = hook.next)
+        if (hook.memoizedState?.current?.controller === controller) return true;
+      return false;
+    });
+    if (typeof key === 'string' && key.length && owners.length === 1 && owners[0].key === key) {
+      const value = scope.value;
+      draft = Object.freeze({ key, kind: value.kind, conversationId: value.conversationId ?? null, clientThreadId: value.clientThreadId ?? null,
+        entrypoint: value.entrypoint ?? null, routeKind: value.routeKind ?? null });
+    }
+  }
   return { input, editable, controller, scope, submitHandler: submission.memoizedProps.onSubmitLocal,
-    submitDisabled: submission.memoizedProps.submitDisabled === true };
+    submitDisabled: submission.memoizedProps.submitDisabled === true, draft };
 }
 
 export function sameNativeInput(left, right) {

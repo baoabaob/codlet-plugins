@@ -223,3 +223,18 @@ test('phase-only Native input diagnosis avoids richer view/hook reads while pres
   assert.equal(inspectNativeInput({ composerScope: scope }, input, root, undefined, diagnose), null);
   assert.equal(light.at(-1).stage, 'controller'); assert.equal(light.at(-1).views, null); assert.equal(richHookReads, 0);
 });
+
+test('Native draft metadata requires the initialized EditorProvider key and never reads or changes draft text',t=>{
+  const f=setup(t),root=f.document.getElementById('root'),input=f.editable.parentElement,token={},value={kind:'local',conversationId:'fixture-five',clientThreadId:'local:fixture-five',routeKind:'local-thread'};
+  const current={},facade={scope:token,node:{},value},controller=()=>({view:{dom:f.editable,composing:false,isDestroyed:false},getPersistedText(){assert.fail('draft read');},restoreDraft(){assert.fail('draft write');}});let editorController=controller();
+  function Composer(){return 'onDocumentChange onDocumentDispose composerController';}
+  function EditorProvider(){return 'getInitialContent getInitialInput onDocumentChange onDocumentDispose pending-input-ready';}
+  const model={type:Composer,memoizedState:{memoizedState:{current:facade}},return:current},owner={stateNode:input,return:model};
+  const editor={type:EditorProvider,key:value.clientThreadId,memoizedState:{memoizedState:{current:{controller:editorController}}},return:owner},provider={tag:10,memoizedProps:{value:editorController},return:editor},submission={memoizedProps:{onSubmitLocal(){assert.fail('submit');},submitDisabled:false},return:provider};
+  current.child=model;model.child=owner;owner.child=editor;editor.child=provider;provider.child=submission;
+  root.__reactContainer$draft={stateNode:{current}};input.__reactFiber$draft=owner;const native={composerScope:token,draftKey:value=>value.clientThreadId};
+  const first=inspectNativeInput(native,input,root);assert.deepEqual(first.draft,{key:value.clientThreadId,kind:'local',conversationId:'fixture-five',clientThreadId:value.clientThreadId,entrypoint:null,routeKind:'local-thread'});
+  editorController=controller();editor.memoizedState.memoizedState.current.controller=editorController;provider.memoizedProps.value=editorController;
+  const next=inspectNativeInput(native,input,root);assert.notEqual(first.controller,next.controller);assert.deepEqual(next.draft,first.draft);
+  editor.key='another-draft';assert.equal(inspectNativeInput(native,input,root).draft,null,'an initialized controller under the wrong key is not proof of the target draft');
+});
