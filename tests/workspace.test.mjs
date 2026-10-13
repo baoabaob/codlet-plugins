@@ -215,6 +215,26 @@ function native(f) {
   N.roots = () => roots; return N;
 }
 
+test('current Provider capture keeps the nearest Native scope chain when the same Context is nested',t=>{
+  const f=fixture(t),N=native(f),R=N.React,h=R.createElement,Context=R.createContext(null),outer=new Map(),inner=new Map([['AppScope','original']]);
+  const box=f.document.getElementById('root'),root=N.Client.createRoot(box);t.after(()=>N.DOM.flushSync(()=>root.unmount()));
+  const render=value=>h(Context,{value:outer},h(Context,{value},h('main',{'data-app-shell-main-surface':''},h('div',{id:'provider-target'}))));
+  N.DOM.flushSync(()=>root.render(render(inner)));const target=f.document.getElementById('provider-target');
+  assert.equal(f.window.WorkspaceDom.providersFor(target).find(([context])=>context===Context)?.[1],inner,'the outer empty chain cannot replace the nearest AppScope');
+  const next=new Map([['AppScope','updated']]);N.DOM.flushSync(()=>root.render(render(next)));
+  assert.equal(f.document.getElementById('provider-target'),target);assert.equal(f.window.WorkspaceDom.providersFor(target).find(([context])=>context===Context)?.[1],next,'current tree proof retains the new nearest value on a reused DOM node');
+});
+
+test('Native transcript mount inherits the inner AppScope instead of rendering a missing-parent error under an outer empty chain',async t=>{
+  const f=fixture(t),N=native(f),R=N.React,h=R.createElement,Context=R.createContext(new Map()),root=N.Client.createRoot(f.document.getElementById('root'));t.after(()=>N.DOM.flushSync(()=>root.unmount()));
+  const NativeMain=()=>h(R.Fragment,null,h('div',{'data-app-shell-main-titlebar':''}),h('main',{'data-app-shell-main-surface':''},h('div',{'data-includes-composer':''},h('div',{className:'thread-scroll-container'},h('section'),h('footer',{'data-thread-scroll-footer':''},h('div',{'data-codex-composer-root':''}))))));
+  N.DOM.flushSync(()=>root.render(h(Context,{value:new Map()},h(Context,{value:new Map([['AppScope','native']])},h(NativeMain)))));
+  N.manager={getConversation:()=>({resumeState:'resumed',turns:[{}]}),addConversationStateCallback:()=>()=>{}};N.Scope=({children})=>children;N.composerScope={};N.composerValue=()=>({});N.ThreadSubscription=()=>null;
+  N.Content=({conversationId})=>{if(R.useContext(Context).get('AppScope')!=='native')throw Error('Missing parent scope');return h('div',{className:'thread-scroll-container'},h('div',{'data-thread-find-target':'conversation'},'Native '+conversationId));};f.discovery.transcript=async()=>N;
+  const session=f.connect().session,container=f.document.createElement('div');f.document.body.append(container);const handle=session.mountTranscript(container,{threadId:'thread-b'});await handle.ready;
+  assert.equal(container.textContent,'Native thread-b');assert.equal(f.diagnostics.some(value=>value.message==='Missing parent scope'),false);handle.dispose();
+});
+
 function composerNative(f,{wrong=false}={}){
   const N=native(f),R=N.React,h=R.createElement,scopeContext=R.createContext(new Map()),controllerContext=R.createContext(null);let mounted=0,renders=0;
   N.ThreadScope={id:Symbol('thread')};N.RouteScope={id:Symbol('route')};N.composerScope={id:Symbol('composer')};

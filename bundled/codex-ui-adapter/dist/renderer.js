@@ -6640,7 +6640,7 @@ function ancestry(node, limit = 64) {
 function providersFor(node) {
   const result = [], seen = /* @__PURE__ */ new Set();
   const current3 = currentElementAncestry(node, node?.ownerDocument?.getElementById("root"));
-  for (const fiber of current3 ? [...current3].reverse() : ancestry(node, 180)) {
+  for (const fiber of current3 ?? ancestry(node, 180)) {
     let count = 0;
     for (let dep = fiber.dependencies?.firstContext; dep && count++ < 128; dep = dep.next) {
       if (!dep.context || seen.has(dep.context)) continue;
