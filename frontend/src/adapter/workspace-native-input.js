@@ -85,7 +85,12 @@ export function inspectNativeInput(native, input, root, register, diagnose) {
         if (hook.memoizedState?.current?.controller === controller) return true;
       return false;
     });
-    if (typeof key === 'string' && key.length && owners.length === 1 && owners[0].key === key) {
+    diagnose?.({stage:'draft',formatterKeyPresent:typeof key==='string'&&!!key,providerCount:providers.length,ownerCount:owners.length,
+      keyMatches:owners.map(owner=>owner.key===key),externalOwnerCount:owners.filter(owner=>owner.memoizedProps?.composerController===controller).length});
+    // Native home nests an EditorProvider around an externally supplied editor.
+    // Both providers own this controller and the same draft namespace. A rebuilt
+    // controller is also valid; conflicting namespaces remain unconfirmed.
+    if (typeof key === 'string' && key.length && owners.length > 0 && owners.every(owner => owner.key === key)) {
       const value = scope.value;
       draft = Object.freeze({ key, kind: value.kind, conversationId: value.conversationId ?? null, clientThreadId: value.clientThreadId ?? null,
         entrypoint: value.entrypoint ?? null, routeKind: value.routeKind ?? null });

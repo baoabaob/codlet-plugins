@@ -16,9 +16,9 @@ Default exit can await entry.restore then dispose. An explicit enter-conversatio
 
 ## Heading and selection presentation
 
-`session.acquireSelectionPresentation({threadId:null,emptyLabel:'未选择会话'})` returns `{update,dispose}`. There is one exclusive presentation owner per Native document. Null selection shows the caller's bounded noninteractive label and disables/masks the corresponding Native main-heading contents without changing the Native route or thread title. The outer titlebar/drag region is not overridden.
+`session.acquireSelectionPresentation({threadId:null,emptyLabel:'未选择会话'})` returns `{update,dispose}`. There is one exclusive presentation owner per Native document. Null selection replaces the Native title's presentation with the caller's bounded noninteractive label. Native heading actions remain visible and dimmed: native buttons/form controls receive `disabled`; actionable nodes receive `aria-disabled`, `inert`, pointer blocking and capture-phase activation blocking. Consumer-owned controls are excluded. Native route and saved thread title are unchanged; the outer titlebar/drag region is not overridden.
 
-`update({threadId})` requires that route **and strict current input** agree with the chosen local thread. It then returns presentation to the Native heading/actions. An external route mismatch masks stale selection rather than displaying a fake selection. The caller drives the update after its verified navigation commit; this method never navigates or sends. `dispose()` restores leased DOM fields using the journal and removes the owned label. `features.selectionPresentation` advertises the presentation mechanism; a selected thread still requires strict Native ownership.
+`update({threadId})` requires that route **and strict current input** agree with the chosen local thread. It then returns presentation to the Native heading/actions. An external route mismatch returns to the unselected presentation. The caller drives the update after its verified navigation commit; this method never navigates or sends. `dispose()` restores leased DOM fields using the journal, removes capture listeners and the owned label, and preserves later unrelated Native changes. `features.selectionPresentation` advertises the presentation mechanism; a selected thread still requires strict Native ownership.
 
 ## Optional independent right viewport
 

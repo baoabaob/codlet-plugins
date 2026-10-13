@@ -28,15 +28,15 @@ test('capture cannot silently bind a different page during Native readiness and 
   await assert.rejects(handle.ready,{code:'workspace_location_superseded'});handle.dispose();assert.equal(released,1);provider.dispose();
 });
 
-test('selection presentation masks unselected Native actions, preserves drag parent and restores journal on release',t=>{
-  const dom=new JSDOM('<header id="header" style="-webkit-app-region:drag"><div id="title">Native title</div><button id="action">Action</button></header>');t.after(()=>dom.window.close());
+test('selection presentation leaves unselected Native actions visible and disabled while preserving the drag parent',t=>{
+  const dom=new JSDOM('<header id="header" style="-webkit-app-region:drag"><div><div id="title" class="min-w-0 text-base font-medium">Native title</div><button id="action">Action</button></div></header>');t.after(()=>dom.window.close());
   const document=dom.window.document,header=document.getElementById('header'),title=document.getElementById('title'),button=document.getElementById('action');
   let selected='thread-a',confirmed=true;const provider=createWorkspaceSelection({document,surface:()=>({header}),snapshot:()=>({threadId:selected}),check(){},changed(){},isConfirmed:()=>confirmed});
   const lease=provider.acquire({threadId:null,emptyLabel:'未选择会话'},'consumer',()=>{});
-  assert.equal(button.hasAttribute('inert'),true);assert.equal(title.style.visibility,'hidden');assert.equal(header.hasAttribute('inert'),false);
+  assert.equal(button.hasAttribute('inert'),true);assert.equal(button.disabled,true);assert.equal(button.getAttribute('aria-disabled'),'true');assert.equal(button.style.visibility,'');assert.equal(button.parentElement.style.visibility,'');assert.equal(button.style.opacity,'0.45');assert.equal(title.style.visibility,'hidden');assert.equal(header.hasAttribute('inert'),false);
   assert.equal(header.querySelector('[data-codlet-workspace-owned]').textContent,'未选择会话');
   confirmed=false;assert.throws(()=>lease.update({threadId:'thread-a'}),{code:'workspace_selection_not_confirmed'});
-  confirmed=true;lease.update({threadId:'thread-a'});assert.equal(button.hasAttribute('inert'),false);assert.equal(title.style.visibility,'');
+  confirmed=true;lease.update({threadId:'thread-a'});assert.equal(button.hasAttribute('inert'),false);assert.equal(button.disabled,false);assert.equal(button.style.opacity,'');assert.equal(title.style.visibility,'');
   selected='thread-b';provider.reconcile();assert.equal(button.hasAttribute('inert'),true,'an externally changed route cannot masquerade as selected A');
   lease.dispose();assert.equal(button.hasAttribute('inert'),false);assert.equal(header.querySelector('[data-codlet-workspace-owned]'),null);
 });
@@ -90,10 +90,23 @@ test('capture respects shared IME preflight and does not retain a usable draft h
 });
 
 test('heading journal preserves a later unrelated Native property change',t=>{
-  const dom=new JSDOM('<header><span>Title</span></header>');t.after(()=>dom.window.close());const document=dom.window.document,header=document.querySelector('header'),title=header.firstElementChild;
+  const dom=new JSDOM('<header><span class="min-w-0 text-base font-medium">Title</span></header>');t.after(()=>dom.window.close());const document=dom.window.document,header=document.querySelector('header'),title=header.firstElementChild;
   const provider=createWorkspaceSelection({document,surface:()=>({header}),snapshot:()=>({threadId:null}),check(){},changed(){}});
   const handle=provider.acquire({threadId:null},'consumer',()=>{});title.style.setProperty('visibility','collapse');title.setAttribute('aria-hidden','false');provider.reconcile();
   handle.dispose();assert.equal(title.style.visibility,'collapse');assert.equal(title.getAttribute('aria-hidden'),'false');assert.equal(title.hasAttribute('inert'),false);
+});
+
+test('selection presentation blocks custom Native actions, excludes owned controls and restores changes after header replacement',t=>{
+  const dom=new JSDOM('<header><button class="min-w-0 text-base font-medium" id="title">Title</button><a id="native" href="/native" aria-disabled="false" style="opacity:0.8"><span>Native action</span></a><button id="already" disabled>Unavailable</button><span data-codlet-workspace-owned="consumer"><button id="owned">Exit workspace</button></span></header>');t.after(()=>dom.window.close());
+  const document=dom.window.document;let header=document.querySelector('header');const original=header,link=document.getElementById('native'),owned=document.getElementById('owned');let clicked=0,ownedClicks=0;
+  header.addEventListener('click',()=>clicked++);owned.addEventListener('click',()=>ownedClicks++);
+  const provider=createWorkspaceSelection({document,surface:()=>({header}),snapshot:()=>({threadId:null}),check(){},changed(){}}),lease=provider.acquire({threadId:null},'consumer',()=>{});
+  const event=new dom.window.MouseEvent('click',{bubbles:true,cancelable:true});assert.equal(link.firstElementChild.dispatchEvent(event),false);assert.equal(clicked,0);
+  owned.click();assert.equal(owned.disabled,false);assert.equal(ownedClicks,1);
+  link.style.opacity='0.7';link.setAttribute('aria-disabled','false');provider.reconcile();
+  header=document.createElement('header');header.innerHTML='<div class="min-w-0 text-base font-medium">Other title</div><button>Other action</button>';original.replaceWith(header);provider.reconcile();
+  assert.equal(link.style.opacity,'0.7');assert.equal(link.getAttribute('aria-disabled'),'false');assert.equal(link.hasAttribute('inert'),false);assert.equal(original.querySelector('#already').disabled,true);
+  assert.equal(header.querySelector('button').disabled,true);lease.dispose();assert.equal(header.querySelector('button').disabled,false);
 });
 
 function draftLocation(t,{kind='local',conversationId='fixture-five',entrypoint=null,clientThreadId='local:fixture-five',routeKind='local-thread',key=clientThreadId}={}){

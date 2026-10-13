@@ -238,3 +238,23 @@ test('Native draft metadata requires the initialized EditorProvider key and neve
   const next=inspectNativeInput(native,input,root);assert.notEqual(first.controller,next.controller);assert.deepEqual(next.draft,first.draft);
   editor.key='another-draft';assert.equal(inspectNativeInput(native,input,root).draft,null,'an initialized controller under the wrong key is not proof of the target draft');
 });
+
+test('Native empty home accepts nested providers sharing its controller and namespace but rejects conflicting ownership',t=>{
+  const f=setup(t),root=f.document.getElementById('root'),input=f.editable.parentElement,token={},value={kind:'new',entrypoint:'home'};
+  const current={},facade={scope:token,node:{},value},controller={view:{dom:f.editable,composing:false,isDestroyed:false},getPersistedText(){assert.fail('draft read');},restoreDraft(){assert.fail('draft write');}};
+  function Composer(){return 'onDocumentChange onDocumentDispose composerController';}
+  function EditorProvider(){return 'getInitialContent getInitialInput onDocumentChange onDocumentDispose pending-input-ready';}
+  const model={type:Composer,memoizedState:{memoizedState:{current:facade}},return:current},owner={stateNode:input,return:model};
+  const outer={type:EditorProvider,key:'home-draft',memoizedState:{memoizedState:{current:{controller}}},return:owner};
+  const inner={type:EditorProvider,key:'home-draft',memoizedProps:{composerController:controller},return:outer};
+  const context={tag:10,memoizedProps:{value:controller},return:inner},submission={memoizedProps:{onSubmitLocal(){assert.fail('submit');},submitDisabled:true},return:context};
+  current.child=model;model.child=owner;owner.child=outer;outer.child=inner;inner.child=context;context.child=submission;
+  root.__reactContainer$home={stateNode:{current}};input.__reactFiber$home=owner;
+  const native={composerScope:token,draftKey:()=> 'home-draft'},phases=[],diagnose=phase=>phases.push(phase);diagnose.countsOnly=true;
+  assert.deepEqual(inspectNativeInput(native,input,root,undefined,diagnose).draft,{key:'home-draft',kind:'new',conversationId:null,clientThreadId:null,entrypoint:'home',routeKind:null});
+  assert.deepEqual(phases.at(-1).keyMatches,[true,true]);assert.equal(phases.at(-1).externalOwnerCount,1);
+  inner.key='another-draft';assert.equal(inspectNativeInput(native,input,root).draft,null);
+  inner.key='home-draft';inner.memoizedProps.composerController={...controller,view:{...controller.view}};
+  inner.child={tag:10,memoizedProps:{value:inner.memoizedProps.composerController},return:inner,child:context};context.return=inner.child;
+  assert.throws(()=>inspectNativeInput(native,input,root),{code:'workspace_composer_binding_drift'},'two distinct controllers for the same editable remain ambiguous');
+});

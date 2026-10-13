@@ -6587,7 +6587,15 @@ function inspectNativeInput(native, input, root, register, diagnose) {
         if (hook.memoizedState?.current?.controller === controller) return true;
       return false;
     });
-    if (typeof key2 === "string" && key2.length && owners.length === 1 && owners[0].key === key2) {
+    diagnose?.({
+      stage: "draft",
+      formatterKeyPresent: typeof key2 === "string" && !!key2,
+      providerCount: providers.length,
+      ownerCount: owners.length,
+      keyMatches: owners.map((owner3) => owner3.key === key2),
+      externalOwnerCount: owners.filter((owner3) => owner3.memoizedProps?.composerController === controller).length
+    });
+    if (typeof key2 === "string" && key2.length && owners.length > 0 && owners.every((owner3) => owner3.key === key2)) {
       const value = scope.value;
       draft = Object.freeze({
         key: key2,
@@ -9994,19 +10002,60 @@ function createWorkspaceLocations({ document: document2, host, load, check, chan
 }
 
 // src/adapter/workspace-selection.js
+var ACTION = 'button,a[href],input,select,textarea,[role="button"],[role="tab"],[role="menuitem"],[tabindex]';
+function headerParts(header) {
+  const titles = [...header.querySelectorAll(".min-w-0.text-base.font-medium")].filter((node) => !node.closest(OWNED));
+  return {
+    title: titles.length === 1 ? titles[0] : null,
+    actions: [...header.querySelectorAll(ACTION)].filter((node) => !node.closest(OWNED))
+  };
+}
 function createWorkspaceSelection({ document: document2, surface, snapshot, check, changed, isConfirmed }) {
   let record, disposed = false;
-  const restore = () => {
-    if (!record) return;
-    for (const [node, entry] of record.journal) {
-      if (node.style.getPropertyValue("visibility") === entry.applied && node.style.getPropertyPriority("visibility") === "important") entry.value ? node.style.setProperty("visibility", entry.value, entry.priority) : node.style.removeProperty("visibility");
-      if (node.getAttribute("inert") === "") entry.inert == null ? node.removeAttribute("inert") : node.setAttribute("inert", entry.inert);
-      if (node.getAttribute("aria-hidden") === "true") entry.hidden == null ? node.removeAttribute("aria-hidden") : node.setAttribute("aria-hidden", entry.hidden);
+  function entry(node) {
+    let saved = record.journal.get(node);
+    if (!saved) {
+      saved = { styles: /* @__PURE__ */ new Map(), attributes: /* @__PURE__ */ new Map() };
+      record.journal.set(node, saved);
     }
+    return saved;
+  }
+  function style(node, name, value) {
+    const saved = entry(node).styles, current3 = { value: node.style.getPropertyValue(name), priority: node.style.getPropertyPriority(name) };
+    let field = saved.get(name);
+    if (!field) {
+      field = { ...current3, applied: value };
+      saved.set(name, field);
+    } else if (current3.value !== field.applied || current3.priority !== "important") Object.assign(field, current3);
+    field.applied = value;
+    node.style.setProperty(name, value, "important");
+  }
+  function attribute(node, name, value) {
+    const saved = entry(node).attributes, current3 = node.getAttribute(name);
+    let field = saved.get(name);
+    if (!field) {
+      field = { value: current3, applied: value };
+      saved.set(name, field);
+    } else if (current3 !== field.applied) field.value = current3;
+    field.applied = value;
+    node.setAttribute(name, value);
+  }
+  function restoreNode(node, saved) {
+    for (const [name, field] of saved.styles) if (node.style.getPropertyValue(name) === field.applied && node.style.getPropertyPriority(name) === "important")
+      field.value ? node.style.setProperty(name, field.value, field.priority) : node.style.removeProperty(name);
+    for (const [name, field] of saved.attributes) if (node.getAttribute(name) === field.applied)
+      field.value == null ? node.removeAttribute(name) : node.setAttribute(name, field.value);
+  }
+  function restore() {
+    if (!record) return;
+    for (const [node, saved] of record.journal) restoreNode(node, saved);
     record.journal.clear();
+    record.actions.clear();
     record.label?.remove();
     record.label = null;
-  };
+    record.stopEvents?.();
+    record.stopEvents = null;
+  }
   function options4(value, previous = { threadId: null, emptyLabel: "No conversation selected" }) {
     if (!value || typeof value !== "object" || Array.isArray(value) || Object.keys(value).some((key2) => !["threadId", "emptyLabel"].includes(key2))) throw workspaceError("invalid_argument", "Invalid selection presentation");
     const next = { ...previous, ...value };
@@ -10016,7 +10065,7 @@ function createWorkspaceSelection({ document: document2, surface, snapshot, chec
     return next;
   }
   function reconcile() {
-    if (!record || !record.active) return;
+    if (!record?.active) return;
     const header = surface()?.header;
     if (record.header !== header) {
       restore();
@@ -10027,38 +10076,57 @@ function createWorkspaceSelection({ document: document2, surface, snapshot, chec
       return;
     }
     if (!header?.isConnected) return;
-    for (const node of header.children) {
-      if (node.matches(OWNED)) continue;
-      const current3 = { value: node.style.getPropertyValue("visibility"), priority: node.style.getPropertyPriority("visibility"), inert: node.getAttribute("inert"), hidden: node.getAttribute("aria-hidden"), applied: "hidden" };
-      const saved = record.journal.get(node);
-      if (!saved) record.journal.set(node, current3);
-      else {
-        if (current3.value !== "hidden" || current3.priority !== "important") {
-          saved.value = current3.value;
-          saved.priority = current3.priority;
+    const { title, actions } = headerParts(header), retained = new Set(actions);
+    if (title) retained.add(title);
+    for (const [node, saved] of record.journal) if (!retained.has(node)) {
+      restoreNode(node, saved);
+      record.journal.delete(node);
+    }
+    record.actions = new Set(actions);
+    if (title) {
+      style(title, "visibility", "hidden");
+      style(title, "min-width", "8em");
+      attribute(title, "aria-hidden", "true");
+    }
+    for (const node of actions) {
+      if ("disabled" in node) attribute(node, "disabled", "");
+      attribute(node, "aria-disabled", "true");
+      attribute(node, "inert", "");
+      style(node, "pointer-events", "none");
+      if (!actions.some((parent) => parent !== node && parent.contains(node))) style(node, "opacity", "0.45");
+    }
+    if (!record.stopEvents) {
+      const events = ["click", "dblclick", "auxclick", "contextmenu", "keydown"];
+      const block = (event) => {
+        if (record?.header === header && [...record.actions].some((node) => node === event.target || node.contains(event.target))) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
         }
-        if (current3.inert !== "") saved.inert = current3.inert;
-        if (current3.hidden !== "true") saved.hidden = current3.hidden;
-      }
-      node.style.setProperty("visibility", "hidden", "important");
-      node.setAttribute("inert", "");
-      node.setAttribute("aria-hidden", "true");
+      };
+      for (const name of events) header.addEventListener(name, block, true);
+      record.stopEvents = () => {
+        for (const name of events) header.removeEventListener(name, block, true);
+      };
     }
     if (!record.label) {
       record.label = document2.createElement("span");
       record.label.dataset.codletWorkspaceOwned = record.owner;
-      record.label.style.cssText = "position:absolute;inset-inline:0;pointer-events:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+      record.label.style.cssText = "position:absolute;pointer-events:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;transform:translateY(-50%);font-size:var(--text-base,16px);font-weight:500;";
       header.append(record.label);
     }
     if (record.label.parentElement !== header) header.append(record.label);
     if (record.label.textContent !== record.options.emptyLabel) record.label.textContent = record.options.emptyLabel;
+    const headerRect = header.getBoundingClientRect(), titleRect = title?.getBoundingClientRect();
+    record.label.style.left = Math.max(8, titleRect ? titleRect.left - headerRect.left : 16) + "px";
+    record.label.style.top = (titleRect ? titleRect.top - headerRect.top + titleRect.height / 2 : headerRect.height / 2) + "px";
+    record.label.style.maxWidth = Math.max(0, titleRect?.width || headerRect.width - 32) + "px";
   }
   function acquire(value, owner2, live) {
     check();
     live();
     if (disposed) throw workspaceError("workspace_retired", "Selection presentation provider retired");
     if (record?.active) throw workspaceError("workspace_presentation_owned", "Native heading presentation already has an owner");
-    record = { active: true, owner: owner2, options: options4(value), journal: /* @__PURE__ */ new Map(), header: null, label: null };
+    record = { active: true, owner: owner2, options: options4(value), journal: /* @__PURE__ */ new Map(), actions: /* @__PURE__ */ new Set(), header: null, label: null, stopEvents: null };
     const owned = record;
     reconcile();
     changed();
