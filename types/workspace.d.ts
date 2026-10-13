@@ -3,7 +3,7 @@ export interface WorkspaceSnapshot {
   api: 1; revision: number;
   route: Readonly<{ pathname: string; search: string; hash: string }> | null;
   threadId: string | null; hostId: 'local' | null; auxiliary: boolean; available: boolean;
-  features: Readonly<{ surface: boolean; activitySlot: boolean; transcript: boolean; shortcuts: boolean; navigation: boolean; navigationInput?: boolean; action: boolean; composer: boolean; composerRebind: boolean }>;
+  features: Readonly<{ surface: boolean; activitySlot: boolean; transcript: boolean; shortcuts: boolean; navigation: boolean; navigationInput?: boolean; locationRestore?: boolean; selectionPresentation?: boolean; independentViewport?: boolean; action: boolean; composer: boolean; composerRebind: boolean }>;
   diagnostic: WorkspaceDiagnostic | null;
 }
 export interface WorkspaceNode { element: HTMLElement; rect: Readonly<{ x: number; y: number; width: number; height: number; top: number; right: number; bottom: number; left: number }> }
@@ -74,6 +74,26 @@ export interface WorkspaceSession {
   registerShortcut(options: ShortcutOptions): ShortcutHandle; dispose(): void;
   registerAction(options: NativeActionOptions): NativeActionHandle;
   createNavigation(): NavigationSession;
+  captureLocation(): WorkspaceLocationHandle;
+  acquireSelectionPresentation(options: SelectionPresentationOptions): SelectionPresentationHandle;
+  /** Optional Native driver; ready rejects if independent nonpolluting state cannot be established. */
+  createViewport(options?: IndependentViewportOptions): IndependentViewportHandle;
+}
+export interface WorkspaceLocationHandle { readonly ready: Promise<void>; readonly kind: 'thread'|'page'; restore(options?: {signal?:AbortSignal}): Promise<Readonly<{restored:true;kind:'thread'|'page'}>>; dispose():void }
+export interface SelectionPresentationOptions { threadId: string|null; emptyLabel?: string }
+export interface SelectionPresentationHandle { update(options: Partial<SelectionPresentationOptions>):void; dispose():void }
+export interface IndependentViewportOptions { open?:boolean; width?:number }
+export interface IndependentViewportSnapshot { readonly independent:true; readonly open:boolean; readonly width:number; readonly threadId:string|null; readonly hostId:'local'|null }
+export interface IndependentViewportHandle {
+  readonly ready:Promise<void>;
+  getSnapshot():Readonly<IndependentViewportSnapshot>;
+  /** Pushes Native close/resize changes; lifetime cleanup releases the listener. */
+  subscribe(listener:(snapshot:Readonly<IndependentViewportSnapshot>)=>unknown):()=>void;
+  /** Requires the current strict Native selection; never selects or sends by itself. */
+  bind(identity:{threadId:string;hostId?:'local'}|null, options?:{signal?:AbortSignal}):Promise<Readonly<IndependentViewportSnapshot>>;
+  update(options:IndependentViewportOptions, invocation?:{signal?:AbortSignal}):Promise<Readonly<IndependentViewportSnapshot>>;
+  /** Restore the captured view state before releasing; awaited teardown is required. */
+  close():Promise<void>; dispose():void;
 }
 export interface WorkspaceOwner { world: 'main'; pluginId: string; generation: number; onDeactivate(dispose: () => void): () => void }
 export interface WorkspaceApi { api: 1; connect(context: WorkspaceOwner, ticket: string): WorkspaceSession }

@@ -44,6 +44,28 @@ test('workspace tickets bind owner/generation, are single-use, and deactivation 
   assert.throws(() => session.getSnapshot(), { code: 'workspace_retired' });
 });
 
+test('a Native main page without a composer exposes page content and header for workspace entry', async t => {
+  const f=fixture(t),main=f.document.querySelector('main');main.replaceChildren();
+  const layout=f.document.createElement('div');layout.dataset.appShellMainContentLayout='';main.append(layout);f.navigator.location.pathname='/settings';
+  const session=f.connect().session;await f.flush();
+  assert.equal(session.getSurface().main.element,main);assert.equal(session.getSurface().content.element,layout);
+  assert.equal(session.getSurface().header.element,f.document.querySelector('[data-app-shell-main-titlebar]'));
+  assert.equal(session.getSurface().composer,null);assert.equal(session.getSnapshot().available,false,'available retains its composer meaning');
+  const overlay=session.createSlot('workspace.overlay');assert.equal(overlay.container.parentElement,f.document.getElementById('root'));overlay.dispose();
+});
+
+test('a transcript can reuse Native shell providers on a page without a main conversation surface',async t=>{
+  const f=fixture(t),N=native(f),rail=f.document.querySelector('nav');rail.dataset.appNavigationRail='true';
+  rail.__reactFiber$fixture=f.document.querySelector('[data-includes-composer]').__reactFiber$providers;
+  f.document.querySelector('main').remove();f.navigator.location.pathname='/settings';
+  N.manager={getConversation:()=>({resumeState:'resumed',turns:[{}]}),addConversationStateCallback:()=>()=>{}};
+  N.Scope=({children})=>children;N.composerScope={};N.composerValue=()=>({});N.ThreadSubscription=()=>null;
+  N.Content=({conversationId})=>N.React.createElement('div',{className:'thread-scroll-container'},N.React.createElement('div',{'data-thread-find-target':'conversation'},'Native '+conversationId));f.discovery.transcript=async()=>N;
+  const session=f.connect().session,box=f.document.createElement('div');f.document.body.append(box);
+  const handle=session.mountTranscript(box,{threadId:'thread-b'});await handle.ready;
+  assert.equal(box.textContent,'Native thread-b');assert.equal(N.roots(),1);assert.equal(f.navigator.location.pathname,'/settings');handle.dispose();
+});
+
 test('surface leases compose, rebind after navigation and precisely restore attributes/priorities without clobbering a newer patch', async t => {
   const f = fixture(t), a = f.connect('a').session, b = f.connect('b').session, body = f.document.getElementById('body');
   body.style.setProperty('visibility', 'collapse', 'important'); body.setAttribute('aria-hidden', 'false');
@@ -450,6 +472,23 @@ test('native actions wait for a missing activity toolbar, reuse their root after
   toolbar.append(button);await f.flush();await action.ready;const control=f.document.querySelector('[data-codlet-workspace-action="late-action"]');assert.ok(control);assert.equal(N.roots(),1);
   button.remove();await f.flush();toolbar.append(button);await f.flush();assert.equal(f.document.querySelector('[data-codlet-workspace-action="late-action"]'),control);assert.equal(f.document.querySelectorAll('[data-codlet-workspace-action="late-action"]').length,1);assert.equal(N.roots(),1);
   button.remove();await f.flush();const pending=owner.session.registerAction({id:'cancelled-action',label:'Cancelled action',icon:{paths:['M0 0 H24 V24 H0 Z']},onInvoke(){}});await tick();pending.dispose();await assert.rejects(pending.ready,{code:'workspace_retired'});toolbar.append(button);await f.flush();assert.equal(f.document.querySelector('[data-codlet-workspace-action="cancelled-action"]'),null);assert.equal(N.roots(),1);
+});
+
+test('Native removal of only an owned action span restores its placement without creating another root',async t=>{
+  const f=fixture(t),N=native(f),owner=f.connect();N.Button=props=>N.React.createElement('button',props);N.Tooltip=({children})=>children;f.discovery.action=async()=>N;
+  let invoked=0;const action=owner.session.registerAction({id:'rebuilt-action',label:'Rebuilt action',icon:{paths:['M0 0 H24 V24 H0 Z']},onInvoke(){invoked++;}});await action.ready;
+  const button=f.document.querySelector('[data-codlet-workspace-action]'),container=button.closest('[data-codlet-workspace-owned]');container.remove();await tick();
+  assert.equal(container.isConnected,true);assert.equal(f.document.querySelector('[data-codlet-workspace-action]'),button);assert.equal(N.roots(),1);button.click();assert.equal(invoked,1);
+});
+
+test('action placement rebinds Native provider values after its anchor is replaced',async t=>{
+  const f=fixture(t),N=native(f),owner=f.connect(),old=f.document.getElementById('activity'),Context=N.React.createContext('missing');
+  old.__reactFiber$fixture.dependencies={firstContext:{context:Context,memoizedValue:'old-context'}};
+  N.Button=props=>N.React.createElement('button',{...props,'data-context':N.React.useContext(Context)});N.Tooltip=({children})=>children;f.discovery.action=async()=>N;
+  const action=owner.session.registerAction({id:'rebound-action',label:'Rebound action',icon:{paths:['M0 0 H24 V24 H0 Z']},onInvoke(){}});await action.ready;
+  const control=f.document.querySelector('[data-codlet-workspace-action]');assert.equal(control.dataset.context,'old-context');
+  const next=old.cloneNode(true);next.__reactFiber$fixture={...old.__reactFiber$fixture,dependencies:{firstContext:{context:Context,memoizedValue:'new-context'}}};old.replaceWith(next);await f.flush();await tick();
+  assert.equal(f.document.querySelector('[data-codlet-workspace-action]'),control);assert.equal(control.dataset.context,'new-context');assert.equal(N.roots(),1);
 });
 
 test('direct navigation separates same-renderer execution from confirmed input ownership and never bypasses cancellation',async t=>{

@@ -14,13 +14,18 @@ export function createWorkspaceActions({document,load,activity,check,report}) {
     if(record.disposed||record.failed||!native)return;
     const N=native,R=N.React,h=R.createElement,opts=record.options,placement=activityPlacement(activity());
     if(!placement)return;
-    if(!record.root){check();record.live();record.providers=providersFor(placement.button);record.Commit=function(){R.useLayoutEffect(()=>record.resolve());return null;};record.root=N.Client.createRoot(record.container,{onUncaughtError:record.fail,onCaughtError:record.fail});}
+    check();record.live();
+    const providers=providersFor(placement.button);
+    if(record.button!==placement.button||providers.length!==record.providers?.length||providers.some(([type,value],index)=>record.providers[index][0]!==type||record.providers[index][1]!==value)){
+      record.providers=providers;record.button=placement.button;record.dirty=true;
+    }
+    if(!record.root){record.Commit=function(){R.useLayoutEffect(()=>record.resolve());return null;};record.root=N.Client.createRoot(record.container,{onUncaughtError:record.fail,onCaughtError:record.fail});}
     let sibling=record.container.nextSibling;while(sibling?.nodeType===1&&sibling.matches('[data-codlet-workspace-owned]'))sibling=sibling.nextSibling;
     if(record.container.parentElement!==placement.parent||sibling!==placement.anchor)placement.anchor.before(record.container);
     if(!record.dirty)return;record.dirty=false;
     const reference=placement.button.querySelector('svg'),computed=reference&&document.defaultView.getComputedStyle(reference);
     const icon=h('svg',{'aria-hidden':true,'data-no-autosize':true,viewBox:opts.icon.viewBox??'0 0 24 24',width:computed?.width??'16px',height:computed?.height??'16px',fill:'currentColor',className:reference?.getAttribute('class')?.split(/\s+/).filter(name=>name.startsWith('_Icon_')).join(' ')},...opts.icon.paths.map((path,index)=>h('path',{key:index,d:path})));
-    const control=h(N.Button,{'aria-label':opts.label,'aria-pressed':opts.pressed,'data-codlet-workspace-action':opts.id,color:placement.button.getAttribute('data-color')??'secondary',variant:'ghost',pill:false,uniform:true,size:'md',iconSize:'sm',selected:opts.pressed,disabled:opts.disabled,onClick:()=>{check();if(record.disposed||record.options.disabled)return;try{Promise.resolve(record.options.onInvoke()).catch(report);}catch(error){report(error);}}},icon);
+    const control=h(N.Button,{'aria-label':opts.label,'aria-pressed':opts.pressed,'data-codlet-workspace-action':opts.id,color:placement.button.getAttribute('data-color')??'secondary',variant:'ghost',pill:false,uniform:true,size:'md',iconSize:'sm',selected:opts.pressed,disabled:opts.disabled,onClick:()=>{if(record.disposed||record.options.disabled)return;try{check();record.live();Promise.resolve(record.options.onInvoke()).catch(report);}catch(error){report(error);}}},icon);
     const tree=h(N.Tooltip,{tooltipContent:opts.label,shortcut:opts.shortcut,side:'bottom',variant:'tooltip',cloneCustomTrigger:false,closeOnTriggerClick:true},control);
     record.root.render(wrapProviders(N,record.providers,h(R.Fragment,null,tree,h(record.Commit))));
   }
@@ -37,5 +42,7 @@ export function createWorkspaceActions({document,load,activity,check,report}) {
       dispose(){if(record.disposed)return;record.disposed=true;records.delete(record);reject(workspaceError('workspace_retired','Native action retired before readiness'));if(record.root)native.DOM.flushSync(()=>record.root.unmount());record.container.remove();},
     });
   }
-  return{register,reconcile(){if(native)for(const record of records)attempt(record);},dispose(){disposed=true;for(const record of records){record.disposed=true;record.reject(workspaceError('workspace_retired','Native action provider retired'));if(record.root)native.DOM.flushSync(()=>record.root.unmount());record.container.remove();}records.clear();}};
+  return{register,
+    displaced(mutations){return [...records].some(record=>!record.disposed&&mutations.some(mutation=>[...mutation.removedNodes].some(node=>node===record.container||node.contains?.(record.container)||node===record.button||node.contains?.(record.button))));},
+    reconcile(){if(native)for(const record of records)attempt(record);},dispose(){disposed=true;for(const record of records){record.disposed=true;record.reject(workspaceError('workspace_retired','Native action provider retired'));if(record.root)native.DOM.flushSync(()=>record.root.unmount());record.container.remove();}records.clear();}};
 }

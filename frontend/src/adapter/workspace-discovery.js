@@ -78,6 +78,9 @@ export function createWorkspaceDiscovery(baseNative, { load = url => import(url)
     // persistent cleanup. No archived Native profile has passed those checks.
     // A future reviewed profile can prepare its driver here, before any mount.
     composerCapabilities: async () => ({ rebind: false }),
+    // The current Native resizer persists through its atom store. No reviewed
+    // independent state/persistence lifecycle has been established yet.
+    viewport: async () => { throw workspaceError('workspace_viewport_unsupported','Native independent viewport persistence isolation is not verified'); },
     navigation: async () => {
       const native = await getCommon(), connection = existing();
       const composerScope = uniqueExport(native.shared, value => value?.__scopeBrand === 'ComposerScope' && typeof value.id === 'symbol', 'composer scope');

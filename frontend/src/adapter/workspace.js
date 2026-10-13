@@ -8,10 +8,13 @@ import { createWorkspaceNavigation } from './workspace-navigation.js';
 import { createWorkspaceActions } from './workspace-actions.js';
 import { createComposers } from './workspace-composer.js';
 import { createWorkspaceMetrics } from './workspace-metrics.js';
+import { createWorkspaceLocations } from './workspace-location.js';
+import { createWorkspaceSelection } from './workspace-selection.js';
+import { createWorkspaceViewports } from './workspace-viewport.js';
 
 export const WORKSPACE_CAPABILITY = Object.freeze({ name: 'codex.ui.workspace', api: 1, scope: 'target' });
 export const WORKSPACE_SYMBOL = 'codlet.codex.ui.workspace.v1';
-const emptyFeatures = () => ({ surface: false, activitySlot: false, transcript: false, shortcuts: false, navigation: false, navigationInput: false, action: false, composer:false, composerRebind:false });
+const emptyFeatures = () => ({ surface: false, activitySlot: false, transcript: false, shortcuts: false, navigation: false, navigationInput: false, locationRestore:false, selectionPresentation:true, independentViewport:false, action: false, composer:false, composerRebind:false });
 const roleNames = ['main', 'content', 'scroller', 'composer', 'footer', 'header', 'rightPanel'];
 const errorValue = error => ({ code: typeof error?.code === 'string' ? error.code : 'workspace_host_drift', message: String(error?.message ?? error) });
 
@@ -40,6 +43,10 @@ export function createWorkspace(context, { locate, baseNative, discovery: suppli
     if(value?.input){refreshConfirmedSurface(value.input,operationId);return;}
     publish(true);
   },metrics,...(navigationBinding?{readBinding:navigationBinding}:{})});
+  const locations=createWorkspaceLocations({document:doc,host:()=>host,load:()=>navigation.prepare().then(value=>{features={...features,locationRestore:typeof value.restoreLocation==='function'};schedule(false);return value;}),check,
+    beforeCapture:()=>navigation.assertNotComposing(),beforeRestore:()=>navigation.beginLocationRestore(),retainGuard:()=>navigation.retainGuard(),changed:value=>value?.input?refreshConfirmedSurface(value.input):publish(true)});
+  const selection=createWorkspaceSelection({document:doc,surface:()=>surface,snapshot:()=>snapshot,check,isConfirmed:id=>navigation.matchesCurrentThread(id),changed:()=>schedule(false)});
+  const viewports=createWorkspaceViewports({load:()=>typeof discovery.viewport==='function'?discovery.viewport():Promise.reject(workspaceError('workspace_viewport_unsupported','Native viewport driver is unavailable')),prepared:()=>{features={...features,independentViewport:true};schedule(false);},check,isConfirmed:id=>navigation.matchesCurrentThread(id),report});
   const actions=createWorkspaceActions({document:doc,load:()=>featureLoad('action',discovery.action),activity:()=>activity??=findActivity(doc),check,report});
   const composers=createComposers({document:doc,load:()=>featureLoad('composer',discovery.composer),surface:()=>surface,check,report,metrics});
   let composerFeatures, composerFeatureEpoch = 0;
@@ -67,6 +74,7 @@ export function createWorkspace(context, { locate, baseNative, discovery: suppli
     metrics?.add('surface.publish');
     snapshot = Object.freeze({ ...next, revision: ++revision, route: route && Object.freeze(route), features: Object.freeze({ ...features }), diagnostic: diagnostic && Object.freeze({ ...diagnostic }) });
     for (const session of sessions) for (const listener of session.listeners) callback(listener, snapshot);
+    selection.reconcile();
   }
   let previousGeometry = '';
   let microtaskSequence = 0;
@@ -141,6 +149,7 @@ export function createWorkspace(context, { locate, baseNative, discovery: suppli
         if (diagnostic === surfaceFailure) diagnostic = surfaceFailure = null;
       }
       control.reconcile(surface);
+      selection.reconcile();
       let anchor = activity?.isConnected ? activityPlacement(activity).anchor : null;
       if (anchor?.isConnected) for (const slot of slots) {
         if (slot.name !== 'activity.before') continue;
@@ -178,6 +187,13 @@ export function createWorkspace(context, { locate, baseNative, discovery: suppli
     if (observer) return;
     observer = new doc.defaultView.MutationObserver(records => {
       metrics?.add('surface.mutation');
+      // Native toolbar commits can remove only the injected action container.
+      // Restore its placement even though owned-only changes are filtered below.
+      if(actions.displaced(records)){
+        if(!activity?.isConnected)activity=null;
+        actions.reconcile();
+      }
+      if(selection.displaced(records))selection.reconcile();
       // Ignore consumer roots and changes below a stable native scroller. A new
       // direct body/footer child or a shell replacement still invalidates roles.
       const relevant = records.filter(record => {
@@ -265,6 +281,9 @@ export function createWorkspace(context, { locate, baseNative, discovery: suppli
       mountTranscript(container, options) { return own('transcript', 16, () => { if (host?.auxiliary) throw workspaceError('workspace_transcript_unavailable', 'Auxiliary windows have no transcripts'); return transcripts.mount(container, options, ownerKey); }); },
       mountComposer(container, options) { return own('composer',16,()=>{if(host?.auxiliary)throw workspaceError('workspace_composer_unavailable','Auxiliary windows have no composers');return composers.mount(container,options,ownerKey,live);}); },
       createNavigation() { return own('navigation',1,()=>navigation.create(live)); },
+      captureLocation() { return own('location',4,()=>locations.capture(live)); },
+      acquireSelectionPresentation(options) { return own('selection',1,()=>selection.acquire(options,ownerKey,live)); },
+      createViewport(options) { return own('viewport',1,()=>viewports.create(options,live)); },
       registerAction(options) { return own('action',16,()=>actions.register(options,ownerKey,live)); },
       registerShortcut(options) { return own('shortcut', 16, () => { if (host?.auxiliary) throw workspaceError('workspace_shortcuts_unavailable', 'Auxiliary windows have no shortcut workspace'); schedule(true); return shortcuts.register(options, ownerKey); }); },
       dispose() {
@@ -284,11 +303,11 @@ export function createWorkspace(context, { locate, baseNative, discovery: suppli
   function dispose() {
     if (!alive) return;
     for (const record of [...sessions]) record.session.dispose();
-    alive = false; tickets.clear(); stopObserving(); control.dispose(); navigation.dispose(); actions.dispose();composers.dispose();transcripts.dispose(); shortcuts.dispose(); discovery.dispose();
+    alive = false; tickets.clear(); stopObserving(); control.dispose(); locations.dispose(); selection.dispose(); viewports.dispose(); navigation.dispose(); actions.dispose();composers.dispose();transcripts.dispose(); shortcuts.dispose(); discovery.dispose();
     if (globalThis[symbol] === publicApi) delete globalThis[symbol];
   }
   const releaseProvider = context.onDeactivate(dispose);
-  const releaseCleanup = context.onCleanup?.(cleanup => composers.cleanup(cleanup));
+  const releaseCleanup = context.onCleanup?.(async cleanup => {await composers.cleanup(cleanup);await viewports.cleanup();});
   return { issueTicket, connect, refresh: () => schedule(true),
     ...(metrics ? { readTestPoints: () => metrics.report() } : {}),
     dispose() { dispose(); releaseProvider?.(); composers.cleanup().then(() => releaseCleanup?.(), report); } };

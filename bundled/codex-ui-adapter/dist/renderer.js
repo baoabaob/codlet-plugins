@@ -818,10 +818,10 @@ function binop(name, prec) {
 var beforeExpr = { beforeExpr: true };
 var startsExpr = { startsExpr: true };
 var keywords = {};
-function kw(name, options3) {
-  if (options3 === void 0) options3 = {};
-  options3.keyword = name;
-  return keywords[name] = new TokenType(name, options3);
+function kw(name, options4) {
+  if (options4 === void 0) options4 = {};
+  options4.keyword = name;
+  return keywords[name] = new TokenType(name, options4);
 }
 var types$1 = {
   num: new TokenType("num", startsExpr),
@@ -1078,39 +1078,39 @@ var defaultOptions = {
 };
 var warnedAboutEcmaVersion = false;
 function getOptions(opts) {
-  var options3 = {};
+  var options4 = {};
   for (var opt in defaultOptions) {
-    options3[opt] = opts && hasOwn(opts, opt) ? opts[opt] : defaultOptions[opt];
+    options4[opt] = opts && hasOwn(opts, opt) ? opts[opt] : defaultOptions[opt];
   }
-  if (options3.ecmaVersion === "latest") {
-    options3.ecmaVersion = 1e8;
-  } else if (options3.ecmaVersion == null) {
+  if (options4.ecmaVersion === "latest") {
+    options4.ecmaVersion = 1e8;
+  } else if (options4.ecmaVersion == null) {
     if (!warnedAboutEcmaVersion && typeof console === "object" && console.warn) {
       warnedAboutEcmaVersion = true;
       console.warn("Since Acorn 8.0.0, options.ecmaVersion is required.\nDefaulting to 2020, but this will stop working in the future.");
     }
-    options3.ecmaVersion = 11;
-  } else if (options3.ecmaVersion >= 2015) {
-    options3.ecmaVersion -= 2009;
+    options4.ecmaVersion = 11;
+  } else if (options4.ecmaVersion >= 2015) {
+    options4.ecmaVersion -= 2009;
   }
-  if (options3.allowReserved == null) {
-    options3.allowReserved = options3.ecmaVersion < 5;
+  if (options4.allowReserved == null) {
+    options4.allowReserved = options4.ecmaVersion < 5;
   }
   if (!opts || opts.allowHashBang == null) {
-    options3.allowHashBang = options3.ecmaVersion >= 14;
+    options4.allowHashBang = options4.ecmaVersion >= 14;
   }
-  if (isArray(options3.onToken)) {
-    var tokens = options3.onToken;
-    options3.onToken = function(token) {
+  if (isArray(options4.onToken)) {
+    var tokens = options4.onToken;
+    options4.onToken = function(token) {
       return tokens.push(token);
     };
   }
-  if (isArray(options3.onComment)) {
-    options3.onComment = pushComment(options3, options3.onComment);
+  if (isArray(options4.onComment)) {
+    options4.onComment = pushComment(options4, options4.onComment);
   }
-  return options3;
+  return options4;
 }
-function pushComment(options3, array) {
+function pushComment(options4, array) {
   return function(block, text, start, end, startLoc, endLoc) {
     var comment = {
       type: block ? "Block" : "Line",
@@ -1118,10 +1118,10 @@ function pushComment(options3, array) {
       start,
       end
     };
-    if (options3.locations) {
+    if (options4.locations) {
       comment.loc = new SourceLocation(this, startLoc, endLoc);
     }
-    if (options3.ranges) {
+    if (options4.ranges) {
       comment.range = [start, end];
     }
     array.push(comment);
@@ -1147,14 +1147,14 @@ var BIND_LEXICAL = 2;
 var BIND_FUNCTION = 3;
 var BIND_SIMPLE_CATCH = 4;
 var BIND_OUTSIDE = 5;
-var Parser = function Parser2(options3, input, startPos) {
-  this.options = options3 = getOptions(options3);
-  this.sourceFile = options3.sourceFile;
-  this.keywords = wordsRegexp(keywords$1[options3.ecmaVersion >= 6 ? 6 : options3.sourceType === "module" ? "5module" : 5]);
+var Parser = function Parser2(options4, input, startPos) {
+  this.options = options4 = getOptions(options4);
+  this.sourceFile = options4.sourceFile;
+  this.keywords = wordsRegexp(keywords$1[options4.ecmaVersion >= 6 ? 6 : options4.sourceType === "module" ? "5module" : 5]);
   var reserved = "";
-  if (options3.allowReserved !== true) {
-    reserved = reservedWords[options3.ecmaVersion >= 6 ? 6 : options3.ecmaVersion === 5 ? 5 : 3];
-    if (options3.sourceType === "module") {
+  if (options4.allowReserved !== true) {
+    reserved = reservedWords[options4.ecmaVersion >= 6 ? 6 : options4.ecmaVersion === 5 ? 5 : 3];
+    if (options4.sourceType === "module") {
       reserved += " await";
     }
   }
@@ -1180,14 +1180,14 @@ var Parser = function Parser2(options3, input, startPos) {
   this.lastTokStart = this.lastTokEnd = this.pos;
   this.context = this.initialContext();
   this.exprAllowed = true;
-  this.inModule = options3.sourceType === "module";
+  this.inModule = options4.sourceType === "module";
   this.strict = this.inModule || this.strictDirective(this.pos);
   this.potentialArrowAt = -1;
   this.potentialArrowInForAwait = false;
   this.yieldPos = this.awaitPos = this.awaitIdentPos = 0;
   this.labels = [];
   this.undefinedExports = /* @__PURE__ */ Object.create(null);
-  if (this.pos === 0 && options3.allowHashBang && this.input.slice(0, 2) === "#!") {
+  if (this.pos === 0 && options4.allowHashBang && this.input.slice(0, 2) === "#!") {
     this.skipLineComment(2);
   }
   this.scopeStack = [];
@@ -1256,16 +1256,16 @@ Parser.extend = function extend() {
   }
   return cls;
 };
-Parser.parse = function parse2(input, options3) {
-  return new this(options3, input).parse();
+Parser.parse = function parse2(input, options4) {
+  return new this(options4, input).parse();
 };
-Parser.parseExpressionAt = function parseExpressionAt(input, pos, options3) {
-  var parser = new this(options3, input, pos);
+Parser.parseExpressionAt = function parseExpressionAt(input, pos, options4) {
+  var parser = new this(options4, input, pos);
   parser.nextToken();
   return parser.parseExpression();
 };
-Parser.tokenizer = function tokenizer(input, options3) {
-  return new this(options3, input);
+Parser.tokenizer = function tokenizer(input, options4) {
+  return new this(options4, input);
 };
 Object.defineProperties(Parser.prototype, prototypeAccessors);
 var pp$9 = Parser.prototype;
@@ -6324,14 +6324,14 @@ Parser.acorn = {
   lineBreakG,
   nonASCIIwhitespace
 };
-function parse3(input, options3) {
-  return Parser.parse(input, options3);
+function parse3(input, options4) {
+  return Parser.parse(input, options4);
 }
-function parseExpressionAt2(input, pos, options3) {
-  return Parser.parseExpressionAt(input, pos, options3);
+function parseExpressionAt2(input, pos, options4) {
+  return Parser.parseExpressionAt(input, pos, options4);
 }
-function tokenizer2(input, options3) {
-  return Parser.tokenizer(input, options3);
+function tokenizer2(input, options4) {
+  return Parser.tokenizer(input, options4);
 }
 
 // src/adapter/react-factories.js
@@ -6648,7 +6648,7 @@ function findWorkspaceSurface(document2, confirmedComposer = null) {
   const composer = confirmedComposer ?? one(main.querySelectorAll("[data-codex-composer-root]"), "main composer", true);
   const scroller = composer?.closest(".thread-scroll-container") ?? one(main.querySelectorAll(".thread-scroll-container"), "thread scroller", true);
   if (scroller && !main.contains(scroller)) throw workspaceError("workspace_host_drift", "The main thread scroller changed ownership");
-  const content = scroller?.closest("[data-includes-composer]") ?? null;
+  const content = scroller?.closest("[data-includes-composer]") ?? (!composer ? one(main.querySelectorAll("[data-app-shell-main-content-layout]"), "main content layout", true) ?? main : null);
   const footer = composer?.closest("[data-thread-scroll-footer]") ?? null;
   if (composer && (!scroller || !content || !footer || !scroller.contains(footer)))
     throw workspaceError("workspace_host_drift", "The thread body and composer footer no longer match the workspace contract");
@@ -6752,10 +6752,10 @@ function geometry(element) {
   return Object.freeze({ element, rect: Object.freeze(Object.fromEntries(["x", "y", "width", "height", "top", "right", "bottom", "left"].map((key2) => [key2, rect[key2]]))) });
 }
 var optionDefaults = Object.freeze({ hideBody: false, hideHeader: false, hideComposer: false, composerEnabled: true, rightPanelEnabled: true });
-function surfaceOptions(options3, previous = optionDefaults) {
-  if (!options3 || typeof options3 !== "object" || Array.isArray(options3) || Object.keys(options3).some((key2) => !(key2 in optionDefaults) || typeof options3[key2] !== "boolean"))
+function surfaceOptions(options4, previous = optionDefaults) {
+  if (!options4 || typeof options4 !== "object" || Array.isArray(options4) || Object.keys(options4).some((key2) => !(key2 in optionDefaults) || typeof options4[key2] !== "boolean"))
     throw workspaceError("invalid_argument", "Invalid surface lease options");
-  return { ...previous, ...options3 };
+  return { ...previous, ...options4 };
 }
 function createSurfaceControl() {
   const leases = /* @__PURE__ */ new Set(), journal = /* @__PURE__ */ new Map();
@@ -6975,13 +6975,13 @@ function createNativeComposerDriver({ native, document: document2, container, pr
     record.model = model;
     return lifecycle.checkpoint({ identity: record.identity, model }, { signal });
   }
-  async function release(record, options3) {
+  async function release(record, options4) {
     if (!record) {
-      await lifecycle.released({}, options3);
+      await lifecycle.released({}, options4);
       return;
     }
     try {
-      await lifecycle.released({ identity: record.identity, model: record.model, controller: record.controller }, options3);
+      await lifecycle.released({ identity: record.identity, model: record.model, controller: record.controller }, options4);
     } finally {
       try {
         if (record.controller && !record.controller.view?.isDestroyed && typeof record.controller.destroy === "function") record.controller.destroy();
@@ -7148,13 +7148,18 @@ function createNativeNavigation(signal, connection, dispatch, scope) {
   };
   current3();
   if (typeof dispatch !== "function" || typeof scope !== "function") throw workspaceError("workspace_navigation_unsupported", "Native thread navigation action is unavailable");
-  return { openLocalThread(threadId) {
+  return { restoreLocation(location2) {
+    const bridge = current3();
+    if (!location2 || typeof location2.pathname !== "string" || !location2.pathname.startsWith("/")) throw workspaceError("invalid_argument", "Invalid captured Native location");
+    if (bridge.navigate({ pathname: location2.pathname, search: location2.search ?? "", hash: location2.hash ?? "", key: location2.key }, { replace: true, state: location2.state }) !== true)
+      throw workspaceError("workspace_location_restore_unavailable", "Native declined captured page restoration");
+  }, openLocalThread(threadId) {
     const bridge = current3(), facade = scope();
     if (!facade || typeof facade.get !== "function" || typeof facade.set !== "function") throw workspaceError("workspace_host_pending", "Native navigation scope is not mounted");
     let accepted = false;
-    dispatch(facade, "local:" + threadId, (id, hostId, options3) => {
+    dispatch(facade, "local:" + threadId, (id, hostId, options4) => {
       if (id !== threadId || hostId != null && hostId !== "local") throw workspaceError("workspace_navigation_unavailable", "Native navigation resolved a different local task");
-      if (bridge.navigateToLocalConversation(id, hostId, options3) !== true) throw workspaceError("workspace_navigation_unavailable", "Native declined local task navigation");
+      if (bridge.navigateToLocalConversation(id, hostId, options4) !== true) throw workspaceError("workspace_navigation_unavailable", "Native declined local task navigation");
       accepted = true;
     }, () => {
       throw workspaceError("workspace_navigation_unsupported", "Native task requires a different route kind");
@@ -7255,6 +7260,11 @@ function createWorkspaceDiscovery(baseNative, { load = (url) => import(url), rea
     // persistent cleanup. No archived Native profile has passed those checks.
     // A future reviewed profile can prepare its driver here, before any mount.
     composerCapabilities: async () => ({ rebind: false }),
+    // The current Native resizer persists through its atom store. No reviewed
+    // independent state/persistence lifecycle has been established yet.
+    viewport: async () => {
+      throw workspaceError("workspace_viewport_unsupported", "Native independent viewport persistence isolation is not verified");
+    },
     navigation: async () => {
       const native = await getCommon(), connection2 = existing();
       const composerScope = uniqueExport(native.shared, (value) => value?.__scopeBrand === "ComposerScope" && typeof value.id === "symbol", "composer scope");
@@ -7310,7 +7320,7 @@ function createWorkspaceDiscovery(baseNative, { load = (url) => import(url), rea
         ["codeBlockNodeViewRegistry", "inlineMentionIconRegistry", "setEnterBehavior", "getLiteralMarkdownLinks", "restoreMarkdownLinksAsTextLinks", "restorePathLinksAsFileMentions"]
       ), "native editor factory");
       const parts = { ...native, Composer, ComposerSurface, useScope, createEditor, check: existing };
-      parts.mountDirect = (options3) => createNativeComposerDriver({ ...options3, native: parts });
+      parts.mountDirect = (options4) => createNativeComposerDriver({ ...options4, native: parts });
       return parts;
     })(),
     composer: () => composer ??= (async () => {
@@ -7459,10 +7469,10 @@ function createTranscriptIsolation({ document: document2, report }) {
 }
 
 // src/adapter/workspace-transcript.js
-function transcriptOptions(options3, previous = { hostId: "local", readOnly: true, trackReadState: false }) {
-  if (!options3 || typeof options3 !== "object" || Array.isArray(options3) || Object.keys(options3).some((key2) => !["threadId", "hostId", "readOnly", "trackReadState", "onState"].includes(key2)))
+function transcriptOptions(options4, previous = { hostId: "local", readOnly: true, trackReadState: false }) {
+  if (!options4 || typeof options4 !== "object" || Array.isArray(options4) || Object.keys(options4).some((key2) => !["threadId", "hostId", "readOnly", "trackReadState", "onState"].includes(key2)))
     throw workspaceError("invalid_argument", "Invalid transcript options");
-  const result = { ...previous, ...options3 };
+  const result = { ...previous, ...options4 };
   if (!/^[\w-]{8,256}$/.test(result.threadId ?? "") || result.hostId !== "local" || typeof result.readOnly !== "boolean" || typeof result.trackReadState !== "boolean" || result.onState != null && typeof result.onState !== "function")
     throw workspaceError("invalid_argument", "Invalid local transcript identity or flags");
   return result;
@@ -7532,12 +7542,12 @@ function createTranscripts({ document: document2, load, surface, check, report, 
       report(error2);
     }
   }
-  function mount(container, options3, owned) {
+  function mount(container, options4, owned) {
     check();
     if (records.size >= 32) throw workspaceError("resource_limit", "At most 32 native transcripts per Target are supported");
     if (!(container instanceof document2.defaultView.HTMLElement) || container.ownerDocument !== document2 || !container.isConnected || container.childNodes.length || containers.has(container) || container.matches("main,[data-codex-composer-root],.thread-scroll-container") || container.closest("[data-codex-composer-root]"))
       throw workspaceError("invalid_argument", "Transcript requires a connected empty consumer container");
-    const record = { container, options: transcriptOptions(options3), disposed: false, epoch: 0, phase: null, root: null, viewId: metrics?.nextView() };
+    const record = { container, options: transcriptOptions(options4), disposed: false, epoch: 0, phase: null, root: null, viewId: metrics?.nextView() };
     let resolveReady, rejectReady;
     const ready = new Promise((resolve, reject) => {
       resolveReady = resolve;
@@ -7641,7 +7651,7 @@ function createTranscripts({ document: document2, load, surface, check, report, 
         if (reload) await history(record);
         if (record.disposed || epoch !== record.epoch) return;
         check();
-        const source = surface()?.content ?? surface()?.main;
+        const source = surface()?.content ?? surface()?.main ?? [...document2.querySelectorAll('nav[data-app-navigation-rail="true"]')].find((node) => !node.closest(OWNED));
         if (!source?.isConnected) throw workspaceError("workspace_host_pending", "Open a main workspace before mounting a transcript");
         const providers = providersFor(source);
         if (!providers.length) throw workspaceError("workspace_transcript_unavailable", "Native transcript providers are unavailable");
@@ -7769,12 +7779,12 @@ function createTranscripts({ document: document2, load, surface, check, report, 
 
 // src/adapter/workspace-shortcuts.js
 var allowed = ["id", "label", "description", "accelerator", "defaultAccelerator", "onInvoke", "onChange"];
-function shortcutOptions(options3, previous) {
-  if (!options3 || typeof options3 !== "object" || Array.isArray(options3) || Object.keys(options3).some((key2) => !allowed.includes(key2) || previous && key2 === "id")) throw workspaceError("invalid_argument", "Invalid shortcut options");
-  const next = { description: "", accelerator: null, ...previous, ...options3 };
+function shortcutOptions(options4, previous) {
+  if (!options4 || typeof options4 !== "object" || Array.isArray(options4) || Object.keys(options4).some((key2) => !allowed.includes(key2) || previous && key2 === "id")) throw workspaceError("invalid_argument", "Invalid shortcut options");
+  const next = { description: "", accelerator: null, ...previous, ...options4 };
   if (!/^[\w.-]{1,64}$/.test(next.id ?? "") || typeof next.label !== "string" || !next.label.trim() || next.label.length > 128 || typeof next.description !== "string" || next.description.length > 512 || typeof next.onInvoke !== "function" || next.onChange != null && typeof next.onChange !== "function")
     throw workspaceError("invalid_argument", "Invalid shortcut identity, text or callbacks");
-  if (!previous && !Object.hasOwn(options3, "defaultAccelerator")) next.defaultAccelerator = next.accelerator;
+  if (!previous && !Object.hasOwn(options4, "defaultAccelerator")) next.defaultAccelerator = next.accelerator;
   for (const value of [next.accelerator, next.defaultAccelerator]) if (value !== null && (typeof value !== "string" || !value.trim() || value.length > 128 || /\s/.test(value) || !normalizeAccelerator(value, "windows"))) throw workspaceError("invalid_argument", "Expected a single accelerator or null");
   return next;
 }
@@ -7813,13 +7823,13 @@ function createShortcuts({ document: document2, load, surface, activity, check, 
   }
   function capture(record, value) {
     try {
-      const options3 = shortcutOptions({ accelerator: value }, record.options), found = conflict(value, record);
+      const options4 = shortcutOptions({ accelerator: value }, record.options), found = conflict(value, record);
       if (found) {
         record.conflict = found;
         notify(record);
         return false;
       }
-      record.options = options3;
+      record.options = options4;
       record.conflict = null;
       notify(record);
       callback(record.options.onChange, value);
@@ -7986,12 +7996,12 @@ function createShortcuts({ document: document2, load, surface, activity, check, 
       return value;
     });
   }
-  function register(options3, owner2) {
+  function register(options4, owner2) {
     check();
-    options3 = shortcutOptions(options3);
+    options4 = shortcutOptions(options4);
     if (records.size >= 64) throw workspaceError("resource_limit", "At most 64 workspace shortcuts per Target are supported");
-    if ([...records].some((record2) => record2.owner === owner2 && record2.options.id === options3.id)) throw workspaceError("invalid_argument", "Shortcut ID already registered by this owner");
-    const record = { owner: owner2, options: options3, nativeId: "codlet." + owner2.replace(/[^\w.-]/g, "_") + "." + options3.id, disposed: false, listeners: /* @__PURE__ */ new Set() };
+    if ([...records].some((record2) => record2.owner === owner2 && record2.options.id === options4.id)) throw workspaceError("invalid_argument", "Shortcut ID already registered by this owner");
+    const record = { owner: owner2, options: options4, nativeId: "codlet." + owner2.replace(/[^\w.-]/g, "_") + "." + options4.id, disposed: false, listeners: /* @__PURE__ */ new Set() };
     record.subscribe = (listener) => {
       record.listeners.add(listener);
       return () => record.listeners.delete(listener);
@@ -8103,9 +8113,9 @@ function createThreadOpener({ manager, selection, navigation, request, beforeNav
 
 // src/adapter/workspace-navigation.js
 function createWorkspaceNavigation({ document: document2, load, host, check, changed, readBinding, readCurrentInput, metrics }) {
-  const sessions = /* @__PURE__ */ new Set();
+  const sessions = /* @__PURE__ */ new Set(), guards = /* @__PURE__ */ new Set();
   let native, prepared, current3, sequence = 0, observer, frame, microtask = false, queueEpoch = 0, disposed = false;
-  let tracking = false, composing = /* @__PURE__ */ new WeakMap(), compositionRoots = /* @__PURE__ */ new WeakMap();
+  let tracking = false, restoringLocation = false, composing = /* @__PURE__ */ new WeakMap(), compositionRoots = /* @__PURE__ */ new WeakMap();
   function compositionStart(event) {
     const target = event.target, input2 = target?.closest?.("[data-codex-composer-root]");
     if (!input2 || input2.closest("[data-codlet-workspace-owned]")) return;
@@ -8305,15 +8315,16 @@ function createWorkspaceNavigation({ document: document2, load, host, check, cha
       get inputApi() {
         return native?.inputApi === 1 ? 1 : 0;
       },
-      open(args, options3 = {}) {
+      open(args, options4 = {}) {
         const measurement = metrics ? { operationId: metrics.nextOperation(), started: metrics.start() } : void 0;
         metrics?.add("navigation.call", measurement);
         let signal, before;
         try {
           valid();
+          if (restoringLocation) throw workspaceError("workspace_navigation_busy", "Native page restoration is pending");
           if (!args || typeof args !== "object" || Array.isArray(args) || Object.keys(args).some((key2) => key2 !== "threadId") || typeof args.threadId !== "string" || !/^[\w-]{1,256}$/.test(args.threadId)) throw workspaceError("invalid_argument", "Invalid local navigation identity");
-          if (!options3 || typeof options3 !== "object" || Array.isArray(options3) || Object.keys(options3).some((key2) => key2 !== "signal")) throw workspaceError("invalid_argument", "Invalid navigation options");
-          signal = options3.signal;
+          if (!options4 || typeof options4 !== "object" || Array.isArray(options4) || Object.keys(options4).some((key2) => key2 !== "signal")) throw workspaceError("invalid_argument", "Invalid navigation options");
+          signal = options4.signal;
           if (signal != null && (typeof signal.aborted !== "boolean" || typeof signal.addEventListener !== "function" || typeof signal.removeEventListener !== "function")) throw workspaceError("invalid_argument", "Invalid navigation signal");
           const checked = !signal?.aborted && native ? composition(measurement) : void 0;
           before = !signal?.aborted && native?.inputApi === 1 ? binding(checked, measurement) : null;
@@ -8393,14 +8404,14 @@ function createWorkspaceNavigation({ document: document2, load, host, check, cha
           session.operations.delete(op);
         } });
       },
-      focus(options3) {
+      focus(options4) {
         valid();
-        if (!options3 || typeof options3 !== "object" || Array.isArray(options3) || Object.keys(options3).some((key2) => key2 !== "revision") || !Number.isSafeInteger(options3.revision) || options3.revision <= 0) throw workspaceError("invalid_argument", "Expected a navigation revision");
+        if (!options4 || typeof options4 !== "object" || Array.isArray(options4) || Object.keys(options4).some((key2) => key2 !== "revision") || !Number.isSafeInteger(options4.revision) || options4.revision <= 0) throw workspaceError("invalid_argument", "Expected a navigation revision");
         if (native?.inputApi !== 1) throw workspaceError("workspace_navigation_unsupported", "Strict Native input navigation is unavailable");
         const pin = session.latest;
         const started = metrics?.start();
         try {
-          if (!pin || pin.revision !== options3.revision || current3?.sequence !== pin.revision || current3.session !== session) return false;
+          if (!pin || pin.revision !== options4.revision || current3?.sequence !== pin.revision || current3.session !== session) return false;
           native.check?.();
           if (stamp() !== pin.routeStamp) return false;
           const value = binding(void 0, pin.measurement);
@@ -8421,11 +8432,43 @@ function createWorkspaceNavigation({ document: document2, load, host, check, cha
         for (const op of session.operations) finish(op, "workspace_retired", "Navigation consumer retired");
         session.operations.clear();
         sessions.delete(session);
-        if (!sessions.size) untrack();
+        if (!sessions.size && !guards.size) untrack();
       }
     });
   }
-  return { create, pulse: schedule, currentInput() {
+  return { create, prepare: ensure, beginLocationRestore() {
+    check();
+    composition();
+    if (restoringLocation) throw workspaceError("workspace_location_busy", "Another captured page restoration is pending");
+    if (current3 && !current3.settled) finish(current3, "workspace_navigation_superseded", "Captured page restoration replaced navigation");
+    for (const session of sessions) session.latest = null;
+    restoringLocation = true;
+    return () => {
+      restoringLocation = false;
+    };
+  }, matchesCurrentThread(id) {
+    check();
+    if (native?.inputApi !== 1) return false;
+    try {
+      native.check?.();
+      const value = binding();
+      return value?.threadId === id && value.hostId === "local" && host().navigator.location.pathname === "/local/" + id;
+    } catch {
+      return false;
+    }
+  }, assertNotComposing() {
+    check();
+    return composition();
+  }, retainGuard() {
+    check();
+    const guard = {};
+    guards.add(guard);
+    track();
+    return () => {
+      guards.delete(guard);
+      if (!guards.size && !sessions.size) untrack();
+    };
+  }, pulse: schedule, currentInput() {
     check();
     if (native?.inputApi !== 1) return null;
     native.check?.();
@@ -8439,6 +8482,7 @@ function createWorkspaceNavigation({ document: document2, load, host, check, cha
       for (const op of session.operations) finish(op, "workspace_retired", "Navigation provider retired");
     }
     sessions.clear();
+    guards.clear();
     stop();
     untrack();
   } };
@@ -8466,10 +8510,15 @@ function createWorkspaceActions({ document: document2, load, activity, check, re
     if (record.disposed || record.failed || !native) return;
     const N = native, R = N.React, h = R.createElement, opts = record.options, placement = activityPlacement(activity());
     if (!placement) return;
+    check();
+    record.live();
+    const providers = providersFor(placement.button);
+    if (record.button !== placement.button || providers.length !== record.providers?.length || providers.some(([type, value], index) => record.providers[index][0] !== type || record.providers[index][1] !== value)) {
+      record.providers = providers;
+      record.button = placement.button;
+      record.dirty = true;
+    }
     if (!record.root) {
-      check();
-      record.live();
-      record.providers = providersFor(placement.button);
       record.Commit = function() {
         R.useLayoutEffect(() => record.resolve());
         return null;
@@ -8484,9 +8533,10 @@ function createWorkspaceActions({ document: document2, load, activity, check, re
     const reference = placement.button.querySelector("svg"), computed = reference && document2.defaultView.getComputedStyle(reference);
     const icon = h("svg", { "aria-hidden": true, "data-no-autosize": true, viewBox: opts.icon.viewBox ?? "0 0 24 24", width: computed?.width ?? "16px", height: computed?.height ?? "16px", fill: "currentColor", className: reference?.getAttribute("class")?.split(/\s+/).filter((name) => name.startsWith("_Icon_")).join(" ") }, ...opts.icon.paths.map((path2, index) => h("path", { key: index, d: path2 })));
     const control = h(N.Button, { "aria-label": opts.label, "aria-pressed": opts.pressed, "data-codlet-workspace-action": opts.id, color: placement.button.getAttribute("data-color") ?? "secondary", variant: "ghost", pill: false, uniform: true, size: "md", iconSize: "sm", selected: opts.pressed, disabled: opts.disabled, onClick: () => {
-      check();
       if (record.disposed || record.options.disabled) return;
       try {
+        check();
+        record.live();
         Promise.resolve(record.options.onInvoke()).catch(report);
       } catch (error) {
         report(error);
@@ -8550,18 +8600,25 @@ function createWorkspaceActions({ document: document2, load, activity, check, re
       }
     });
   }
-  return { register, reconcile() {
-    if (native) for (const record of records) attempt(record);
-  }, dispose() {
-    disposed = true;
-    for (const record of records) {
-      record.disposed = true;
-      record.reject(workspaceError("workspace_retired", "Native action provider retired"));
-      if (record.root) native.DOM.flushSync(() => record.root.unmount());
-      record.container.remove();
+  return {
+    register,
+    displaced(mutations) {
+      return [...records].some((record) => !record.disposed && mutations.some((mutation) => [...mutation.removedNodes].some((node) => node === record.container || node.contains?.(record.container) || node === record.button || node.contains?.(record.button))));
+    },
+    reconcile() {
+      if (native) for (const record of records) attempt(record);
+    },
+    dispose() {
+      disposed = true;
+      for (const record of records) {
+        record.disposed = true;
+        record.reject(workspaceError("workspace_retired", "Native action provider retired"));
+        if (record.root) native.DOM.flushSync(() => record.root.unmount());
+        record.container.remove();
+      }
+      records.clear();
     }
-    records.clear();
-  } };
+  };
 }
 
 // src/adapter/workspace-composer-binding.js
@@ -8604,8 +8661,8 @@ function createComposerBinding({ driver, initialIdentity, onState, check, report
     if (retired) throw workspaceError("workspace_retired", "Composer handle retired");
   };
   const matches = (value) => value?.inputConfirmed === true && value.threadId === requested.threadId && value.hostId === "local" && value.bindingRevision === revision;
-  function expected(options3) {
-    if (options3.bindingRevision != null && options3.bindingRevision !== revision)
+  function expected(options4) {
+    if (options4.bindingRevision != null && options4.bindingRevision !== revision)
       throw workspaceError("workspace_composer_superseded", "The composer binding was replaced");
   }
   function state(next, error) {
@@ -8689,9 +8746,9 @@ function createComposerBinding({ driver, initialIdentity, onState, check, report
     state("error", error);
     report(error);
   }
-  function beginBind(target, options3 = {}) {
+  function beginBind(target, options4 = {}) {
     valid();
-    const next = identity(target), opts = invocation(options3);
+    const next = identity(target), opts = invocation(options4);
     if (opts.signal?.aborted) {
       const failed = deferred();
       failed.reject(cancelled());
@@ -8721,9 +8778,9 @@ function createComposerBinding({ driver, initialIdentity, onState, check, report
     }).catch((error) => failure(op, error));
     return op.promise;
   }
-  function activate2(options3 = {}) {
+  function activate2(options4 = {}) {
     valid();
-    const opts = invocation(options3, true);
+    const opts = invocation(options4, true);
     expected(opts);
     if (opts.signal?.aborted) {
       const failed = deferred();
@@ -8759,8 +8816,8 @@ function createComposerBinding({ driver, initialIdentity, onState, check, report
     cancel(activationOp, "workspace_composer_deactivated", "Composer activation was cancelled");
     if (!bindingOp) state("inactive");
   }
-  function startClose(options3 = {}) {
-    const opts = invocation(options3);
+  function startClose(options4 = {}) {
+    const opts = invocation(options4);
     if (!closing) {
       retired = true;
       block();
@@ -8817,9 +8874,9 @@ function createComposerBinding({ driver, initialIdentity, onState, check, report
     bind: beginBind,
     activate: activate2,
     deactivate: deactivate2,
-    focus(options3 = {}) {
+    focus(options4 = {}) {
       valid();
-      const opts = invocation(options3, true);
+      const opts = invocation(options4, true);
       if (opts.signal != null) throw workspaceError("invalid_argument", "Focus accepts only a binding revision");
       expected(opts);
       const value = driver.readBinding();
@@ -9246,9 +9303,9 @@ function createComposers({ document: document2, load, surface, check, report, me
 }
 
 // src/adapter/workspace-metrics.js
-function createWorkspaceMetrics(options3) {
-  if (options3 == null || options3.enabled !== true) return null;
-  const { runId, capacity = 1024, now = () => performance.now() } = options3;
+function createWorkspaceMetrics(options4) {
+  if (options4 == null || options4.enabled !== true) return null;
+  const { runId, capacity = 1024, now = () => performance.now() } = options4;
   if (typeof runId !== "string" || !/^[\w.-]{1,96}$/.test(runId) || !Number.isSafeInteger(capacity) || capacity < 1 || capacity > 4096 || typeof now !== "function")
     throw new TypeError("Invalid workspace test points");
   const samples = new Array(capacity), counts = /* @__PURE__ */ new Map();
@@ -9292,10 +9349,389 @@ function createWorkspaceMetrics(options3) {
   });
 }
 
+// src/adapter/workspace-location.js
+function createWorkspaceLocations({ document: document2, host, load, check, changed, beforeCapture, beforeRestore, retainGuard }) {
+  const handles = /* @__PURE__ */ new Set();
+  let native, prepared, disposed = false;
+  const ensure = () => prepared ??= Promise.resolve().then(load).then((value) => {
+    if (disposed) throw workspaceError("workspace_retired", "Location provider retired");
+    if (typeof value?.restoreLocation !== "function") throw workspaceError("workspace_location_restore_unavailable", "Native semantic page restoration is unavailable");
+    native = value;
+    return value;
+  });
+  function capture(live) {
+    check();
+    live();
+    const source = host(), origin = source?.navigator?.location;
+    if (!origin || !source.rootNode?.isConnected) throw workspaceError("workspace_host_pending", "Native main page is not ready for capture");
+    const saved = { ...origin };
+    if (source.auxiliary || !saved.pathname?.startsWith("/") || saved.pathname.startsWith("/codlet/")) throw workspaceError("workspace_location_unsupported", "Capture requires a Native main page");
+    const record = { active: true, saved, source, pending: null, releaseGuard: retainGuard?.() };
+    handles.add(record);
+    const ready = ensure().then(() => {
+      check();
+      live();
+      if (!record.active) throw workspaceError("workspace_retired", "Captured location retired");
+      if (host().navigator !== source.navigator || host().navigator.location !== origin) throw workspaceError("workspace_location_superseded", "Native location changed before capture readiness");
+      beforeCapture?.();
+      record.input = nativeMainInput(document2, native);
+      if (record.input?.controller.view.composing) throw workspaceError("workspace_composer_busy", "Native main input is composing");
+    });
+    ready.catch(() => {
+    });
+    const kind = /^\/local\/[\w-]+\/?$/.test(saved.pathname) ? "thread" : "page";
+    const dispose = () => {
+      if (!record.active) return;
+      record.active = false;
+      record.pending?.abort();
+      record.releaseGuard?.();
+      record.saved = null;
+      record.input = null;
+      handles.delete(record);
+    };
+    return Object.freeze({
+      ready,
+      kind,
+      async restore(options4 = {}) {
+        check();
+        live();
+        if (!record.active) throw workspaceError("workspace_retired", "Captured location retired");
+        if (!options4 || typeof options4 !== "object" || Array.isArray(options4) || Object.keys(options4).some((key2) => key2 !== "signal")) throw workspaceError("invalid_argument", "Invalid location restoration options");
+        if (record.pending) throw workspaceError("workspace_location_busy", "Location restoration is pending");
+        const controller = new document2.defaultView.AbortController();
+        record.pending = controller;
+        const signal = options4.signal, abort = () => controller.abort(signal?.reason);
+        if (signal != null && (typeof signal.aborted !== "boolean" || typeof signal.addEventListener !== "function" || typeof signal.removeEventListener !== "function")) {
+          record.pending = null;
+          throw workspaceError("invalid_argument", "Invalid location restoration signal");
+        }
+        if (signal?.aborted) abort();
+        else signal?.addEventListener("abort", abort, { once: true });
+        let observer, timer, releaseRestore, inspect;
+        try {
+          await ready;
+          check();
+          live();
+          if (controller.signal.aborted) throw workspaceError("invocation_cancelled", "Location restoration cancelled");
+          if (host().navigator !== source.navigator || host().rootNode !== source.rootNode) throw workspaceError("workspace_host_drift", "Captured page belongs to another Native host");
+          releaseRestore = beforeRestore?.();
+          const current3 = nativeMainInput(document2, native);
+          if (current3?.controller.view.composing) throw workspaceError("workspace_composer_busy", "Native main input is composing");
+          native.check?.();
+          const restoringFrom = host().navigator.location;
+          native.restoreLocation(record.saved);
+          await new Promise((resolve, reject) => {
+            inspect = () => {
+              try {
+                check();
+                live();
+                if (controller.signal.aborted) throw workspaceError("invocation_cancelled", "Location restoration cancelled");
+                const location2 = host().navigator.location;
+                if (location2.pathname !== saved.pathname || (location2.search ?? "") !== (saved.search ?? "") || (location2.hash ?? "") !== (saved.hash ?? "") || (location2.state ?? null) !== (saved.state ?? null)) {
+                  if (location2 === restoringFrom) return;
+                  throw workspaceError("workspace_location_superseded", "Native selected another page during restoration");
+                }
+                if (record.input) {
+                  const restored = nativeMainInput(document2, native);
+                  if (!restored) return;
+                  const binding = nativeInputBinding(restored, native), old = record.input;
+                  if (restored.controller !== old.controller || restored.scope.node !== old.scope.node || restored.scope.value.clientThreadId !== old.scope.value.clientThreadId)
+                    throw workspaceError("workspace_location_state_evicted", "Native did not retain the captured input state");
+                  if (binding && kind === "thread") changed(binding);
+                  else changed();
+                } else changed();
+                resolve();
+              } catch (error) {
+                reject(error);
+              }
+            };
+            observer = new document2.defaultView.MutationObserver(inspect);
+            observer.observe(document2.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-app-shell-active-page", "data-codex-composer-root"] });
+            timer = setTimeout(() => reject(workspaceError("workspace_location_restore_timeout", "Native page restoration was not confirmed")), 5e3);
+            controller.signal.addEventListener("abort", inspect, { once: true });
+            queueMicrotask(inspect);
+          });
+          return Object.freeze({ restored: true, kind });
+        } finally {
+          observer?.disconnect();
+          clearTimeout(timer);
+          if (inspect) controller.signal.removeEventListener("abort", inspect);
+          signal?.removeEventListener("abort", abort);
+          releaseRestore?.();
+          if (record.pending === controller) record.pending = null;
+        }
+      },
+      dispose
+    });
+  }
+  return { capture, prepare: ensure, dispose() {
+    disposed = true;
+    for (const record of handles) {
+      record.active = false;
+      record.pending?.abort();
+      record.releaseGuard?.();
+      record.saved = null;
+      record.input = null;
+    }
+    handles.clear();
+  } };
+}
+
+// src/adapter/workspace-selection.js
+function createWorkspaceSelection({ document: document2, surface, snapshot, check, changed, isConfirmed }) {
+  let record, disposed = false;
+  const restore = () => {
+    if (!record) return;
+    for (const [node, entry] of record.journal) {
+      if (node.style.getPropertyValue("visibility") === entry.applied && node.style.getPropertyPriority("visibility") === "important") entry.value ? node.style.setProperty("visibility", entry.value, entry.priority) : node.style.removeProperty("visibility");
+      if (node.getAttribute("inert") === "") entry.inert == null ? node.removeAttribute("inert") : node.setAttribute("inert", entry.inert);
+      if (node.getAttribute("aria-hidden") === "true") entry.hidden == null ? node.removeAttribute("aria-hidden") : node.setAttribute("aria-hidden", entry.hidden);
+    }
+    record.journal.clear();
+    record.label?.remove();
+    record.label = null;
+  };
+  function options4(value, previous = { threadId: null, emptyLabel: "No conversation selected" }) {
+    if (!value || typeof value !== "object" || Array.isArray(value) || Object.keys(value).some((key2) => !["threadId", "emptyLabel"].includes(key2))) throw workspaceError("invalid_argument", "Invalid selection presentation");
+    const next = { ...previous, ...value };
+    if (next.threadId !== null && (typeof next.threadId !== "string" || !/^\w[\w-]{0,255}$/.test(next.threadId)) || typeof next.emptyLabel !== "string" || !next.emptyLabel.length || next.emptyLabel.length > 128)
+      throw workspaceError("invalid_argument", "Invalid selected identity or heading label");
+    if (next.threadId !== null && (snapshot().threadId !== next.threadId || isConfirmed && !isConfirmed(next.threadId))) throw workspaceError("workspace_selection_not_confirmed", "Native input does not match the selected identity");
+    return next;
+  }
+  function reconcile() {
+    if (!record || !record.active) return;
+    const header = surface()?.header;
+    if (record.header !== header) {
+      restore();
+      record.header = header;
+    }
+    if (record.options.threadId !== null && snapshot().threadId === record.options.threadId && (!isConfirmed || isConfirmed(record.options.threadId))) {
+      restore();
+      return;
+    }
+    if (!header?.isConnected) return;
+    for (const node of header.children) {
+      if (node.matches(OWNED)) continue;
+      const current3 = { value: node.style.getPropertyValue("visibility"), priority: node.style.getPropertyPriority("visibility"), inert: node.getAttribute("inert"), hidden: node.getAttribute("aria-hidden"), applied: "hidden" };
+      const saved = record.journal.get(node);
+      if (!saved) record.journal.set(node, current3);
+      else {
+        if (current3.value !== "hidden" || current3.priority !== "important") {
+          saved.value = current3.value;
+          saved.priority = current3.priority;
+        }
+        if (current3.inert !== "") saved.inert = current3.inert;
+        if (current3.hidden !== "true") saved.hidden = current3.hidden;
+      }
+      node.style.setProperty("visibility", "hidden", "important");
+      node.setAttribute("inert", "");
+      node.setAttribute("aria-hidden", "true");
+    }
+    if (!record.label) {
+      record.label = document2.createElement("span");
+      record.label.dataset.codletWorkspaceOwned = record.owner;
+      record.label.style.cssText = "position:absolute;inset-inline:0;pointer-events:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+      header.append(record.label);
+    }
+    if (record.label.parentElement !== header) header.append(record.label);
+    if (record.label.textContent !== record.options.emptyLabel) record.label.textContent = record.options.emptyLabel;
+  }
+  function acquire(value, owner2, live) {
+    check();
+    live();
+    if (disposed) throw workspaceError("workspace_retired", "Selection presentation provider retired");
+    if (record?.active) throw workspaceError("workspace_presentation_owned", "Native heading presentation already has an owner");
+    record = { active: true, owner: owner2, options: options4(value), journal: /* @__PURE__ */ new Map(), header: null, label: null };
+    const owned = record;
+    reconcile();
+    changed();
+    return Object.freeze({
+      update(value2) {
+        check();
+        live();
+        if (!owned.active) throw workspaceError("workspace_retired", "Selection presentation retired");
+        owned.options = options4(value2, owned.options);
+        reconcile();
+        changed();
+      },
+      dispose() {
+        if (!owned.active) return;
+        owned.active = false;
+        restore();
+        record = null;
+        changed();
+      }
+    });
+  }
+  return { acquire, reconcile, displaced(mutations) {
+    return !!record?.label && mutations.some((mutation) => [...mutation.removedNodes].some((node) => node === record.label || node.contains?.(record.label)));
+  }, dispose() {
+    disposed = true;
+    if (record) {
+      record.active = false;
+      restore();
+      record = null;
+    }
+  } };
+}
+
+// src/adapter/workspace-viewport.js
+function options3(value = {}, previous = { open: false, width: 360 }) {
+  if (!value || typeof value !== "object" || Array.isArray(value) || Object.keys(value).some((key2) => !["open", "width"].includes(key2))) throw workspaceError("invalid_argument", "Invalid independent viewport state");
+  const next = { ...previous, ...value };
+  if (typeof next.open !== "boolean" || !Number.isFinite(next.width) || next.width < 240 || next.width > 1600) throw workspaceError("invalid_argument", "Invalid viewport openness or width");
+  return next;
+}
+function createWorkspaceViewports({ load, check, isConfirmed, report, prepared: onPrepared }) {
+  let record, prepared, driver, disposed = false;
+  const cleanup = /* @__PURE__ */ new Set();
+  const ensure = () => prepared ??= Promise.resolve().then(load).then((value) => {
+    if (disposed) throw workspaceError("workspace_retired", "Viewport provider retired");
+    if (value?.api !== 1 || value.independent !== true || value.restoresSettings !== true || value.avoidsThreadPersistence !== true || value.notifiesChanges !== true || typeof value.create !== "function")
+      throw workspaceError("workspace_viewport_unsupported", "A verified independent Native viewport driver is unavailable");
+    driver = value;
+    onPrepared?.();
+    return value;
+  });
+  function create(initial, live) {
+    check();
+    live();
+    if (disposed) throw workspaceError("workspace_retired", "Viewport provider retired");
+    if (record) throw workspaceError("workspace_viewport_owned", "Independent viewport already has an owner");
+    const entry = { active: true, state: options3(initial), threadId: null, view: null, operation: null, closing: null, listeners: /* @__PURE__ */ new Set() };
+    record = entry;
+    const valid = () => {
+      check();
+      live();
+      if (!entry.active) throw workspaceError("workspace_retired", "Viewport handle retired");
+    };
+    const snapshot = () => Object.freeze({ independent: true, ...entry.state, threadId: entry.threadId, hostId: entry.threadId ? "local" : null });
+    const callback = (listener, value) => {
+      try {
+        Promise.resolve(listener(value)).catch(report);
+      } catch (error) {
+        report(error);
+      }
+    };
+    const notify = () => {
+      if (entry.active) for (const listener of entry.listeners) callback(listener, snapshot());
+    };
+    const receive = (value) => {
+      if (!entry.active) return;
+      try {
+        const next = options3(value, entry.state);
+        if (next.open === entry.state.open && next.width === entry.state.width) return;
+        entry.state = next;
+        notify();
+      } catch (error) {
+        report(error);
+      }
+    };
+    const ready = ensure().then(async (value) => {
+      valid();
+      const view = await value.create({ ...entry.state });
+      entry.view = view;
+      if (!view || !["bind", "update", "subscribe", "close"].every((name) => typeof view[name] === "function")) throw workspaceError("workspace_viewport_unsupported", "Native viewport lifecycle is incomplete");
+      valid();
+      entry.unlisten = view.subscribe(receive);
+      if (typeof entry.unlisten !== "function") throw workspaceError("workspace_viewport_unsupported", "Native viewport notifications cannot be released");
+    });
+    ready.catch(() => {
+    });
+    const close = () => {
+      if (entry.closing) return entry.closing;
+      entry.active = false;
+      entry.operation?.abort();
+      entry.listeners.clear();
+      entry.unlisten?.();
+      entry.unlisten = null;
+      entry.closing = (async () => {
+        try {
+          await ready;
+        } catch {
+        }
+        await entry.inflight?.catch(() => {
+        });
+        if (entry.view?.close) await entry.view.close();
+        if (record === entry) record = null;
+      })();
+      cleanup.add(entry.closing);
+      entry.closing.then(() => cleanup.delete(entry.closing), () => {
+      });
+      entry.closing.catch(report);
+      return entry.closing;
+    };
+    async function apply(action, value, invocation2 = {}) {
+      valid();
+      if (entry.operation) throw workspaceError("workspace_viewport_busy", "Viewport update is pending");
+      if (!invocation2 || typeof invocation2 !== "object" || Array.isArray(invocation2) || Object.keys(invocation2).some((key2) => key2 !== "signal")) throw workspaceError("invalid_argument", "Invalid viewport invocation");
+      const signal = invocation2.signal;
+      if (signal != null && (typeof signal.aborted !== "boolean" || typeof signal.addEventListener !== "function" || typeof signal.removeEventListener !== "function")) throw workspaceError("invalid_argument", "Invalid viewport cancellation signal");
+      const controller = new AbortController(), abort = () => controller.abort(signal?.reason);
+      entry.operation = controller;
+      if (signal?.aborted) abort();
+      else signal?.addEventListener("abort", abort, { once: true });
+      try {
+        await ready;
+        valid();
+        if (controller.signal.aborted) throw workspaceError("invocation_cancelled", "Viewport update cancelled");
+        if (action === "bind") {
+          if (value !== null && (!value || typeof value !== "object" || Array.isArray(value) || Object.keys(value).some((key2) => !["threadId", "hostId"].includes(key2)) || typeof value.threadId !== "string" || !/^[\w-]{1,256}$/.test(value.threadId) || (value.hostId ?? "local") !== "local")) throw workspaceError("invalid_argument", "Invalid viewport thread identity");
+          if (value !== null && !isConfirmed(value.threadId)) throw workspaceError("workspace_selection_not_confirmed", "Native selection does not match viewport content");
+          const identity2 = value === null ? null : { threadId: value.threadId, hostId: "local" };
+          await entry.view.bind(identity2, { signal: controller.signal });
+          valid();
+          entry.threadId = identity2?.threadId ?? null;
+        } else {
+          const next = options3(value, entry.state);
+          const applied = await entry.view.update(next, { signal: controller.signal });
+          valid();
+          entry.state = options3(applied ?? next, entry.state);
+        }
+        notify();
+        if (controller.signal.aborted) throw workspaceError("outcome_unknown", "Viewport caller cancelled after Native application");
+        return snapshot();
+      } finally {
+        signal?.removeEventListener("abort", abort);
+        if (entry.operation === controller) entry.operation = null;
+      }
+    }
+    const run = (action, value, invocation2) => {
+      const pending = apply(action, value, invocation2);
+      entry.inflight = pending;
+      const clear = () => {
+        if (entry.inflight === pending) entry.inflight = null;
+      };
+      pending.then(clear, clear);
+      return pending;
+    };
+    entry.handle = Object.freeze({ ready, getSnapshot() {
+      valid();
+      return snapshot();
+    }, subscribe(listener) {
+      valid();
+      if (typeof listener !== "function" || entry.listeners.size >= 32) throw workspaceError("invalid_argument", "Expected a viewport listener (at most 32)");
+      entry.listeners.add(listener);
+      callback(listener, snapshot());
+      return () => entry.listeners.delete(listener);
+    }, bind: (value, invocation2) => run("bind", value, invocation2), update: (value, invocation2) => run("update", value, invocation2), close, dispose() {
+      void close();
+    } });
+    return entry.handle;
+  }
+  return { create, prepare: ensure, async cleanup() {
+    await Promise.all([...cleanup]);
+  }, dispose() {
+    disposed = true;
+    record?.handle.dispose();
+  } };
+}
+
 // src/adapter/workspace.js
 var WORKSPACE_CAPABILITY = Object.freeze({ name: "codex.ui.workspace", api: 1, scope: "target" });
 var WORKSPACE_SYMBOL = "codlet.codex.ui.workspace.v1";
-var emptyFeatures = () => ({ surface: false, activitySlot: false, transcript: false, shortcuts: false, navigation: false, navigationInput: false, action: false, composer: false, composerRebind: false });
+var emptyFeatures = () => ({ surface: false, activitySlot: false, transcript: false, shortcuts: false, navigation: false, navigationInput: false, locationRestore: false, selectionPresentation: true, independentViewport: false, action: false, composer: false, composerRebind: false });
 var roleNames = ["main", "content", "scroller", "composer", "footer", "header", "rightPanel"];
 var errorValue = (error) => ({ code: typeof error?.code === "string" ? error.code : "workspace_host_drift", message: String(error?.message ?? error) });
 function createWorkspace(context, {
@@ -9355,6 +9791,25 @@ function createWorkspace(context, {
     }
     publish(true);
   }, metrics, ...navigationBinding ? { readBinding: navigationBinding } : {} });
+  const locations = createWorkspaceLocations({
+    document: doc,
+    host: () => host,
+    load: () => navigation.prepare().then((value) => {
+      features = { ...features, locationRestore: typeof value.restoreLocation === "function" };
+      schedule(false);
+      return value;
+    }),
+    check,
+    beforeCapture: () => navigation.assertNotComposing(),
+    beforeRestore: () => navigation.beginLocationRestore(),
+    retainGuard: () => navigation.retainGuard(),
+    changed: (value) => value?.input ? refreshConfirmedSurface(value.input) : publish(true)
+  });
+  const selection = createWorkspaceSelection({ document: doc, surface: () => surface, snapshot: () => snapshot, check, isConfirmed: (id) => navigation.matchesCurrentThread(id), changed: () => schedule(false) });
+  const viewports = createWorkspaceViewports({ load: () => typeof discovery.viewport === "function" ? discovery.viewport() : Promise.reject(workspaceError("workspace_viewport_unsupported", "Native viewport driver is unavailable")), prepared: () => {
+    features = { ...features, independentViewport: true };
+    schedule(false);
+  }, check, isConfirmed: (id) => navigation.matchesCurrentThread(id), report });
   const actions = createWorkspaceActions({ document: doc, load: () => featureLoad("action", discovery.action), activity: () => activity ??= findActivity(doc), check, report });
   const composers = createComposers({ document: doc, load: () => featureLoad("composer", discovery.composer), surface: () => surface, check, report, metrics });
   let composerFeatures, composerFeatureEpoch = 0;
@@ -9400,6 +9855,7 @@ function createWorkspace(context, {
     metrics?.add("surface.publish");
     snapshot = Object.freeze({ ...next, revision: ++revision, route: route && Object.freeze(route), features: Object.freeze({ ...features }), diagnostic: diagnostic && Object.freeze({ ...diagnostic }) });
     for (const session of sessions) for (const listener of session.listeners) callback(listener, snapshot);
+    selection.reconcile();
   }
   let previousGeometry = "";
   let microtaskSequence = 0;
@@ -9499,6 +9955,7 @@ function createWorkspace(context, {
         if (diagnostic === surfaceFailure) diagnostic = surfaceFailure = null;
       }
       control.reconcile(surface);
+      selection.reconcile();
       let anchor = activity?.isConnected ? activityPlacement(activity).anchor : null;
       if (anchor?.isConnected) for (const slot of slots) {
         if (slot.name !== "activity.before") continue;
@@ -9538,6 +9995,11 @@ function createWorkspace(context, {
     if (observer) return;
     observer = new doc.defaultView.MutationObserver((records) => {
       metrics?.add("surface.mutation");
+      if (actions.displaced(records)) {
+        if (!activity?.isConnected) activity = null;
+        actions.reconcile();
+      }
+      if (selection.displaced(records)) selection.reconcile();
       const relevant = records.filter((record) => {
         const target = record.target.nodeType === 1 ? record.target : record.target.parentElement;
         if (target?.closest(OWNED)) return false;
@@ -9615,8 +10077,8 @@ function createWorkspace(context, {
         if (!entries.delete(result)) return;
         value.dispose();
       } };
-      if (typeof value.close === "function") descriptors.close = { enumerable: true, value(options3) {
-        const completion = value.close(options3);
+      if (typeof value.close === "function") descriptors.close = { enumerable: true, value(options4) {
+        const completion = value.close(options4);
         entries.delete(result);
         return completion;
       } };
@@ -9676,9 +10138,9 @@ function createWorkspace(context, {
           } };
         });
       },
-      acquireSurface(options3) {
+      acquireSurface(options4) {
         return own("surface", 8, () => {
-          const lease = { options: surfaceOptions(options3) };
+          const lease = { options: surfaceOptions(options4) };
           control.leases.add(lease);
           control.reconcile(surface);
           let active2 = true;
@@ -9697,29 +10159,38 @@ function createWorkspace(context, {
           };
         });
       },
-      mountTranscript(container, options3) {
+      mountTranscript(container, options4) {
         return own("transcript", 16, () => {
           if (host?.auxiliary) throw workspaceError("workspace_transcript_unavailable", "Auxiliary windows have no transcripts");
-          return transcripts.mount(container, options3, ownerKey);
+          return transcripts.mount(container, options4, ownerKey);
         });
       },
-      mountComposer(container, options3) {
+      mountComposer(container, options4) {
         return own("composer", 16, () => {
           if (host?.auxiliary) throw workspaceError("workspace_composer_unavailable", "Auxiliary windows have no composers");
-          return composers.mount(container, options3, ownerKey, live);
+          return composers.mount(container, options4, ownerKey, live);
         });
       },
       createNavigation() {
         return own("navigation", 1, () => navigation.create(live));
       },
-      registerAction(options3) {
-        return own("action", 16, () => actions.register(options3, ownerKey, live));
+      captureLocation() {
+        return own("location", 4, () => locations.capture(live));
       },
-      registerShortcut(options3) {
+      acquireSelectionPresentation(options4) {
+        return own("selection", 1, () => selection.acquire(options4, ownerKey, live));
+      },
+      createViewport(options4) {
+        return own("viewport", 1, () => viewports.create(options4, live));
+      },
+      registerAction(options4) {
+        return own("action", 16, () => actions.register(options4, ownerKey, live));
+      },
+      registerShortcut(options4) {
         return own("shortcut", 16, () => {
           if (host?.auxiliary) throw workspaceError("workspace_shortcuts_unavailable", "Auxiliary windows have no shortcut workspace");
           schedule(true);
-          return shortcuts.register(options3, ownerKey);
+          return shortcuts.register(options4, ownerKey);
         });
       },
       dispose() {
@@ -9758,6 +10229,9 @@ function createWorkspace(context, {
     tickets.clear();
     stopObserving();
     control.dispose();
+    locations.dispose();
+    selection.dispose();
+    viewports.dispose();
     navigation.dispose();
     actions.dispose();
     composers.dispose();
@@ -9767,7 +10241,10 @@ function createWorkspace(context, {
     if (globalThis[symbol] === publicApi) delete globalThis[symbol];
   }
   const releaseProvider = context.onDeactivate(dispose);
-  const releaseCleanup = context.onCleanup?.((cleanup) => composers.cleanup(cleanup));
+  const releaseCleanup = context.onCleanup?.(async (cleanup) => {
+    await composers.cleanup(cleanup);
+    await viewports.cleanup();
+  });
   return {
     issueTicket,
     connect,

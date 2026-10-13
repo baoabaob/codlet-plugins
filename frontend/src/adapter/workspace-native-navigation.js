@@ -60,7 +60,12 @@ export function createNativeNavigation(signal, connection, dispatch, scope) {
   };
   current();
   if (typeof dispatch !== 'function' || typeof scope !== 'function') throw workspaceError('workspace_navigation_unsupported', 'Native thread navigation action is unavailable');
-  return { openLocalThread(threadId) {
+  return { restoreLocation(location) {
+    const bridge=current();
+    if(!location||typeof location.pathname!=='string'||!location.pathname.startsWith('/'))throw workspaceError('invalid_argument','Invalid captured Native location');
+    if(bridge.navigate({pathname:location.pathname,search:location.search??'',hash:location.hash??'',key:location.key},{replace:true,state:location.state})!==true)
+      throw workspaceError('workspace_location_restore_unavailable','Native declined captured page restoration');
+  }, openLocalThread(threadId) {
     const bridge = current(), facade = scope();
     if (!facade || typeof facade.get !== 'function' || typeof facade.set !== 'function') throw workspaceError('workspace_host_pending', 'Native navigation scope is not mounted');
     let accepted = false;

@@ -52,3 +52,14 @@ test('the Native action cannot silently change host, route kind or task identity
   assert.throws(() => make(() => {}).openLocalThread('b'), { code: 'workspace_navigation_unavailable' });
   assert.deepEqual(f.calls, []);
 });
+
+test('opaque page restoration uses the current semantic bridge and retains Native state identity', () => {
+  const f = fixture(), calls = [], entry = createNativeNavigation(f.signal, () => f.connection, f.dispatch, () => f.facade);
+  const state = { draftScope: Symbol('private') }, location = { pathname: '/', search: '?new=1', hash: '#draft', key: 'captured', state };
+  f.bridge = { ...f.bridge, navigate(to, options) { calls.push({ to, options }); return true; } };
+  entry.restoreLocation(location);
+  assert.deepEqual(calls[0].to, { pathname: '/', search: '?new=1', hash: '#draft', key: 'captured' });
+  assert.equal(calls[0].options.state, state); assert.equal(calls[0].options.replace, true); assert.deepEqual(f.actions, []);
+  f.bridge.navigate = () => false;
+  assert.throws(() => entry.restoreLocation(location), { code: 'workspace_location_restore_unavailable' });
+});

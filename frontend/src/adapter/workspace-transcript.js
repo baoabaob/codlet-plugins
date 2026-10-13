@@ -130,7 +130,7 @@ export function createTranscripts({ document, load, surface, check, report, isol
         if (reload) await history(record);
         if (record.disposed || epoch !== record.epoch) return;
         check();
-        const source = surface()?.content ?? surface()?.main;
+        const source = surface()?.content ?? surface()?.main ?? [...document.querySelectorAll('nav[data-app-navigation-rail="true"]')].find(node=>!node.closest(OWNED));
         if (!source?.isConnected) throw workspaceError('workspace_host_pending', 'Open a main workspace before mounting a transcript');
         const providers = providersFor(source);
         if (!providers.length) throw workspaceError('workspace_transcript_unavailable', 'Native transcript providers are unavailable');

@@ -78,6 +78,23 @@ test('capture-phase composition state guards nested editor input even before the
   await f.navigation.open({ threadId: 'fixture-b' }).committed;
 });
 
+test('opaque page restoration shares IME checks, retires pending navigation and prevents competing route dispatch', async t => {
+  const f = setup(t, { cold: true }); await f.navigation.ready;
+  const old = f.navigation.open({ threadId: 'fixture-cold' });
+  f.editable.dispatchEvent(new f.window.CompositionEvent('compositionstart', { bubbles: true }));
+  assert.throws(() => f.provider.beginLocationRestore(), { code: 'workspace_composer_busy' });
+  f.editable.dispatchEvent(new f.window.CompositionEvent('compositionend', { bubbles: true }));
+  const release = f.provider.beginLocationRestore();
+  await assert.rejects(old.executed, { code: 'workspace_navigation_superseded' });
+  await assert.rejects(old.committed, { code: 'workspace_navigation_superseded' });
+  assert.throws(() => f.navigation.open({ threadId: 'fixture-b' }), { code: 'workspace_navigation_busy' });
+  f.requests[0].resolve({ thread: { id: 'fixture-cold' } });
+  await Promise.resolve(); assert.deepEqual(f.nativeCalls, []);
+  release(); const next=f.navigation.open({ threadId: 'fixture-b' });
+  f.requests[1].resolve({ thread: { id: 'fixture-b' } });
+  await next.committed;assert.deepEqual(f.nativeCalls,['fixture-b']);
+});
+
 test('already-selected confirmation rejects a same-ID controller replacement and rapid supersession retires old focus revisions', async t => {
   const f = setup(t); await f.navigation.ready;
   const same = f.navigation.open({ threadId: 'fixture-a' }); await same.executed;

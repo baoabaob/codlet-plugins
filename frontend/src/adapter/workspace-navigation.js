@@ -3,8 +3,8 @@ import { nativeInputBinding, nativeMainInput, workspaceError } from './workspace
 import { sameNativeInput } from './workspace-native-input.js';
 
 export function createWorkspaceNavigation({document,load,host,check,changed,readBinding,readCurrentInput,metrics}) {
-  const sessions=new Set();let native,prepared,current,sequence=0,observer,frame,microtask=false,queueEpoch=0,disposed=false;
-  let tracking=false,composing=new WeakMap(),compositionRoots=new WeakMap();
+  const sessions=new Set(),guards=new Set();let native,prepared,current,sequence=0,observer,frame,microtask=false,queueEpoch=0,disposed=false;
+  let tracking=false,restoringLocation=false,composing=new WeakMap(),compositionRoots=new WeakMap();
   function compositionStart(event){
     const target=event.target,input=target?.closest?.('[data-codex-composer-root]');
     if(!input||input.closest('[data-codlet-workspace-owned]'))return;
@@ -87,7 +87,8 @@ export function createWorkspaceNavigation({document,load,host,check,changed,read
         const measurement=metrics?{operationId:metrics.nextOperation(),started:metrics.start()}:undefined;
         metrics?.add('navigation.call',measurement);let signal,before;
         try{
-          valid();if(!args||typeof args!=='object'||Array.isArray(args)||Object.keys(args).some(key=>key!=='threadId')||typeof args.threadId!=='string'||!/^[\w-]{1,256}$/.test(args.threadId))throw workspaceError('invalid_argument','Invalid local navigation identity');
+          valid();if(restoringLocation)throw workspaceError('workspace_navigation_busy','Native page restoration is pending');
+          if(!args||typeof args!=='object'||Array.isArray(args)||Object.keys(args).some(key=>key!=='threadId')||typeof args.threadId!=='string'||!/^[\w-]{1,256}$/.test(args.threadId))throw workspaceError('invalid_argument','Invalid local navigation identity');
           if(!options||typeof options!=='object'||Array.isArray(options)||Object.keys(options).some(key=>key!=='signal'))throw workspaceError('invalid_argument','Invalid navigation options');
           signal=options.signal;
           if(signal!=null&&(typeof signal.aborted!=='boolean'||typeof signal.addEventListener!=='function'||typeof signal.removeEventListener!=='function'))throw workspaceError('invalid_argument','Invalid navigation signal');
@@ -128,8 +129,8 @@ export function createWorkspaceNavigation({document,load,host,check,changed,read
         }catch{return false;}
         finally{metrics?.end('navigation.focus',started,pin?.measurement);}
       },
-      dispose(){if(!session.alive)return;session.alive=false;session.latest=null;for(const op of session.operations)finish(op,'workspace_retired','Navigation consumer retired');session.operations.clear();sessions.delete(session);if(!sessions.size)untrack();},
+      dispose(){if(!session.alive)return;session.alive=false;session.latest=null;for(const op of session.operations)finish(op,'workspace_retired','Navigation consumer retired');session.operations.clear();sessions.delete(session);if(!sessions.size&&!guards.size)untrack();},
     });
   }
-  return{create,pulse:schedule,currentInput(){check();if(native?.inputApi!==1)return null;native.check?.();return input(current?.settled?undefined:current?.measurement);},dispose(){if(disposed)return;disposed=true;for(const session of sessions){session.alive=false;session.latest=null;for(const op of session.operations)finish(op,'workspace_retired','Navigation provider retired');}sessions.clear();stop();untrack();}};
+  return{create,prepare:ensure,beginLocationRestore(){check();composition();if(restoringLocation)throw workspaceError('workspace_location_busy','Another captured page restoration is pending');if(current&&!current.settled)finish(current,'workspace_navigation_superseded','Captured page restoration replaced navigation');for(const session of sessions)session.latest=null;restoringLocation=true;return()=>{restoringLocation=false;};},matchesCurrentThread(id){check();if(native?.inputApi!==1)return false;try{native.check?.();const value=binding();return value?.threadId===id&&value.hostId==='local'&&host().navigator.location.pathname==='/local/'+id;}catch{return false;}},assertNotComposing(){check();return composition();},retainGuard(){check();const guard={};guards.add(guard);track();return()=>{guards.delete(guard);if(!guards.size&&!sessions.size)untrack();};},pulse:schedule,currentInput(){check();if(native?.inputApi!==1)return null;native.check?.();return input(current?.settled?undefined:current?.measurement);},dispose(){if(disposed)return;disposed=true;for(const session of sessions){session.alive=false;session.latest=null;for(const op of session.operations)finish(op,'workspace_retired','Navigation provider retired');}sessions.clear();guards.clear();stop();untrack();}};
 }

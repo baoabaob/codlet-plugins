@@ -44,7 +44,7 @@ export function findWorkspaceSurface(document, confirmedComposer = null) {
   const composer = confirmedComposer ?? one(main.querySelectorAll('[data-codex-composer-root]'), 'main composer', true);
   const scroller = composer?.closest('.thread-scroll-container') ?? one(main.querySelectorAll('.thread-scroll-container'), 'thread scroller', true);
   if (scroller && !main.contains(scroller)) throw workspaceError('workspace_host_drift', 'The main thread scroller changed ownership');
-  const content = scroller?.closest('[data-includes-composer]') ?? null;
+  const content = scroller?.closest('[data-includes-composer]') ?? (!composer ? one(main.querySelectorAll('[data-app-shell-main-content-layout]'), 'main content layout', true) ?? main : null);
   const footer = composer?.closest('[data-thread-scroll-footer]') ?? null;
   if (composer && (!scroller || !content || !footer || !scroller.contains(footer)))
     throw workspaceError('workspace_host_drift', 'The thread body and composer footer no longer match the workspace contract');
