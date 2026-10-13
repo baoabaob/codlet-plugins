@@ -38,7 +38,7 @@ export function createPermissions({manager, client, check, selection, load, emit
     const record = {active: true}; let release;
     const dispose = () => {
       if (!record.active) return; record.active = false; owners.delete(key);
-      for (const [id, identity] of registered) if (identity === record) registered.delete(id);
+      for (const [id, identity] of registered) if (identity === record) {registered.delete(id);changed(id);}
       release?.();
     };
     owners.set(key, record);

@@ -80,7 +80,7 @@ test('permission DOM commits emit bounded invalidations while draft and owned Co
 });
 
 test('unmodified conversations preserve Native effective submission choices instead of silently adopting a different canonical policy',t=>{
-  const f=fixture(t);f.agent.agentMode='full-access';let snapshot=f.reader.read('thread-a');assert.deepEqual(snapshot.selection,{kind:'agent-mode',mode:'full-access'});assert.equal(snapshot.source,'unknown');
+  const f=fixture(t);let snapshot=f.reader.read('thread-a');assert.equal(snapshot.selection.mode,'auto');assert.equal(snapshot.source,'unknown','equal values do not prove an independent registered source');f.agent.agentMode='full-access';snapshot=f.reader.read('thread-a');assert.deepEqual(snapshot.selection,{kind:'agent-mode',mode:'full-access'});assert.equal(snapshot.source,'unknown');
   f.agent.shouldSendPermissionOverrides=false;snapshot=f.reader.read('thread-a');assert.deepEqual(snapshot.selection,{kind:'server-default'});assert.equal(snapshot.source,'unknown');
   snapshot=f.reader.read('thread-a',{canonical:true});assert.deepEqual(snapshot.selection,{kind:'agent-mode',mode:'auto'});assert.equal(snapshot.source,'thread');
   delete f.agent.shouldSendPermissionOverrides;assert.equal(f.reader.read('thread-a').phase,'unsupported');

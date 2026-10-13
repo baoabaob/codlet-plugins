@@ -974,7 +974,10 @@ function createPermissions({ manager, client, check, selection, load, emit }) {
       if (!record.active) return;
       record.active = false;
       owners.delete(key);
-      for (const [id, identity2] of registered) if (identity2 === record) registered.delete(id);
+      for (const [id, identity2] of registered) if (identity2 === record) {
+        registered.delete(id);
+        changed(id);
+      }
       release?.();
     };
     owners.set(key, record);
@@ -1655,7 +1658,7 @@ function createNativePermissionReader({ document: document2, manager, native, re
       const effectiveProfile = cache.agent.permissionProfileId;
       selection = typeof effectiveProfile === "string" ? { kind: "profile", profileId: effectiveProfile } : modes.includes(cache.agent.agentMode) ? { kind: "agent-mode", mode: cache.agent.agentMode } : null;
       if (!selection) throw workspaceError("permissions_unsupported", "Native submission permission baseline is unavailable");
-      source = equal(selection, canonicalSelection) ? "thread" : "unknown";
+      source = "unknown";
     } else throw workspaceError("permissions_unsupported", "Native permission submission override state is unavailable");
     const options = [], defaultProfile = cache.config.requirements?.defaultPermissions ?? cache.config.resolvedConfig?.default_permissions;
     const builtinDefault = profileMode(defaultProfile, defaultMode(cache.config));
