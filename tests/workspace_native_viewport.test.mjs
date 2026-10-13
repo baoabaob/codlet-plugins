@@ -4,7 +4,7 @@ import { createRequire } from 'node:module';
 import { build } from '../frontend/node_modules/esbuild/lib/main.js';
 import { fileURLToPath } from 'node:url';
 import { readFileSync } from 'node:fs';
-import { createNativeViewportDriver, viewportSignalExports, viewportPersistenceExport } from '../frontend/src/adapter/workspace-native-viewport.js';
+import { createNativeViewportDriver, viewportSignalExports, viewportPersistenceExport, nativeViewportLayout } from '../frontend/src/adapter/workspace-native-viewport.js';
 const require=createRequire(new URL('../frontend/package.json',import.meta.url)),{JSDOM}=require('jsdom');
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
 
@@ -14,6 +14,22 @@ test('Native viewport source decoding derives semantic exports without executing
   assert.equal(viewportPersistenceExport(graph),'writer');
   assert.throws(()=>viewportSignalExports(graph.replace('motion as motionFlag','motion as one,motion as two')),{code:'workspace_viewport_unsupported'});
   assert.throws(()=>viewportPersistenceExport(graph.replace('app-shared-build.js','other-module.js')),{code:'workspace_viewport_unsupported'});
+});
+
+test('Native layout discovery reaches a closed pane inside main while pruning the main body and viewer branches',t=>{
+  const dom=new JSDOM('<div id="root"><main data-app-shell-main-surface><div><section data-app-shell-main-content-layout></section></div></main></div>');t.after(()=>dom.window.close());
+  const document=dom.window.document,root=document.getElementById('root'),main=document.querySelector('main');
+  function Shell(){return 'data-app-shell-main-surface contentPaneWidthRatio';}
+  function Pane(){return 'pane_resize contentPaneWidthRatio data-app-shell-focus-area';}
+  const current={},shell={type:Shell,return:current},host={stateNode:main,return:shell},row={stateNode:main.firstElementChild,return:host},body={stateNode:document.querySelector('section'),return:row};
+  const motion={get:()=>360,on(){assert.fail('discovery must not subscribe');}},props={isContentPaneOpen:false,contentPaneWidth:motion,contentPaneWidthRatio:motion,workspaceWidth:motion};
+  const pane={type:Pane,memoizedProps:props,return:row};
+  current.child=shell;shell.child=host;host.child=row;row.child=body;body.sibling=pane;
+  Object.defineProperty(body,'child',{get(){assert.fail('must not scan conversation contents');}});Object.defineProperty(pane,'child',{get(){assert.fail('must not scan viewer contents');}});
+  root.__reactContainer$layout={stateNode:{current}};main.__reactFiber$layout=host;
+  assert.equal(nativeViewportLayout({root,main}),props);
+  const duplicate={...pane,return:row};pane.sibling=duplicate;
+  assert.throws(()=>nativeViewportLayout({root,main}),{code:'workspace_host_pending'},'ambiguous matching layouts cannot be guessed');
 });
 
 function fixture(t){

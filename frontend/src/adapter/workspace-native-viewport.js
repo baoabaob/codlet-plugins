@@ -127,8 +127,9 @@ export function nativeViewportLayout(context) {
         throw unavailable('Native viewport motion/layout contract changed');
       candidates.push(props); continue;
     }
-    // Never scan a transcript or the Native resource/browser contents.
-    if (fiber.stateNode === context.main || fiber.stateNode?.matches?.('aside[data-app-shell-focus-area="right-panel"]')) continue;
+    // Native places the content pane beside the main-content viewport *inside*
+    // <main>. Prune the actual body/resource branches, not that whole shell.
+    if (fiber.stateNode?.matches?.(`${OWNED},[data-app-shell-main-content-layout],[data-app-shell-focus-area="main"],.thread-scroll-container,[data-codex-composer-root],aside[data-app-shell-focus-area="right-panel"]`)) continue;
     if (fiber.child) pending.push(fiber.child);
   }
   if (candidates.length !== 1) throw workspaceError('workspace_host_pending', 'A unique Native viewport layout is required');

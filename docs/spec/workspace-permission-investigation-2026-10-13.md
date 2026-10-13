@@ -28,6 +28,8 @@ The cached policy fields are in `getConversation(id).latestThreadSettings`, not 
 
 The consumer should collect this during a naturally selected existing conversation in its current frozen sample. This separates a null/wrong conversation binding from Native default-writing behavior without changing real permissions for diagnosis.
 
+The first live selected sample confirmed the main input's strict binding and cached policy presence but could not prove the trigger's DOM-attached React chain. It therefore did not identify the implementation. The helper now proves a nearby current host or the trigger's actual host in the bounded committed input branch, with an optional existing Native container inside that input. It reports the proof category and bounded visit count; unknown identity comparisons are null. Regressions cover detached trigger attachments, absent nearby attachments and unknown implementations. An unproved DOM attachment is not evidence of a wrong Native conversation binding.
+
 ## Interface boundary if an additional capability is needed
 
 A generic per-conversation permission read/update capability could wrap the existing Native manager and normalize allowed settings, cancellation and acknowledgement. It should require the appropriate authenticated write authority, preserve Native requirements/model restrictions, avoid changing host defaults, and keep manager/scopes private. Readiness and unsupported cases must be explicit. It must not create a second backend connection, maintain a per-panel policy cache, or initialize every cached conversation's policy automatically.

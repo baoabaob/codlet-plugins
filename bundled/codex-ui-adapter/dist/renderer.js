@@ -7397,7 +7397,7 @@ function nativeViewportLayout(context) {
       candidates.push(props);
       continue;
     }
-    if (fiber.stateNode === context.main || fiber.stateNode?.matches?.('aside[data-app-shell-focus-area="right-panel"]')) continue;
+    if (fiber.stateNode?.matches?.(`${OWNED},[data-app-shell-main-content-layout],[data-app-shell-focus-area="main"],.thread-scroll-container,[data-codex-composer-root],aside[data-app-shell-focus-area="right-panel"]`)) continue;
     if (fiber.child) pending.push(fiber.child);
   }
   if (candidates.length !== 1) throw workspaceError("workspace_host_pending", "A unique Native viewport layout is required");
