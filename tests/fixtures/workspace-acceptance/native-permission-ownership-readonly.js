@@ -91,7 +91,17 @@ function committedPicker(trigger,input,root) {
 // attachments are stale. Unconfirmed identity comparisons are null, not false.
 export function permissionPickerEvidence(trigger,input,binding,root) {
   const {fiber,proof,committed,visited,diagnostics}=committedPicker(trigger,input,root),source=componentSource(fiber?.type),props=fiber?.memoizedProps;
-  return{committed,proof,visited,diagnostics,implementationFound:!!fiber,
+  const arrays=fiber?.updateQueue?.memoCache?.data;
+  const cacheEvidence={arrayCount:Array.isArray(arrays)?Math.min(arrays.length,32):0,slotCount:0,configRecords:0,agentRecords:0,threadRecords:0};
+  const seen=new Set();
+  for(const array of Array.isArray(arrays)?arrays.slice(0,32):[])for(const value of Array.isArray(array)?array.slice(0,512):[]){
+    cacheEvidence.slotCount++;
+    if(!value||typeof value!=='object'||seen.has(value))continue;seen.add(value);
+    if('resolvedConfig'in value&&'requirements'in value&&typeof value.isConfigDataPending==='boolean')cacheEvidence.configRecords++;
+    if('agentMode'in value&&'permissionProfileId'in value&&typeof value.isAutoReviewRequiredForSelectedModel==='boolean')cacheEvidence.agentRecords++;
+    if('threadMode'in value&&'threadSandboxPolicy'in value&&'threadPermissionProfileId'in value)cacheEvidence.threadRecords++;
+  }
+  return{committed,proof,visited,diagnostics,cacheEvidence,implementationFound:!!fiber,
     implementation:!fiber?'unknown':source.includes('workPreferences.composer.useWorkSettings')?'account':source.includes('selectedPermissionSelection')?'selection':'legacy',
     conversationPresent:props?typeof props.conversationId==='string':null,
     conversationMatchesInput:props?props.conversationId===(input?.scope.value.conversationId??null):null,
