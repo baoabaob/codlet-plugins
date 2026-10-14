@@ -1,5 +1,6 @@
 // Components use the owner's React instance and public SDK controls.
 import {descriptionText} from './messages.js';
+import {updateStatusText,activationComponentLabels} from './versions.js';
 export function createSettingsView({React,C,I,manager,t,Copy,mutationBusy}){
   const h=React.createElement;
   function Row({label,description,children}){return <div className="codlet-setting-row"><div className="codlet-setting-copy"><div className="codlet-setting-label">{t(label)}</div><Copy>{t(description)}</Copy></div><div className="codlet-setting-control">{children}</div></div>;}
@@ -8,7 +9,7 @@ export function createSettingsView({React,C,I,manager,t,Copy,mutationBusy}){
     const combinedBusy=manager.combiningUpdates(),showCombined=combinedBusy||o?.available&&o.restartPreserved&&r?.installAvailable&&['available','downloaded'].includes(phase)&&(o.isUpdateReady||o.phase==='downloading');
     const disabled=s.settingsBusy||s.settingsUncertain||mutationBusy(s),updatesDisabled=s.updateBusy||s.updateUncertain||mutationBusy(s)||combinedBusy;
     const updateRunning=['checking','downloading','installRequested'].includes(phase),summary=manager.pluginSummary();
-    const texts={development:'This development build has no configured update source.',idle:'Codlet updates have not been checked yet.',checking:'Checking for updates...',upToDate:'Codlet is up to date.',available:`Codlet ${r?.candidate?.version||''} is available.`,downloading:r?.totalBytes?`Downloading update: ${Math.min(100,Math.round(r.downloadedBytes/r.totalBytes*100))}%`:'Downloading update...',downloaded:`Codlet ${r?.candidate?.version||''} is ready to install.`,installRequested:'Installation was requested. Follow the update process to restart Codlet.',failed:`Update failed.\n${r?.error?.message||''}`};
+    const activation=r?.activation,components=values=>values.map(value=>t(activationComponentLabels[value]??value)).join(', ')||t('None');
     return <div className="codlet-settings">
       <section aria-labelledby="codlet-basic-heading"><h2 id="codlet-basic-heading">{t('Basic settings')}</h2>
         {s.settingsError&&<Copy error role="alert">{t(s.settingsError)}</Copy>}
@@ -42,15 +43,19 @@ export function createSettingsView({React,C,I,manager,t,Copy,mutationBusy}){
         <div className="codlet-section-heading"><h2 id="codlet-version-heading" tabIndex={-1}>{t('Version information')}</h2><C.Button color="secondary" variant="soft" size="sm" aria-label={t('Check for Codlet updates')} disabled={updatesDisabled||updateRunning} loading={phase==='checking'||s.updateBusy} onClick={()=>manager.loadUpdate('checkRuntimeUpdate')}><I.Regenerate/>{t('Check for updates')}</C.Button></div>
         {highlight&&<p className="codlet-sr-only" role="status">{t('Version information is highlighted below.')}</p>}
         <dl className="codlet-version-details">
-          {[['Codlet version',r?.currentVersion||s.runtimeVersion||t('Not available')],['Current client version',client?.runningVersion||t('Not available')],['Codlet adapted version',client?.adaptedVersions?.join(', ')||t('Not available')]].map(([label,value])=><React.Fragment key={label}><dt>{t(label)}</dt><dd>{value}</dd></React.Fragment>)}
+          {[['Compiled Core version',r?.currentVersion||s.runtimeVersion||t('Not available')],['Active JS Core version',activation?.mode==='unknown'?t('Not confirmed'):activation?.mode==='online'?activation.version:r?.currentVersion||s.runtimeVersion||t('Not available')],['Current client version',client?.runningVersion||t('Not available')],['Codlet adapted version',client?.adaptedVersions?.join(', ')||t('Not available')]].map(([label,value])=><React.Fragment key={label}><dt>{t(label)}</dt><dd>{value}</dd></React.Fragment>)}
         </dl>
-        {r&&<Copy role="status">{t(texts[phase]||'Version information is unavailable.')}</Copy>}
+        {r&&<Copy role="status">{t(updateStatusText(r))}</Copy>}
+        {activation&&<><dl className="codlet-version-details"><dt>{t('Activation scope')}</dt><dd>{t(activation.mode==='online'?'Applied in this session':activation.mode==='nextStart'?'Update takes effect on next start.':'Activation outcome is unconfirmed')}</dd>
+          <dt>{t(activation.mode==='nextStart'?'Staged version':'Component version')}</dt><dd>{activation.version}</dd><dt>{t(activation.mode==='nextStart'?'Staged components':'Applied components')}</dt><dd>{components(activation.components)}</dd><dt>{t('Retained components')}</dt><dd>{components(activation.retainedComponents)}</dd></dl>
+          {activation.mode==='nextStart'&&<Copy>{t('The update is staged locally. The current session continues; it has not been installed into this session.')}</Copy>}
+          {activation.nextStartReason&&<Copy>{activation.nextStartReason}</Copy>}{activation.persistencePending&&<Copy role="status">{t('The active update has not finished saving to disk. Its next-start persistence is unconfirmed.')}</Copy>}</>}
         {[...new Set([s.versionError,s.updateError].filter(Boolean))].map(error=><Copy key={error} error role="alert">{t(error)}</Copy>)}
         {r?.candidate?.releaseUrl&&<C.TextLink href={r.candidate.releaseUrl} target="_blank" rel="noopener noreferrer">{t('Release details')}</C.TextLink>}
         <C.Dialog.Root open={!!s.combinedConfirmation} onOpenChange={open=>{if(!open)manager.cancelCombinedInstall();}}>
         <div className="codlet-actions">
           {phase==='available'&&<C.Button color="primary" size="md" disabled={updatesDisabled} onClick={()=>manager.loadUpdate('downloadRuntimeUpdate')}><I.Download/>{t('Download update')}</C.Button>}
-          {phase==='downloaded'&&(r.installAvailable?<C.Button color="primary" size="md" data-codlet-focus-key="install:page" disabled={updatesDisabled} onClick={()=>manager.requestInstall()}><I.ArrowRotateCw/>{t('Install and restart')}</C.Button>:<Copy>{t(`Automatic installation is unavailable for this launch.\n${r.unavailableReason||''}`)}</Copy>)}
+          {phase==='downloaded'&&(r.installAvailable?<C.Button color="primary" size="md" data-codlet-focus-key="install:page" disabled={updatesDisabled} onClick={()=>manager.requestInstall()}><I.Download/>{t('Apply update')}</C.Button>:<Copy>{t(`Automatic installation is unavailable for this launch.\n${r.unavailableReason||''}`)}</Copy>)}
           {showCombined&&<C.Dialog.Trigger asChild><C.Button color="secondary" variant="soft" size="md" className="codlet-combined-update" disabled={updatesDisabled||!manager.canCombineUpdates()} loading={combinedBusy} onClick={()=>manager.requestCombinedInstall()}><I.ArrowRotateCw/>{t(combinedBusy?'Updating together...':'Update both')}</C.Button></C.Dialog.Trigger>}
         </div>
         {showCombined&&!combinedBusy&&o.phase==='downloading'&&<Copy role="status">{t('Waiting for the client update to finish downloading')}</Copy>}

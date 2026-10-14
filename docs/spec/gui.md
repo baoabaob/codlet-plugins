@@ -2,6 +2,8 @@
 
 `codlet-gui` is an isolated-world renderer with `ui.dom` and `runtime.manage`. Its manifest requires `codex.ui.navigation.page@1`, `codlet.runtime.ping@1` and `codlet.runtime.manage@1`. Core supplies generic management operations and enforces permissions; this repository owns their presentation and interaction. See the [Core contract index](https://github.com/baoabaob/codlet/blob/main/docs/README.md).
 
+The v1 candidate uses `context.codex.navigation` and has no separate Adapter dependency. Explicit state hooks preserve completed view/filter state across compatible reloads and reject active management operations. Update UI distinguishes live component activation, resident executable version and a staged next-start update; an ordinary apply action does not request a Native restart. SDK capability declarations and Native verification are displayed as separate evidence.
+
 ## Production behavior
 
 The production entry is `frontend/src/codlet/app.jsx`, selected by `plugins.json`. It provides plugin status, text/tag search, enable/disable/reload/revoke controls, local/GitHub import review, details and source removal, plugin/runtime update status, settings, and links to the Codlet project. The Add menu opens the internal [marketplace](marketplace.md), Create plugin, and Import plugin. Marketplace discovery uses Core's paginated GitHub job; package review and installation use the existing managed import receipt path.

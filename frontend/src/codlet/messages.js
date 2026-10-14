@@ -2,8 +2,8 @@
 // Keep internal sentences and ellipses intact, and never rewrite source data.
 export const descriptionText = value => typeof value === 'string' ? value.trimEnd().replace(/。$|(?<!\.)\.$/u, '') : value;
 export const PERMISSION_COPY = Object.freeze({
-        'ui.dom': 'Read and change the page interface', 'ui.mainWorld': 'Run in the page’s main JavaScript world',
-        'cdp.raw': 'Use raw browser debugging access', 'host.process': 'Run native code with your user account’s OS permissions',
+        'ui.dom': 'Use Codlet UI components', 'ui.nativeDom':'Access private Native DOM directly', 'ui.mainWorld': 'Run in the page’s main JavaScript world',
+        'cdp.raw': 'Use raw browser debugging access', 'host.process': 'Legacy full Node Host environment', 'host.raw':'Use the full raw Node Host environment',
         'host.fs': 'Read files', 'host.network': 'Access HTTP(S) services',
         'traffic.intercept':'Inspect and modify requests and responses',
         'traffic.sensitiveHeaders':'Read and modify sensitive headers such as credentials and cookies',
@@ -13,13 +13,26 @@ export const PERMISSION_COPY = Object.freeze({
         'core.credentials.use':'Use saved credentials for their approved destinations', 'host.fs.write':'Write files',
         'host.fs.watch':'Watch file changes', 'core.files.dialog':'Open native file pickers and access selected files',
         'core.events':'Publish and subscribe to declared plugin events', 'core.tasks':'Run and manage this plugin’s background tasks',
-        'host.process.spawn':'Start programs with streaming input and output', 'core.network':'Configure plugin proxies and certificate trust',
+        'host.process.spawn':'Run selected external programs or shells', 'core.network':'Configure plugin proxies and certificate trust',
         'core.notifications':'Show system notifications', 'core.clipboard.read':'Read clipboard text', 'core.clipboard.write':'Write clipboard text',
         'core.shortcuts':'Register global shortcuts', 'core.diagnostics':'Read this plugin’s resources and diagnostics'
     });
 
 export function createMessages(context) {
     const TRANSLATIONS = {
+        'Select executable scopes with the Codlet CLI --executable option before running this feature. Broad service consent does not select a program.':'使用该功能前，请通过 Codlet CLI 的 --executable 选项明确选择可执行文件。普通服务的广泛授权不会自动选择程序。',
+        'SDK and capabilities':'SDK 与能力','SDK contract declared':'已声明 SDK 契约','Declared Codlet SDK':'声明的 Codlet SDK','Package ABI':'插件包 ABI','Required capabilities (author declaration)':'所需能力（作者声明）','None declared':'未声明','Current client':'当前客户端',
+        'SDK compatibility describes the API contract. Core probes capability availability in the current client; this is separate from native test evidence.':'SDK 兼容性描述 API 契约。Core 会探测当前客户端的具体能力可用性，与 Native 测试证据分别记录。',
+        'Author-supplied test evidence':'作者提供的测试记录','These records are supplied by the package author. Package review does not certify their results.':'这些记录由插件作者提供。检查插件包不代表认证其测试结果。','No test evidence declared':'未声明测试记录','Native check':'Native 检查','Automated check':'自动化检查','Platform not recorded':'未记录平台','Client version not recorded':'未记录客户端版本','Passed':'通过','Not run':'未运行','Author system and client exceptions':'作者声明的系统与客户端例外','Declared systems':'声明的系统',
+        'Use Codlet UI components':'使用 Codlet 界面组件','Access private Native DOM directly':'直接访问 Native 私有 DOM','Legacy full Node Host environment':'旧版完整 Node Host 环境','Use the full raw Node Host environment':'使用完整原始 Node Host 环境','Run selected external programs or shells':'运行明确选择的外部程序或 Shell',
+        'Direct system or Native access':'直接系统或 Native 能力','Core broker check':'Core 代理检查','Execution admission check':'执行准入检查','Author declaration and review':'作者声明与源码审查',
+        'This permission lets the plugin directly use system or client capabilities outside Codlet’s unified adaptation. The plugin author maintains platform and client-version compatibility for these features.':'该权限允许插件直接使用未经 Codlet 统一适配的系统或客户端能力。相关功能的跨平台及客户端版本兼容由插件作者维护。',
+        'Core checks the selected executable. A selected program or shell runs with your OS account.':'Core 检查明确选择的可执行文件。选定的程序或 Shell 使用你的系统账户权限。',
+        'Author declaration and source review. Renderer worlds share Native DOM; this is not DOM isolation.':'此项依赖作者声明与源码审查。不同 Renderer world 共享 Native DOM，不提供 DOM 隔离。',
+        'Core checks main-world admission. Plugin code remains trusted in the Native main world.':'Core 检查 main world 准入。插件代码仍作为可信代码运行在 Native 主世界。',
+        'Core checks raw CDP requests and subscriptions against this plugin’s grants.':'Core 按此插件的授权检查原始 CDP 请求与订阅。',
+        'Full Node environment. Plugin code can bypass SDK brokers; this is not a sandbox.':'这是完整 Node 环境。插件代码可以绕过 SDK 代理，不属于安全沙箱。',
+        'Legacy full Node Host grant. Preserved for old packages; explicit node mode requires host.raw.':'保留旧插件包原有的完整 Node Host 授权。显式 node 模式需要 host.raw。',
         'Read files':'读取文件','Write files':'写入文件','Watch file changes':'监听文件变化',
         'Access HTTP(S) services':'访问网络服务','Inspect and modify requests and responses':'查看并修改请求与响应',
         'Redirect requests to other services':'将请求转发到其他服务','Start programs with streaming input and output':'启动程序并读写实时输入输出',
@@ -130,6 +143,16 @@ export function createMessages(context) {
         'Reload local plugins when files change':'本地插件文件变更时自动重载','Reloads already loaded local plugins after their files settle. Existing permissions and dependency checks still apply.':'文件修改完成后重载已加载的本地插件，仍会检查原有授权与依赖。',
         'Default':'默认','hours':'小时','minutes':'分钟','seconds':'秒','hour':'小时','minute':'分钟','second':'秒',
         'Version information':'版本信息','Refresh version information':'刷新版本信息','View version information in settings':'在设置中查看版本信息','Version information is highlighted below.':'已定位并高亮版本信息。',
+        'Apply update':'应用更新','Apply Codlet update?':'应用 Codlet 更新？','Codlet {version} is ready to apply.':'Codlet {version} 已准备好应用。',
+        'Not confirmed':'尚未确认',
+        'Compatible Core components apply in this session. Other changes are staged for the next natural start; current tasks and connections continue.':'兼容的 Core 组件会在当前会话应用；其他变更在下次自然启动时生效，当前任务与连接继续运行。',
+        'Applying the update. Read the confirmed activation status below.':'正在应用更新，请查看下方已确认的生效状态。','Update takes effect on next start.':'下次启动生效',
+        'Compiled Core version':'已编译 Core 版本','Active JS Core version':'已生效 JS Core 版本','Activation scope':'生效范围','Applied in this session':'已在当前会话生效','Activation outcome is unconfirmed':'尚未确认生效结果',
+        'Staged version':'已暂存版本','Component version':'组件版本','Staged components':'已暂存组件','Applied components':'已生效组件','Retained components':'继续使用原版本的组件','None':'无',
+        'The update is staged locally. The current session continues; it has not been installed into this session.':'更新已在本地暂存，当前会话继续运行，尚未在此会话安装生效。',
+        'The active update has not finished saving to disk. Its next-start persistence is unconfirmed.':'当前生效的更新尚未完成落盘，尚不能确认下次启动会保留此更新。',
+        'Core runtime':'Core 运行时','Compiled Core':'已编译 Core','Traffic connection owner':'流量连接所有者','Native connection bridge':'Native 连接桥接','Native module observer':'Native 模块观察器','Native client source':'Native 客户端来源',
+        'Renderer runtime':'Renderer 运行时','Renderer helpers':'Renderer 辅助接口','UI SDK':'界面 SDK','Renderer SDK facade':'Renderer SDK 接口','Page navigation':'页面导航','Localization':'本地化','Codex semantic SDK':'Codex 语义 SDK','Renderer Core services':'Renderer Core 服务','Host runtime':'Host 运行时','Core UI provider':'Core 界面适配','Core desktop provider':'Core 桌面适配',
         'Version information is unavailable.':'暂时无法读取版本信息。','Codlet updates have not been checked yet.':'尚未检查 Codlet 更新。','A Codlet update is available.':'有可用的 Codlet 更新。','An official client update is available.':'有可用的官方客户端更新。','This Codlet version is not matched to the latest client version.':'此 Codlet 版本尚未匹配最新客户端版本。',
         'Codlet version':'Codlet 版本','Update channel':'更新通道','Running client':'运行中的客户端','Installed client':'已安装客户端','Latest client':'最新客户端','Client checked':'客户端上次检查','Codlet checked':'Codlet 上次检查','Next automatic check':'下次自动检查','Not available':'暂无信息','Not scheduled':'未安排','Release details':'发布详情',
         'Settings changed in another window. Review the current values before saving again.':'设置已在另一个窗口改变，请查看当前值后再保存。',

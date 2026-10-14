@@ -1,10 +1,21 @@
 const groups = [
-  ['interface','Interface and client',['ui.dom','ui.mainWorld','cdp.raw']],
+  ['unadapted','Direct system or Native access',['host.process.spawn','ui.nativeDom','ui.mainWorld','cdp.raw','host.raw','host.process']],
+  ['interface','Interface and client',['ui.dom']],
   ['data','Data and files',['core.storage','core.credentials','core.credentials.use','host.fs','host.fs.write','host.fs.watch','core.files.dialog']],
   ['network','Network and traffic',['host.network','core.network','traffic.intercept','traffic.sensitiveHeaders','traffic.redirect']],
-  ['system','System and background tasks',['host.process','host.process.spawn','host.system','core.tasks','core.notifications','core.clipboard.read','core.clipboard.write','core.shortcuts']],
+  ['system','System and background tasks',['host.system','core.tasks','core.notifications','core.clipboard.read','core.clipboard.write','core.shortcuts']],
   ['management','Plugin coordination and management',['core.events','core.diagnostics','runtime.manage']],
 ];
+export const UNADAPTED_COPY='This permission lets the plugin directly use system or client capabilities outside Codlet’s unified adaptation. The plugin author maintains platform and client-version compatibility for these features.';
+export const EXCEPTIONAL_PERMISSIONS=Object.freeze({
+  'host.process.spawn':{enforcement:'broker',note:'Core checks the selected executable. A selected program or shell runs with your OS account.'},
+  'ui.nativeDom':{enforcement:'declaration',note:'Author declaration and source review. Renderer worlds share Native DOM; this is not DOM isolation.'},
+  'ui.mainWorld':{enforcement:'admission',note:'Core checks main-world admission. Plugin code remains trusted in the Native main world.'},
+  'cdp.raw':{enforcement:'broker',note:'Core checks raw CDP requests and subscriptions against this plugin’s grants.'},
+  'host.raw':{enforcement:'admission',note:'Full Node environment. Plugin code can bypass SDK brokers; this is not a sandbox.'},
+  'host.process':{enforcement:'admission',legacy:true,note:'Legacy full Node Host grant. Preserved for old packages; explicit node mode requires host.raw.'},
+});
+export const permissionBoundary=permission=>EXCEPTIONAL_PERMISSIONS[permission]??null;
 export function permissionGroups(permissions=[]){
   return groups.map(([id,label,all])=>({id,label,permissions:all.filter(p=>permissions.includes(p))})).filter(g=>g.permissions.length);
 }

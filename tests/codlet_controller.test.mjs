@@ -3,7 +3,7 @@ import test from 'node:test';
 import {Manager} from '../frontend/src/codlet/controller.js';
 import {createPreviewRuntime} from '../scripts/preview-runtime.mjs';
 import {deferred} from './support/ui-fixture.mjs';
-async function setup(t){const demo=createPreviewRuntime(),calls=[],overrides=new Map(),context={pluginId:'codlet-gui',i18n:{locale:'en'},rpc:{async request(cap,method,args){calls.push({method,args});return overrides.has(method)?overrides.get(method)(args):demo.request(cap,method,args);}}};const m=new Manager(context);t.after(()=>m.dispose());await m.open();await Promise.resolve();return {m,calls,overrides,demo,context};}
+async function setup(t){const demo=createPreviewRuntime(),calls=[],overrides=new Map(),context={pluginId:'codlet-gui',i18n:{locale:'en'},rpc:{async request(cap,method,args){calls.push({method,args});return overrides.has(method)?overrides.get(method)(args):demo.request(cap,method,args);}}};context.codex={api:1,navigation:{newTaskDraft:params=>context.rpc.request({name:'codex.ui.navigation.page',api:1,scope:'target'},'newTaskDraft',params)}};const m=new Manager(context);t.after(()=>m.dispose());await m.open();await Promise.resolve();return {m,calls,overrides,demo,context};}
 const count=(f,method)=>f.calls.filter(c=>c.method===method).length;
 
 test('verified installer channels join checks and update-all while same-name locals stay excluded',async t=>{
@@ -29,7 +29,7 @@ test('seed review requires fresh consent before replacing old scopes with client
   await f.m.reviewPluginUpdate(seed);assert.equal(f.m.state.importOperation,'adopt');assert.equal(f.m.state.preview,p);assert.equal(f.m.state.enableAfter,false);
   p.changes.restartRequired=true;assert.equal(f.m.importReady(),false,'Entry-shape changes must not submit an unsafe hot update');p.changes.restartRequired=false;
   let submitted;f.m.mutate=(id,action,request)=>{submitted={id,action,request};};
-  assert.equal(f.m.importReady(),false);f.m.consent(true);f.m.submitImport();f.m.confirmImport();assert.equal(submitted.action,'update');assert.equal(submitted.request.local_import.managed,'adopt');assert.equal(submitted.request.local_import.enable,false);assert.deepEqual(submitted.request.local_import.grants,grants);assert.deepEqual(submitted.request.local_import.brokerPolicy,{clientPermissions:true});
+  assert.equal(f.m.importReady(),false);f.m.consent(true);f.m.submitImport();f.m.confirmImport();assert.equal(submitted.action,'update');assert.equal(submitted.request.local_import.managed,'adopt');assert.equal(submitted.request.local_import.enable,false);assert.deepEqual(submitted.request.local_import.grants,grants);assert.deepEqual(submitted.request.local_import.brokerPolicy,{clientPermissions:true,executables:policy.executables,cwdRoots:policy.cwdRoots,envKeys:policy.envKeys});
 });
 test('one-click updates use one Core batch without manual release or download steps and survive closing the page',async t=>{
   const f=await setup(t),p=f.m.state.plugins.find(p=>p.id==='managed.notes');let batch={id:1,running:true,items:[{pluginId:p.id,versionKey:p.managedVersionKey??'old',phase:'downloading'}]};
@@ -74,6 +74,17 @@ test('version reads use local client facts without invoking the official updater
   assert.equal(count(f,'getClientUpdateStatus'),0);assert.equal(count(f,'checkClientUpdates'),0);
   f.demo.state.versionFailure=true;await f.m.pollVersions();
   assert.equal(f.m.state.runtimeVersion,'0.1.0');assert.match(f.m.state.versionError,/unavailable/);
+});
+test('deferred Core update receipt is authoritative and is not repeated by install, download, reopen or combined flow',async t=>{
+  const f=await setup(t),before=await f.demo.request(null,'versionStatus',null);
+  const update={...before.runtimeUpdate,currentVersion:'1.0.0-rc.1',configured:true,phase:'downloaded',installAvailable:true,candidate:{id:'one',version:'1.0.0-rc.2'}};
+  const receipt={...update,phase:'deferred',activation:{mode:'nextStart',version:'1.0.0-rc.2',components:['core-runtime'],retainedComponents:[],nextStartReason:'Compiled Core changed',persistencePending:false}};
+  f.m.set({update});f.overrides.set('installRuntimeUpdate',()=>receipt);
+  await f.m.loadUpdate('installRuntimeUpdate');assert.equal(f.m.state.update.phase,'deferred');assert.equal(f.m.state.updateUncertain,false);assert.equal(f.m.state.updateError,'');assert.equal(count(f,'installRuntimeUpdate'),1);
+  await f.m.loadUpdate('installRuntimeUpdate');await f.m.loadUpdate('downloadRuntimeUpdate');f.m.requestInstall();f.m.requestCombinedInstall();
+  assert.equal(f.m.state.confirmation,null);assert.equal(f.m.state.combinedConfirmation,null);assert.equal(count(f,'installRuntimeUpdate'),1);assert.equal(count(f,'downloadRuntimeUpdate'),0);assert.equal(f.m.canCombineUpdates(),false);
+  f.overrides.set('versionStatus',()=>({...before,runtimeUpdate:receipt}));f.m.close();await f.m.open();await f.m.pollVersions();
+  assert.equal(f.m.state.update.phase,'deferred');assert.equal(count(f,'installRuntimeUpdate'),1);assert.equal(count(f,'installCombinedUpdate'),0);assert.equal(count(f,'checkClientUpdates'),0);assert.equal(f.m.state.update.currentVersion,'1.0.0-rc.1');
 });
 test('runtime folders use only fixed locations, suppress duplicate clicks and do not retry ambiguous opens',async t=>{
   const f=await setup(t),pending=deferred();

@@ -6,9 +6,10 @@ import {createPreviewRuntime} from '../scripts/preview-runtime.mjs';
 import {uiFixture,tick,deferred} from './support/ui-fixture.mjs';
 
 async function setup(t){
-  const demo=createPreviewRuntime(),calls=[],overrides=new Map();
-  const context={pluginId:'codlet-gui',i18n:{locale:'zh'},rpc:{async request(cap,method,args){calls.push({method,args});return overrides.has(method)?overrides.get(method)(args):demo.request(cap,method,args);}}};
-  const m=new Manager(context);t.after(()=>m.dispose());await m.open();return {m,demo,calls,overrides};
+  const demo=createPreviewRuntime(),calls=[],semanticDrafts=[],overrides=new Map();
+  const context={pluginId:'codlet-gui',i18n:{locale:'zh'},rpc:{async request(cap,method,args){calls.push({capability:cap,method,args});return overrides.has(method)?overrides.get(method)(args):demo.request(cap,method,args);}}};
+  context.codex={api:1,navigation:{newTaskDraft(params){semanticDrafts.push(params);return context.rpc.request({name:'codex.ui.navigation.page',api:1,scope:'target'},'newTaskDraft',params);}}};
+  const m=new Manager(context);t.after(()=>m.dispose());await m.open();return {m,demo,calls,semanticDrafts,overrides};
 }
 const count=(f,method)=>f.calls.filter(c=>c.method===method).length;
 async function preview(f,github=false){
@@ -29,6 +30,7 @@ test('Codex review receives exact GitHub selection, requires evidence and never 
   const f=await setup(t);await preview(f,true);const current=f.m.state.preview,pending=deferred();
   f.overrides.set('newTaskDraft',()=>pending.promise);const opening=f.m.reviewImport();await f.m.reviewImport();await f.m.confirmImport();
   assert.equal(count(f,'newTaskDraft'),1);assert.equal(count(f,'prepare'),0);
+  assert.equal(f.semanticDrafts.length,1);assert.equal(f.calls.find(c=>c.method==='newTaskDraft').capability.name,'codex.ui.navigation.page');
   const prompt=f.calls.find(c=>c.method==='newTaskDraft').args.prompt;
   for(const value of [current.source.repositoryUrl,current.source.tag,current.source.assetName,current.source.sha256,current.path])assert.ok(prompt.includes(value));
   assert.match(prompt,/潜在危险或恶意行为/);assert.match(prompt,/证据和触发条件/);assert.match(prompt,/先不要安装或运行插件/);
@@ -38,6 +40,7 @@ test('local source review uses the preview directory and leaves its warning visi
   const f=await setup(t);await preview(f);f.overrides.set('newTaskDraft',()=>{throw Error('lost response');});
   await f.m.reviewImport();assert.match(f.calls.find(c=>c.method==='newTaskDraft').args.prompt,/C:\/Author\/plugin/);
   assert.ok(f.m.state.importWarning);assert.match(f.m.state.importReviewError,/could not be opened/);assert.equal(count(f,'newTaskDraft'),1);assert.equal(count(f,'submit'),0);
+  assert.equal(f.semanticDrafts.length,1);assert.equal(count(f,'turns.start'),0);
 });
 test('GUI self and direct or transitive provider removal use a native Codex draft, with no lifecycle mutation',async t=>{
   const f=await setup(t),self=f.m.state.plugins.find(p=>p.id==='codlet-gui'),provider=f.m.state.plugins.find(p=>p.id==='codex.ui.adapter');
@@ -47,6 +50,7 @@ test('GUI self and direct or transitive provider removal use a native Codex draf
   assert.equal(f.m.removalRequiresCli({id:'unrelated',disableDependents:['other']}),false);assert.equal(count(f,'sourceRemovalPreview'),0);
   await f.m.details(provider);const pending=deferred();f.overrides.set('newTaskDraft',()=>pending.promise);
   const opening=f.m.uninstallWithCodex();await f.m.uninstallWithCodex();assert.equal(count(f,'newTaskDraft'),1);
+  assert.equal(f.semanticDrafts.length,1);assert.equal(f.calls.find(c=>c.method==='newTaskDraft').capability.scope,'target');
   const prompt=f.calls.find(c=>c.method==='newTaskDraft').args.prompt;assert.match(prompt,/codex\.ui\.adapter/);assert.match(prompt,/Codex 界面适配器/);assert.match(prompt,/CLI/);assert.match(prompt,/不能单独卸载/);
   pending.resolve({opened:true,submitted:false});await opening;assert.equal(count(f,'prepare'),0);assert.equal(count(f,'submit'),0);
 });

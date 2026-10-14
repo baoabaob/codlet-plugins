@@ -9,7 +9,6 @@ import {buildDesktopHost} from '../frontend/build-host.mjs';
 export const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
 export const blobHash=bytes=>createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex');
 const canonical=value=>Array.isArray(value)?`[${value.map(canonical).join(',')}]`:value&&typeof value==='object'?`{${Object.keys(value).sort().map(key=>`${JSON.stringify(key)}:${canonical(value[key])}`).join(',')}}`:JSON.stringify(value);
-const releasePlatforms=['windows-x86_64','windows-aarch64','macos-aarch64'];
 export function safePath(path){
   if(typeof path!=='string'||!path||isAbsolute(path)||path.includes('\\')||path.includes(':')||path.includes('\0')||path.split('/').some(p=>!p||p==='.'||p==='..'||p.toLowerCase()==='.git'))throw Error(`Unsafe distribution path: ${path}`);
   return path;
@@ -27,21 +26,19 @@ export function validateConfig(config){
   }
   for(const p of config.plugins)for(const id of p.dependencies)if(!ids.has(id))throw Error(`Unknown dependency ${id}`);
   if(!Array.isArray(config.installerPlugins)||new Set(config.installerPlugins).size!==config.installerPlugins.length||config.installerPlugins.some(id=>!ids.has(id)))throw Error('Invalid installer plugin selection');
+  if(config.legacyAdapters!==undefined&&(!Array.isArray(config.legacyAdapters)||config.legacyAdapters.some(id=>!ids.has(id)||config.installerPlugins.includes(id))))throw Error('Invalid retired adapter configuration');
   return config;
 }
 
 export async function prepareDistribution(root,{allowDirty=false,outputDirectory}={}){
   root=await realpath(root);
   const config=validateConfig(JSON.parse(await readFile(resolve(root,'plugins.json'),'utf8')));
-  const compatibility=JSON.parse(await readFile(resolve(root,'compatibility/client-profiles.json'),'utf8'));
-  if(compatibility.schema!==1||!Array.isArray(compatibility.builds))throw Error('Invalid reviewed client profile source');
-  const reviewedClientProfiles=[...new Map(compatibility.builds.map(({appVersion,buildNumber,appServerVersion})=>[`${appVersion}/${buildNumber}`,{appVersion,buildNumber,appServerVersion}])).values()];
   const git=(...args)=>execFileSync('git',args,{cwd:root,encoding:'utf8',windowsHide:true}).trim();
   const sourceCommit=git('rev-parse','HEAD'),dirty=!!git('status','--porcelain','--untracked-files=normal');
   if(dirty&&!allowDirty)throw Error('Commit the tested development files before preparing a synchronized distribution (use --allow-dirty for local inspection only)');
   const out=resolve(root,outputDirectory??'dist'),catalog=JSON.parse(await readFile(resolve(out,'catalog.json'),'utf8'));
   const plan={schema:1,kind:'codlet-distribution-plan',sourceRepository:config.sourceRepository,sourceCommit,dirty,plugins:[]};
-  for(const plugin of config.plugins){
+  for(const plugin of config.plugins.filter(plugin=>!(config.legacyAdapters??[]).includes(plugin.id))){
     const pkg=catalog.packages.find(p=>p.id===plugin.id);
     if(!pkg||pkg.repository!==`https://github.com/${plugin.repository}`||pkg.tag!==`v${pkg.version}`||!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(pkg.version))throw Error(`Invalid package catalog for ${plugin.id}`);
     const archive=await readFile(resolve(out,safePath(pkg.asset)));
@@ -49,9 +46,7 @@ export async function prepareDistribution(root,{allowDirty=false,outputDirectory
     const packageDirectory=resolve(out,safePath(pkg.directory));
     const manifest=JSON.parse(await readFile(resolve(packageDirectory,'codlet.json'),'utf8'));
     const metadata=JSON.parse(await readFile(resolve(packageDirectory,'codlet-package.json'),'utf8'));
-    if(metadata.schema!==1||metadata.runtimeApi!==1||canonical(metadata.platforms)!==canonical(releasePlatforms)||
-      canonical(metadata.adapters?.codex?.clientProfiles)!==canonical(reviewedClientProfiles)||
-      'testedBuilds'in(metadata.adapters?.codex??{})||'limitations'in(metadata.adapters?.codex??{}))throw Error(`Stale or invalid release metadata for ${plugin.id}; rebuild and package first`);
+    if(metadata.schema!==1||metadata.runtimeApi!==1||metadata.sdk?.api!==1||canonical(metadata.sdk.capabilities)!==canonical(manifest.requires??[]))throw Error(`Stale or invalid SDK release metadata for ${plugin.id}; rebuild and package first`);
     const releaseAssetPath=safePath(`release-assets/${plugin.id}/codlet-release.json`);
     const releaseAssetBytes=await readFile(resolve(out,releaseAssetPath));
     if(releaseAssetBytes.length>16*1024)throw Error(`Release declaration is too large for ${plugin.id}`);

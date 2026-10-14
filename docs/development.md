@@ -1,6 +1,6 @@
 # Contributing and testing
 
-Develop in this repository. Generated distribution repositories accept reproducible source snapshots, not independent edits. Keep plugin semantics here and generic runtime/OS behavior in [Core](https://github.com/baoabaob/codlet/blob/main/docs/development.md).
+Develop plugin sources in this repository. Generated distribution repositories accept reproducible source snapshots, not independent edits. Core v1 owns the Codex semantic implementations and supplies `context.codex`; the retained UI/Desktop Adapter sources support reviewed legacy consumers and regression comparisons. New SDK consumers do not install those adapters or inherit their raw permissions. Keep generic runtime/OS behavior in [Core](https://github.com/baoabaob/codlet/blob/main/docs/development.md).
 
 ## Clean checkout
 
@@ -16,7 +16,7 @@ node --test tests/*.test.mjs
 
 Build the matching Core SDK according to its development guide before preparing the snapshot. `prepare-core-sdk.mjs` copies Core's UI, page, i18n and Host traffic bundles to ignored `.core-sdk/` and records the Core commit. It neither registers plugins nor needs a personal installation. Build/package alone do not require `.core-sdk/`; tests that use it intentionally require this explicit preparation step. The distribution test packages current sources into a temporary output directory and requires Git metadata; it does not read or replace `dist/`.
 
-`frontend/build.mjs` builds every entry in `plugins.json`. The three generated renderer files under `bundled/` are intentional checked-in distribution inputs; rebuild them after source changes. The build includes required third-party license notices and rejects missing notices. Do not strip notices or manually edit bundles.
+`frontend/build.mjs` builds every entry in `plugins.json`, including retained legacy Adapter entries. Generated renderer files under `bundled/` are intentional checked-in build inputs; rebuild them after source changes. `legacyAdapters` excludes the two adapters from current v1 package/distribution output, so normal release output contains the GUI. The build includes required third-party license notices and rejects missing notices. Do not strip notices or manually edit bundles.
 
 The production plugins use Core's supplied UI SDK. This repository does not rebuild Apps SDK UI or its Tailwind/PostCSS pipeline. Its npm development dependencies are esbuild, jsdom, React/ReactDOM for the native-shell fixture, and ws for the transport fixture.
 
@@ -37,10 +37,30 @@ The production plugins use Core's supplied UI SDK. This repository does not rebu
 | `marketplace-model` | Repository provenance, sorting, declarations and bounded portability audit; not live catalog acceptance |
 | `distribution.test.mjs`, `distribution.ps1` | Build closure, package hashes, traversal rejection and remote snapshot ownership |
 | `thread_configuration_cli` | Opt-in real AppServer HTTP/WebSocket fixture; skipped unless `CODLET_TEST_OFFICIAL_CLI` points to an executable |
+| `codlet_v1_state`, `functional_fixture` | Current-source GUI state restore, permission enforcement labels, deferred receipt guards, settled functional report state and synthetic model ownership guards |
 
 The native CLI fixture uses its own temporary home, synthetic prompt and loopback server. It does not use a user auth file or a real model endpoint. A passing jsdom or CLI test is not a native Desktop visual/accessibility or OS installer acceptance result.
 
 On Windows, run the native turn fixture only on a disposable VM/host and set `CODLET_TEST_DISPOSABLE_WINDOWS_HOST=1` there. A temporary profile does not isolate native sandbox accounts/firewall changes. SDK/Host tests should set `CODLET_CORE_ROOT` to the matching Core checkout so their owned Node fixtures are included.
+
+The [complete functional consumer](../tests/fixtures/runtime-compatibility/consumer/README.md)
+uses the current semantic SDK, plus explicit `node`/`host.raw` for its owned raw
+fixture servers. Its selected Node child executable still needs an exact `executables`
+grant; `clientPermissions: true` does not select it. Mounting and a full run have
+different effects: no ordinary installation auto-submits a model turn, but Host
+activation writes its own `host-report.json`. Disable autorun for read-only Native
+mounts and do not invoke the run/draft/model hooks. Full run creates only the documented
+synthetic resources; model writes need the owned loopback fixture guard.
+
+Use explicit JSON `saveState`/`restoreState` hooks for consumers expected to survive
+online Core JS replacement. Snapshot hooks must not start new writes. Preserve only
+settled state, not closures, DOM, live servers/streams, pending mutations or consent.
+Use `context.restoringState` to suppress automatic effects during activation/restore.
+Legacy no-hook reload remains supported; whole Core updates can defer when active
+consumer state transfer is not declared. Root's `host_capability`, `host_lifecycle` and
+`host_renderer_vm_tests` exercise denial, drain, resume and rollback through real
+managed Node/JSONL and bounded VM worlds; they do not establish Native visual or
+cross-platform acceptance.
 
 For the separately verified Desktop JS and backend provider boundaries, use the opt-in [request-chain drivers and coverage limits](spec/request-chain.md). These require the reviewed real client build and are not normal CI tests.
 

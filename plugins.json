@@ -1,7 +1,8 @@
 {
   "schema": 1,
   "sourceRepository": "baoabaob/codlet-plugins",
-  "installerPlugins": ["codex.ui.adapter", "codex.desktop.adapter", "codlet-gui"],
+  "installerPlugins": ["codlet-gui"],
+  "legacyAdapters": ["codex.ui.adapter", "codex.desktop.adapter"],
   "plugins": [
     {
       "id": "codex.ui.adapter",
@@ -28,7 +29,7 @@
       "repository": "baoabaob/codlet-gui",
       "description": "Official Codlet plugin for graphical plugin and runtime management",
       "topics": ["codlet-plugin", "codlet-official", "ui", "plugin-manager", "tool"],
-      "dependencies": ["codex.ui.adapter"]
+      "dependencies": []
     }
   ]
 }

@@ -1,6 +1,23 @@
 {
   "schema": 1,
   "runtimeApi": 1,
-  "platforms": ["windows-x86_64"],
+  "sdk": {
+    "api": 1,
+    "capabilities": [
+      {"name":"compatibility.acceptance.host","api":1,"scope":"runtime"},
+      {"name":"codlet.core.services","api":1,"scope":"runtime"},
+      {"name":"codlet.runtime.manage","api":1,"scope":"runtime"},
+      {"name":"codex.desktop.compatibility","api":1,"scope":"target"},
+      {"name":"codex.backend.read","api":1,"scope":"target"},
+      {"name":"codex.backend.write","api":1,"scope":"target"},
+      {"name":"codex.backend.events","api":1,"scope":"target"},
+      {"name":"codex.ui.preSubmit","api":1,"scope":"target"},
+      {"name":"codex.ui.navigation.page","api":1,"scope":"target"},
+      {"name":"codex.ui.composer.action","api":1,"scope":"target"}
+    ]
+  },
+  "verification": [
+    {"kind":"automated","status":"passed","evidence":"tests/functional_fixture.test.mjs; fixture state, activation order, SDK admission and explicit restore checks. Native results are recorded separately."}
+  ],
   "author": "Codlet"
 }

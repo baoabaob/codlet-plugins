@@ -15,9 +15,12 @@ test('Desktop source entry initializes and shuts down through the standard Core 
   t.after(() => fs.rm(directory, { recursive: true, force: true }));
   const entry = fileURLToPath(new URL('../host/desktop-launch.cjs', import.meta.url));
   const snapshot = path.join(directory, 'snapshot.cjs'), bootstrap = path.join(directory, 'bootstrap.cjs');
-  const [services, traffic, host] = await Promise.all(['core-services.cjs', 'host-traffic-bundle.cjs', 'host.cjs'].map(name => fs.readFile(path.join(core, 'runtime', name), 'utf8')));
+  // Exercise the generated production composition, including its SDK source
+  // parser, Host membrane and context.codex factory. A partial reassembly can
+  // omit new required factories while the actual Core bootstrap remains valid.
+  const host = await fs.readFile(path.join(core, 'runtime/core-modules/host-bootstrap.cjs'), 'utf8');
   await fs.copyFile(entry, snapshot);
-  await fs.writeFile(bootstrap, `process.argv.splice(1, 1);\nconst createEmbeddedServicesRuntime = (() => { const module = { exports: {} };\n${services}\nreturn module.exports.createCoreServicesRuntime; })();\n${traffic}\n${host}`);
+  await fs.writeFile(bootstrap, `process.argv.splice(1, 1);\n${host}`);
   const child = spawn(process.execPath, ['--no-addons', '--no-experimental-strip-types', bootstrap, entry, snapshot], { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
   t.after(() => child.kill());
   const closed = new Promise(resolve => child.once('close', (code, signal) => resolve({ code, signal })));

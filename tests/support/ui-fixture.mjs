@@ -35,9 +35,11 @@ export function uiFixture({locale='en',request=async()=>({plugins:[]})}={}){
   let factory;
   const page=window.eval(pageSource);
   context.i18n=window.eval(i18nSource)(context);context.ui={api:2,create:()=>{factory??=window.eval(uiSource);return factory(context);},page:options=>page(context,options,()=>context.ui.create())};
-  const load=path=>{window.module={exports:{}};window.exports=window.module.exports;window.eval(readFileSync(new URL('../../'+path,import.meta.url),'utf8'));return window.module.exports;};
+  context.codex={api:1,navigation:{page:options=>context.ui.page(options),newTaskDraft:params=>context.rpc.request({name:'codex.ui.navigation.page',api:1,scope:'target'},'newTaskDraft',params)}};
+  const loadSource=source=>{window.module={exports:{}};window.exports=window.module.exports;window.eval(source);return window.module.exports;};
+  const load=path=>loadSource(readFileSync(new URL('../../'+path,import.meta.url),'utf8'));
   const control=label=>[...document.querySelectorAll('[aria-label]')].find(el=>el.getAttribute('aria-label')===label) ?? document.getElementById([...document.querySelectorAll('label[for]')].find(el=>el.textContent===label)?.htmlFor) ?? [...document.querySelectorAll('button:not([aria-label]),[role=menuitem]:not([aria-label])')].find(el=>el.textContent.trim()===label);
-  return {dom,window,document,errors,context,calls,overrides,load,control,observers,mediaListeners,cleanups,
+  return {dom,window,document,errors,context,calls,overrides,load,loadSource,control,observers,mediaListeners,cleanups,
     async open(){entry.click();await tick();},async leave(){host?.remove();toolbar?.remove();entry?.removeAttribute('aria-current');await tick();},
     async click(label){const element=control(label);if(!element)throw Error('Missing control '+label);element.focus();element.click();await tick();},
     async input(label,value){const element=control(label);const prototype=element.tagName==='TEXTAREA'?window.HTMLTextAreaElement.prototype:window.HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(prototype,'value').set.call(element,value);element.dispatchEvent(new window.Event('input',{bubbles:true}));await tick();},

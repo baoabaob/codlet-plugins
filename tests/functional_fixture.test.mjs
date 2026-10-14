@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import vm from 'node:vm';
+import {randomUUID} from 'node:crypto';
 import {createRequire} from 'node:module';
 const require=createRequire(import.meta.url);
 const host=require('./fixtures/runtime-compatibility/consumer/host.cjs');
@@ -93,4 +94,76 @@ test('complete reports can only be saved by the owning plugin generation and rem
     assert.deepEqual(JSON.parse(fs.readFileSync(path.join(root,'functional-report.json'),'utf8')),report);
     assert.equal(methods.get('inspect')(null,caller).fixture.autorun,false);
   }finally{await host.deactivate();fs.rmSync(root,{recursive:true});}
+});
+
+test('functional Host state carries observations and never reconstructs live model or server work',async()=>{
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),'codlet-functional-state-'));
+  try{
+    const methods=new Map(),context={root,plugin:{id:'compatibility.acceptance',version:'1.0.0-rc.1',generation:1},services:{},rpc:{provide:(_cap,method,handler)=>methods.set(method,handler)}};
+    await host.activate(context);
+    const snapshot=host.saveState();assert.equal(snapshot.schema,1);assert.equal(snapshot.value.report.phase,'idle');assert.doesNotMatch(JSON.stringify(snapshot),/detached|nativeInterceptor|baseUrl|"server":/);
+    await host.deactivate();methods.clear();await host.activate({...context,plugin:{...context.plugin,generation:2}});
+    host.restoreState(snapshot);
+    const observed=methods.get('inspect')(null,{caller:{pluginId:'compatibility.acceptance'}});
+    assert.equal(observed.report.generation,2);assert.equal(observed.report.phase,'idle');assert.equal(observed.native.request,0);
+    assert.throws(()=>host.restoreState({schema:1,value:{report:{schema:1,phase:'running'}}}),/not transferable/);
+  }finally{await host.deactivate();fs.rmSync(root,{recursive:true});}
+});
+
+test('settled consumer explicitly releases only idle owned fixture traffic and keeps its report',async()=>{
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),'codlet-functional-release-'));
+  const pluginRoot=path.join(root,'fixture-plugins','compatibility.acceptance');fs.mkdirSync(pluginRoot,{recursive:true});
+  fs.writeFileSync(path.join(root,'owner.txt'),'codlet-desktop-acceptance\n');
+  fs.writeFileSync(path.join(pluginRoot,'fixture.json'),JSON.stringify({baseUrl:'http://127.0.0.1:12345/v1',autorun:true}));
+  const methods=new Map(),caller={caller:{pluginId:'compatibility.acceptance'}};let closed=0,exchanges=1;
+  try{
+    await host.activate({root:pluginRoot,plugin:{id:'compatibility.acceptance',version:'1.0.0-rc.1',generation:2},services:{},rpc:{provide:(_cap,method,handler)=>methods.set(method,handler)},
+      traffic:{registerInterceptor:async()=>({inspect:()=>({exchanges}),close:async()=>{closed++;}})}});
+    await methods.get('native.begin')(null,caller);
+    await assert.rejects(()=>methods.get('native.end')(null,{caller:{pluginId:'foreign.plugin'}}),/Only the test plugin/);
+    await assert.rejects(()=>methods.get('native.end')(null,caller),/must settle/);
+    const snapshot=host.saveState();snapshot.value.report.phase='complete';snapshot.value.report.checks=[{id:'synthetic',status:'passed'}];host.restoreState(snapshot);
+    await assert.rejects(()=>methods.get('native.end')(null,caller),/Accepted fixture traffic must settle/);assert.equal(closed,0);
+    exchanges=0;assert.deepEqual(await methods.get('native.end')(null,caller),{released:true});assert.equal(closed,1);
+    assert.deepEqual(await methods.get('native.end')(null,caller),{released:true});assert.equal(closed,1);
+    assert.equal(host.saveState().value.report.checks[0].id,'synthetic');
+  }finally{await host.deactivate();fs.rmSync(root,{recursive:true});}
+  assert.equal(closed,1,'retirement does not replay an explicitly completed close');
+});
+
+test('full readonly consumer activates its own page before each draft and preserves Core active-page admission',async()=>{
+  let pageActive=false,action=null,activations=0,drafts=0,saved;
+  const order=[],source=fs.readFileSync(new URL('./fixtures/runtime-compatibility/consumer/renderer.js',import.meta.url),'utf8');
+  const document={body:{append(){}},createElement(){return{dataset:{},remove(){}};},querySelector(selector){
+    if(selector.startsWith('[data-codlet-navigation-entry='))return{click(){pageActive=true;activations++;order.push('page');}};
+    if(selector==='[data-functional-test-panel]'||selector==='[data-codlet-page-toolbar]')return pageActive?{}:null;
+    if(selector.includes('data-codlet-composer-action-instance'))return action?{click:action}:null;
+    return null;
+  }};
+  const fixture={autorun:false},report={phase:'complete',checks:[]};
+  const context={pluginId:'compatibility.acceptance',version:'1.0.0-rc.1',generation:1,i18n:{locale:'en'},onDeactivate(){},
+    rpc:{async request(_cap,method,args){
+      if(method==='inspect')return{fixture,report};
+      if(method==='echo')return{value:args.value,hostGeneration:1};
+      if(method==='events')return{topic:'fixture',cursor:0};
+      if(method==='save-report'){saved=args.report;return{saved:true};}
+      if(method==='native.begin')assert.fail('readonly run dispatched model work');
+      return{};
+    }},
+    services:{storage:{snapshot:async()=>({schema:1})},events:{subscribe:async()=>({subscription:'fixture'}),read:async()=>({events:[{value:{marker:'host-to-renderer'}}]}),close:async()=>{}}},
+    codex:{api:1,compatibility:{waitReady:async()=>({available:true})},backend:{read:async()=>({threads:[],models:[],directories:[],providers:[]})},
+      navigation:{page:async()=>({path:'/fixture',dispose(){}}),async newTaskDraft(){
+        if(!pageActive)throw Object.assign(Error('A new task draft requires this caller’s active page'),{code:'invalid_owner'});
+        order.push('draft');drafts++;pageActive=false;return{opened:true,submitted:false};
+      }},composer:{async registerAction(_options,callback){action=callback;return{async unregister(){action=null;}};}}},
+  };
+  const sandbox=vm.createContext({module:{exports:{}},document,innerWidth:1000,innerHeight:800,crypto:{randomUUID},setTimeout,clearTimeout});
+  vm.runInContext(source,sandbox);const plugin=sandbox.module.exports;
+  try{
+    await plugin.activate(context);await vm.runInContext('globalThis[SYMBOL]',sandbox).run();
+    assert.equal(saved.phase,'complete');assert.equal(drafts,2);assert.equal(activations,2);
+    assert.deepEqual(order,['page','draft','page','draft']);
+    for(const id of ['composer.action-click-and-cleanup','native.page-toolbar-and-ui-controls','native.editable-draft'])assert.equal(saved.checks.find(item=>item.id===id).status,'passed');
+    assert.equal(saved.checks.find(item=>item.id==='desktop.model-operations').status,'manual');
+  }finally{plugin.deactivate();}
 });

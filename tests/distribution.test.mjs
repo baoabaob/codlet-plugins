@@ -8,7 +8,6 @@ import {tmpdir} from 'node:os';
 import {validateConfig,safePath,hash,blobHash,prepareDistribution} from '../scripts/distribution.mjs';
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const config=JSON.parse(await readFile(resolve(root,'plugins.json'),'utf8'));
-const clientProfiles=[...new Map(JSON.parse(await readFile(resolve(root,'compatibility/client-profiles.json'),'utf8')).builds.map(({appVersion,buildNumber,appServerVersion})=>[`${appVersion}/${buildNumber}`,{appVersion,buildNumber,appServerVersion}])).values()];
 test('distribution destinations and discovery metadata are unique and cannot point at the development repository',()=>{
   assert.equal(validateConfig(structuredClone(config)).plugins.length,3);
   for(const edit of [c=>c.plugins.push(c.plugins[0]),c=>c.plugins[0].repository=c.sourceRepository,c=>c.plugins[0].repository='someone-else/plugin',c=>c.plugins[0].topics=[],c=>c.plugins[0].dependencies=['missing'],c=>c.installerPlugins=['missing'],c=>c.installerPlugins.push(c.installerPlugins[0])]){
@@ -30,6 +29,11 @@ test('each source snapshot contains its own installable bundle and build closure
     assert.ok(basename(createdPath).startsWith('codlet-distribution-test-'));
     execFileSync(process.execPath,[resolve(root,'scripts/package.mjs'),'--output',outputDirectory],{cwd:root,encoding:'utf8',windowsHide:true});
     const catalog=JSON.parse(await readFile(resolve(outputDirectory,'catalog.json'),'utf8'));
+    assert.deepEqual(catalog.packages.map(pkg=>pkg.id),['codlet-gui']);
+    assert.deepEqual(catalog.installerPlugins,['codlet-gui']);
+    const originalArchive=await readFile(resolve(outputDirectory,catalog.packages[0].asset));
+    assert.throws(()=>execFileSync(process.execPath,[resolve(root,'scripts/package.mjs'),'--output',outputDirectory],{cwd:root,encoding:'utf8',windowsHide:true,stdio:'pipe'}),/existing versions are immutable/);
+    assert.deepEqual(await readFile(resolve(outputDirectory,catalog.packages[0].asset)),originalArchive);
     const identities=JSON.parse(await readFile(resolve(root,'compatibility/official-sources.json'),'utf8'));
     for(const pkg of catalog.packages){const identity=identities.sources.find(s=>s.pluginIds.includes(pkg.id));assert.deepEqual(pkg.updateSource,{kind:'github',repositoryUrl:`https://github.com/${identity.repository}`,repositoryId:identity.repositoryId,ownerId:identity.ownerId,assetNameTemplate:`${pkg.id}-{version}.zip`});}
     const plan=await prepareDistribution(root,{allowDirty:true,outputDirectory});
@@ -39,10 +43,9 @@ test('each source snapshot contains its own installable bundle and build closure
       const manifest=JSON.parse(await readFile(resolve(folder,'codlet.json'),'utf8'));
       assert.equal(manifest.id,plugin.id);assert.equal(manifest.version,plugin.version);assert.ok(paths.includes(manifest.renderer.entry));
       const metadata=JSON.parse(await readFile(resolve(folder,'codlet-package.json'),'utf8'));
-      assert.deepEqual(metadata.platforms,['windows-x86_64','windows-aarch64','macos-aarch64']);
-      assert.deepEqual(metadata.adapters.codex.clientProfiles,clientProfiles);
-      assert.equal(Object.hasOwn(metadata.adapters.codex,'testedBuilds'),false);
-      assert.equal(Object.hasOwn(metadata.adapters.codex,'limitations'),false);
+      assert.deepEqual(metadata.sdk,{api:1,capabilities:manifest.requires});
+      assert.equal(metadata.platforms,undefined);
+      assert.equal(metadata.adapters,undefined);
       assert.equal(paths.includes('codlet-release.json'),false);
       if(manifest.host){
         for(const required of [manifest.host.entry,'frontend/build-host.mjs','host/desktop-launch.cjs','host/electron-main.cjs','host/backend-spawn.cjs','host/vendor/plaintext-source-client.cjs'])assert.ok(paths.includes(required),required);

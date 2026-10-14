@@ -1,6 +1,6 @@
 # Documentation
 
-This repository owns Codex-specific behavior and official plugin UX. Generic plugin manifests, lifecycle, permissions, RPC, Host, UI SDK and Core management contracts belong to the [Core documentation](https://github.com/baoabaob/codlet/blob/main/docs/README.md). Do not create a second generic runtime specification here.
+This repository owns ordinary official plugin UX and the complete functional test consumer. Core v1 owns the imported Codex integration and its semantic SDK. Manifests, lifecycle, permissions, RPC, Host, UI/Codex SDK and management contracts belong to the [Core documentation](https://github.com/baoabaob/codlet/blob/main/docs/README.md). Retained Adapter documents below record API compatibility and provenance; they do not instruct v1 users to install separate providers.
 
 | Document | Responsibility |
 | --- | --- |
@@ -15,4 +15,4 @@ This repository owns Codex-specific behavior and official plugin UX. Generic plu
 | [Distribution](publishing.md) | Package provenance, independent repositories and release rules |
 | [Known issues](known-issues.md) | Current limitations and evidence boundaries |
 
-The manifests in `bundled/`, `plugins.json`, `compatibility/client-profiles.json`, source and regression tests define current behavior. Update the relevant specification when behavior changes. Historical design iterations and retired implementation details remain in Git history, not in parallel archived documents.
+The GUI manifest, `plugins.json`, source and regression tests define ordinary plugin behavior. `legacyAdapters` excludes the preserved Adapter sources from current packages. Maintained Core compatibility profiles now live under Core's `codex/compatibility`; historical Native evidence retains its original version and scope.

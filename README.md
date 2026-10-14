@@ -1,14 +1,12 @@
 # Codlet official plugins
 
-The source repository for first-party Codlet plugins. Codex-specific adapters and the management GUI live here; the [Codlet Core](https://github.com/baoabaob/codlet) repository owns the runtime, generic SDK, permissions and installers. Each plugin has an independent generated distribution repository and release channel.
+The source repository for ordinary first-party Codlet plugins and the complete functional test consumer. For the **1.0.0-rc.1** candidate, [Codlet Core](https://github.com/baoabaob/codlet) owns the imported UI/Desktop implementations and the `context.codex` SDK. The management GUI stays an ordinary independently packaged plugin. This candidate has not been publicly released.
 
 | Package ID | Distribution repository | Dependency |
 | --- | --- | --- |
-| `codex.ui.adapter` | [UI Adapter](https://github.com/baoabaob/codlet-ui-adapter) | Core renderer SDK |
-| `codex.desktop.adapter` | [Desktop Adapter](https://github.com/baoabaob/codlet-desktop-adapter) | Core renderer SDK |
-| `codlet-gui` | [GUI](https://github.com/baoabaob/codlet-gui) | `codex.ui.adapter` |
+| `codlet-gui` | [GUI](https://github.com/baoabaob/codlet-gui) | Core Codex SDK |
 
-These are ordinary plugins with explicit manifests and permissions. Core does not embed their code. The Core-provided runtime skill and CLI remain usable without the GUI.
+The legacy UI/Desktop Adapter sources, profiles and regression fixtures remain here for provenance and old releases. They are excluded from new package/distribution output; maintained implementation changes belong under Core's `codex/`. Existing Adapter registrations and data are preserved by Core without running duplicate providers. The Core-provided runtime skill and CLI remain usable without the GUI.
 
 Build and package with Node 24 and the locked npm dependencies:
 
@@ -16,7 +14,7 @@ Build and package with Node 24 and the locked npm dependencies:
 npm ci --prefix frontend
 node scripts/prepare-core-sdk.mjs ABSOLUTE_CORE_CHECKOUT
 node frontend/build.mjs
-node scripts/package.mjs
+node scripts/package.mjs --output .artifacts/gui-v1
 ```
 
 Run the plugin suite against the SDK built from the matching Core checkout:
@@ -25,8 +23,8 @@ Run the plugin suite against the SDK built from the matching Core checkout:
 node --test tests/*.test.mjs
 ```
 
-`dist/` contains one versioned ZIP per plugin and a catalog with file hashes. Packaging does not execute plugins or publish a release. Local installers consume this same catalog. The UI and Desktop adapters maintain their own reviewed client profiles in `compatibility/`.
-`prepare-core-sdk.mjs` also refreshes the tracked generic Desktop source client in `host/vendor/`; the generated distribution keeps this dependency so its build remains self-contained.
+The selected fresh output contains the GUI ZIP and a catalog with file hashes. Existing output is never overwritten. Packaging does not execute plugins or publish a release. Core installers offer only the optional GUI. The complete migrated [functional test plugin](tests/fixtures/runtime-compatibility/consumer/README.md) has a separate fixture packaging command and never becomes an installer default.
+`prepare-core-sdk.mjs` also refreshes the Desktop source client used by retained legacy regression fixtures. This is not a second maintained v1 Adapter release.
 
 ## Development and contracts
 
@@ -38,7 +36,7 @@ node --test tests/*.test.mjs
 
 Edit plugins here, not in generated repositories. Add packages through `plugins.json`; change installer presets only as a separate product decision. Keep generated renderer bundles reproducible from their checked-in sources. Do not replace bytes under an existing release version.
 
-The [marketplace](docs/spec/marketplace.md) is integrated into the production GUI. It discovers public GitHub plugin repositories, shows matched publisher release declarations, and sends the selected ZIP through Core's package and permission review before installation. Search follows public repository names, descriptions and tags; missing or incomplete declarations leave compatibility and download statistics unknown. Package platform declarations, reviewed client profiles and native device acceptance are separate claims.
+The [marketplace](docs/spec/marketplace.md) is integrated into the production GUI. It discovers public GitHub plugin repositories, shows matched publisher release declarations, and sends the selected ZIP through Core's package and permission review before installation. Search follows public repository names, descriptions and tags; missing or incomplete declarations leave compatibility and download statistics unknown. SDK compatibility, explicit author exclusions, runtime capability probes and actual Native verification are separate claims.
 
 ## License
 

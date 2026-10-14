@@ -1,5 +1,11 @@
 # Known issues and acceptance boundaries
 
+## Unified Core v1 candidate
+
+GUI and the complete functional test consumer use Core's `context.codex` SDK and explicit state hooks. Core embeds the former UI/Desktop implementation; this repository no longer packages those two legacy providers. Historical Adapter/client observations below are retained with their original identities and do not certify the 1.0.0-rc.1 candidate. Current isolated Native results must name the actual client, source commits, fixture and scope. The candidate is local; it has not been installed into the daily client or publicly released.
+
+SDK declarations are separate from runtime availability and automated/Native verification. Narrow raw permissions expose the author's relevant compatibility responsibility; shared Native DOM and full Node execution are not hostile-code sandboxes. Whole-Core state restoration uses bounded explicit JSON and rejects an active functional test instead of replaying its effects.
+
 ## Renderer environment retention
 
 The existing Host/Renderer architecture is retained. Repeated creation of isolated worlds in a long-lived Chromium page can retain those native environments after plugin deactivation. Releasing React roots, timers, listeners, callbacks and SDK references reduces avoidable retention but does not destroy those browser worlds. This is a known limitation, not a claim that every plugin reload is leak-free.

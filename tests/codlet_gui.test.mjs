@@ -25,12 +25,11 @@ test('Codlet loads only on its native page and tears down on route changes',asyn
   await f.leave();assert.equal(f.document.querySelector('[data-codlet-panel]'),null);assert.equal(f.document.querySelector('[data-codlet-official-styles]'),null);assert.equal(f.mediaListeners.size,0);
   await f.open();assert.ok(f.control('Search plugins'));
 });
-test('older API 2 runtimes retain a working create().page() fallback',async t=>{
+test('a missing Core semantic facade reports the required upgrade without partial GUI activation',async t=>{
   const demo=createPreviewRuntime(),f=uiFixture({request:demo.request}),plugin=f.load('bundled/codlet/dist/renderer.js');
-  delete f.context.ui.page;t.after(()=>{plugin.deactivate();f.dispose();});
-  await plugin.activate(f.context);await f.open();assert.ok(f.control('Search plugins'));
-  await f.leave();assert.equal(f.document.querySelector('[data-codlet-panel]'),null);
-  await f.open();assert.ok(f.control('Search plugins'));assert.equal(f.errors.length,0);
+  delete f.context.codex;t.after(()=>{plugin.deactivate();f.dispose();});
+  await plugin.activate(f.context);assert.equal(f.document.querySelector('[data-codlet-panel]'),null);
+  assert.equal(f.errors[0]?.code,'gui_ui_unavailable');assert.match(f.errors[0]?.message,/Core Codex SDK/);
 });
 test('rows show names, adjacent versions and descriptions without normal state labels or row tooltips',async t=>{
   const f=await fixture(t,'zh');await f.open();const row=f.document.querySelector('[data-codlet-plugin="codex.ui.adapter"]');assert.match(row.textContent,/Codex 界面适配器0\.1\.0/);assert.match(row.textContent,/将插件页面接入 Codex 主导航/);assert.equal(row.hasAttribute('title'),false);assert.doesNotMatch(row.textContent,/running|运行正常|not active/i);
@@ -100,7 +99,7 @@ test('Windows picker paths hide only display prefixes and retain the original pr
 test('normal versions have no extra header info; branding precedes in-page navigation and actions',async t=>{
   const f=await fixture(t);await f.open();assert.equal(f.control('Version and compatibility'),undefined);assert.equal(f.document.querySelector('.codlet-warning-icon'),null);assert.doesNotMatch(f.document.querySelector('.codlet-brand').textContent,/Development/);
   assert.ok(f.control('Settings').closest('.codlet-navigation-row'));assert.ok(f.control('Add').closest('.codlet-heading'));assert.ok(f.document.querySelector('.codlet-heading').compareDocumentPosition(f.document.querySelector('.codlet-navigation-row')) & f.window.Node.DOCUMENT_POSITION_FOLLOWING);
-  await f.click('Settings');assert.deepEqual([...f.document.querySelectorAll('.codlet-version-details dt')].map(el=>el.textContent),['Codlet version','Current client version','Codlet adapted version']);assert.deepEqual([...f.document.querySelectorAll('.codlet-version-details dd')].map(el=>el.textContent),['0.1.0','26.908.4834.0','26.908.4834.0']);assert.doesNotMatch(f.document.getElementById('codlet-version-section').textContent,/Update channel|Latest client|Official published client|Check for client updates|Installed client|Next automatic check/);await f.leave();assert.equal(f.document.querySelector('.codlet-top-toolbar'),null);assert.equal(f.document.querySelector('[data-codlet-panel]'),null);
+  await f.click('Settings');assert.deepEqual([...f.document.querySelectorAll('.codlet-version-details dt')].map(el=>el.textContent),['Compiled Core version','Active JS Core version','Current client version','Codlet adapted version']);assert.deepEqual([...f.document.querySelectorAll('.codlet-version-details dd')].map(el=>el.textContent),['0.1.0','0.1.0','26.908.4834.0','26.908.4834.0']);assert.doesNotMatch(f.document.getElementById('codlet-version-section').textContent,/Update channel|Latest client|Official published client|Check for client updates|Installed client|Next automatic check/);await f.leave();assert.equal(f.document.querySelector('.codlet-top-toolbar'),null);assert.equal(f.document.querySelector('[data-codlet-panel]'),null);
 });
 test('version navigation waits for delayed settings layout before scrolling to the actual section',async t=>{
   const f=await fixture(t),loading=deferred(),scrolls=[];f.demo.state.phase='available';f.overrides.set('getSettings',()=>loading.promise);

@@ -1,6 +1,6 @@
 import { createMessages, PERMISSION_COPY } from './messages.js';
 import { skillPrompt } from './creation.js';
-import {marketAssets,marketMatches,marketSort,marketItemKey,officialRepository,declaredPackageFor} from './marketplace-model.js';
+import {marketAssets,marketMatches,marketSort,marketItemKey,officialRepository,declaredPackageFor,coreProvidedRepository} from './marketplace-model.js';
 import { validUpdate, validOfficialUpdate, validPluginUpdates, validPluginInstall, busyUpdatePhases, validateSettings } from './versions.js';
 const capability = { name: 'codlet.runtime.manage', api: 1, scope: 'target' };
 const digest = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
@@ -11,6 +11,16 @@ const sameJson=(left,right)=>{
 };
 const updateIdentity = value => value?.candidate?.id && value?.candidate?.version ? `${value.candidate.id}:${value.candidate.version}` : null;
 const githubTimeout = kind => kind==='releases' ? 'Reading GitHub releases timed out. Check the connection or proxy, then try again.' : 'Preparing the GitHub package timed out. No installation was submitted. Try again.';
+const viewPages=new Set(['plugins','settings','market']);
+const viewText=value=>typeof value==='string'?value.slice(0,4096):'';
+const option=(value,values,fallback)=>values.includes(value)?value:fallback;
+const scrollValue=value=>Number.isFinite(value)?Math.min(1000000,Math.max(0,value)):0;
+
+export function portableManagerView(state,scroll={}){
+  return {schema:1,value:{open:state.open===true,page:viewPages.has(state.page)?state.page:'plugins',query:viewText(state.query),filter:option(state.filter,['all','enabled','disabled'],'all'),
+    market:{query:viewText(state.market?.query),origin:option(state.market?.origin,['all','official','community'],'all'),onlyDevice:state.market?.onlyDevice===true,sort:option(state.market?.sort,['updated','downloads','name'],'updated')},
+    scroll:Object.fromEntries([...viewPages].map(page=>[page,scrollValue(scroll[page])]))}};
+}
 
 export class Manager {
   constructor(context) {
@@ -28,10 +38,22 @@ export class Manager {
       pluginUpdates:null,pluginUpdateBusy:false,pluginUpdateError:'',pluginInstall:null,pluginInstallBusy:false,pluginInstallUncertain:false,pluginInstallError:'',folderBusy:null,folderError:'',
       settings:null,settingsBusy:false,settingsReady:false,settingsError:'',settingsUncertain:false, jobRetry:false, locale:context.i18n?.locale ?? 'en' };
     this.state.market={items:[],page:0,hasMore:false,loading:false,error:'',query:'',origin:'all',onlyDevice:false,sort:'updated',selected:null,assetId:null,reviewReturn:false};
+    this.scrollOffsets={};this.pendingScroll={};
     this.unsubscribeLocale = context.i18n?.onChange?.(() => this.set({locale:context.i18n.locale}));
   }
   subscribe = fn => { this.listeners.add(fn); return () => this.listeners.delete(fn); };
   snapshot = () => this.state;
+  saveViewState(){return portableManagerView(this.state,this.scrollOffsets);}
+  restoreViewState(snapshot){
+    if(snapshot?.schema!==1||!snapshot.value||typeof snapshot.value!=='object'||Array.isArray(snapshot.value))throw Error('Unsupported Codlet GUI state');
+    const restored=portableManagerView(snapshot.value,snapshot.value.scroll).value;
+    this.scrollOffsets={...restored.scroll};this.pendingScroll={...restored.scroll};
+    // Restore navigation/query preferences only. Consent, receipts, pending
+    // writes, selected sources, details and credentials are re-read or cleared.
+    this.set({open:false,page:restored.page,query:restored.query,filter:restored.filter,market:{...this.state.market,...restored.market,selected:null,assetId:null,reviewReturn:false},confirmation:null,combinedConfirmation:null,importWarning:null,trusted:false,grants:[]});
+    return restored.open;
+  }
+  rememberScroll(page,top){if(viewPages.has(page)&&!Object.hasOwn(this.pendingScroll,page))this.scrollOffsets[page]=scrollValue(top);}
   set(patch) { if (!this.alive) return; this.state = {...this.state,...patch}; this.state.error=[this.state.operationError,this.state.listError].filter(Boolean).join('\n'); for (const fn of this.listeners) fn(); }
   rpc(method, params = null) { return this.context.rpc.request(capability, method, params); }
   createPlugin(){return this.openSkillTask('create');}
@@ -48,7 +70,7 @@ export class Manager {
     try{
       const selected=mode==='remove'?{...subject,name:this.messages.name(subject)}:subject;
       const prompt=skillPrompt(this.state.runtimeSkill,this.state.locale,mode,selected);
-      const reply=await this.context.rpc.request({name:'codex.ui.navigation.page',api:1,scope:'target'},'newTaskDraft',{prompt});
+      const reply=await this.context.codex.navigation.newTaskDraft({prompt});
       if(reply?.opened!==true||reply.submitted!==false)throw new Error('The new task could not be opened.');
       if(mode==='review'&&this.current('page',sequence,activePage))this.cancelImportWarning();
       return true;
@@ -151,7 +173,7 @@ export class Manager {
   marketChangeQuery(query){this.marketSet({query});this.after('market-search',350,()=>{if(this.state.page==='market')void this.marketSearch();});}
   marketFiltered(){
     const market=this.state.market,device=this.state.deviceCompatibility?.platform;
-    return marketSort(market.items.filter(item=>marketMatches(item,market.query)&&
+    return marketSort(market.items.filter(item=>(this.context.codex?.api!==1||!coreProvidedRepository(item))&&marketMatches(item,market.query)&&
       (market.origin==='all'||(market.origin==='official')===!!officialRepository(item))&&
       (!market.onlyDevice||!!device&&this.marketKnownCompatibility(item)==='compatible')),market.sort);
   }
@@ -412,7 +434,8 @@ export class Manager {
     if(!warning||warning.preview!==this.state.preview||warning.sequence!==this.sequence.page||!this.importReady())return;
     this.set({importWarning:null,importReviewError:''});
     const s=this.state,p=s.preview;
-    const brokerPolicy={clientPermissions:true};
+    const prior=p.existingRegistration?.brokerPolicy;
+    const brokerPolicy={clientPermissions:true,...Object.fromEntries(['executables','cwdRoots','envKeys'].filter(key=>Array.isArray(prior?.[key])&&prior[key].length).map(key=>[key,[...prior[key]]]))};
     const local_import={path:p.path,contentDigest:p.contentDigest,registrationDigest:p.registrationDigest,trusted:true,grants:[...new Set([...s.grants,...(p.existingRegistration?.grants??[]).filter(permission=>!p.manifest.permissions.includes(permission))])],brokerPolicy,enable:s.enableAfter,...(s.mode==='github'?{managed:s.importOperation}:{})};
     const action=s.mode==='github' && s.importOperation==='adopt'?'update':s.mode==='github' && s.importOperation!=='install'?s.importOperation:'import';
     const marketReturn=s.market.reviewReturn;

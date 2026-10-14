@@ -2,6 +2,8 @@
 
 生产入口 `frontend/src/codlet/app.jsx` 的 Add 菜单打开内部市场页，通过 Core 的 `githubDiscover` 发现 GitHub 仓库及 Release，并经 `githubPrepare`、`prepare`、`submit`、`operation` 流程审核和安装。本地预览使用 `scripts/serve-gui-preview.mjs` 中可注入的 Core RPC fixture，测试不会访问真实 GitHub 或变更用户注册。早期独立交互原型保留在 Git 历史中。
 
+v1 默认以 SDK API/所需能力表达兼容性，不要求普通插件重复声明操作系统。发布方的显式平台排除仍有效；自动检查、实际 Native 验证及当前能力可用性分别呈现。特殊权限说明具体未经统一适配的边界，不能解释为所有功能都不兼容，也不替代实际权限强制检查。
+
 ## 入口与布局
 
 - 在现有“添加”菜单第一项放置“插件市场”，下面保留创建、导入入口

@@ -1,6 +1,8 @@
 # 独立分发与发布契约
 
-`codlet-plugins` 是官方插件的开发入口，集中管理源码、组件依赖、构建与测试。`codlet-ui-adapter`、`codlet-desktop-adapter`、`codlet-gui` 是自动生成的独立分发仓库。每个仓库只有一个插件，具备自己的 topic、版本标签和 Release ZIP。Core 仓库继续保留运行时与 SDK，不重新引入官方插件源码。
+`codlet-plugins` 是官方插件的开发入口，集中管理源码、组件依赖、构建与测试。Core v1 已内置 Codex 语义能力与对应实现，普通消费者通过 `context.codex` 使用，不再另装 UI/Desktop Adapter。两个 Adapter 的源码和既有独立仓库保留用于旧版维护与回归；`plugins.json.legacyAdapters` 将它们排除在当前 v1 打包和同步输出之外。当前普通分发项是 `codlet-gui`，独立仓库保存自己的 topic、版本标签和 Release ZIP。
+
+当前 `1.0.0-rc.1` 是本地候选，构建或测试不等于公开发布。本轮不推送、不创建 Release；真正发布仍执行下方审核、所有权和摘要检查。
 
 ## 日常流程
 
@@ -35,7 +37,9 @@ powershell -NoProfile -File scripts/Sync-Distribution.ps1 -Apply -AllowPublic
 
 打包器从包内的两个 JSON 文件和 ZIP 的实际字节生成该声明；准备器验证声明、目录快照、ZIP 文件名/大小/摘要及基于 `compatibility/client-profiles.json` 的 reviewed client profile 后，才会写入同步计划。同步器先核对远端同名资产；已存在的资产必须是 `uploaded` 状态且大小与 GitHub `sha256:` digest 全部匹配。草稿缺失资产时只上传缺失项，JSON 使用 `application/json; charset=utf-8`，ZIP 使用 `application/zip`；任何同版本字节不同或已发布版本缺少资产都会停止，不会覆盖资产。
 
-包元数据声明操作系统/架构支持平台和 reviewed client profile 标识。客户端 profile 记录来自静态兼容映射，不代表真机测试；实际设备接受范围和剩余限制继续记录在 [已知限制](known-issues.md)，不会写成包内 `testedBuilds` 或“其它平台待验收”字段。
+当前标准 SDK 包元数据包含 `runtimeApi:1` 与 `sdk:{api:1,capabilities:[...]}`，重点说明 SDK/能力契约，不以作者的平台表代替统一适配。`runtimeApi` 仍是执行 ABI 1。显式系统或 Native 例外可保留作者的 `platforms`、客户端 profile、限制说明；静态 profile 不代表真机通过。
+
+可选 `verification` 记录使用 `{kind:'automated'|'native',platform?,clientVersion?,status:'passed'|'failed'|'notRun',evidence?}`，必须标明它是作者提供的证据。导入器检查声明结构、来源与 ZIP 摘要，不认证作者测试结果；SDK 声明匹配也不证明当前客户端所有能力可用。历史 Native 记录和当前候选测试应分别列出，实际边界继续记录在 [已知限制](known-issues.md)。
 
 ## 什么会同步
 
@@ -45,7 +49,7 @@ powershell -NoProfile -File scripts/Sync-Distribution.ps1 -Apply -AllowPublic
 - `LICENSE` 与 `NOTICE`：官方插件采用 Apache-2.0；第三方依赖自身的许可/归属仍随 bundle 保留，独立第三方插件不因此被要求采用 Apache-2.0
 - `codlet-plugin`、`codlet-official` 及对应功能 topics
 
-生成仓库可以独立运行 `npm ci --prefix frontend`、`node frontend/build.mjs`。不要使用 GitHub 自动生成的 Source code ZIP 安装插件，它包含开发目录；使用明确上传的插件 ZIP。GUI 的 README 链接 UI Adapter 依赖，现有 Core 不自动下载安装依赖。
+生成仓库可以独立运行 `npm ci --prefix frontend`、`node frontend/build.mjs`。不要使用 GitHub 自动生成的 Source code ZIP 安装插件，它包含开发目录；使用明确上传的插件 ZIP。v1 GUI 依赖 Core SDK，没有外部 Adapter 依赖。其它插件声明的外部依赖仍需显式安装，导入器不自动获取它们。
 
 分发仓库的直接修改会中止同步，先把改动合回开发仓库。脚本不会 force push，不移动旧标签，不覆盖已有资产，也不会把私有仓库改成公开。同步期间远端分支发生变化时同样停止。
 
@@ -53,11 +57,11 @@ powershell -NoProfile -File scripts/Sync-Distribution.ps1 -Apply -AllowPublic
 
 在 `plugins.json` 增加 ID、bundle 目录、入口、分发仓库、说明、topics 和依赖；同时添加普通 `codlet.json` 与插件源码。修改某插件后，只调整它的版本。版本由 manifest 提供，同步器拒绝用同一标签替换已发布或已有草稿的内容。共享源码导致多个插件发生变化时，这些插件都应调整版本。
 
-`installerPlugins` 标记推荐用于初始设置的插件；打包器仍可生成独立 ZIP 和分发 catalog。Core 安装包不读取该 catalog、不携带插件代码，也不依赖本仓库的某个源码提交。增加官方插件不会自动增加安装器的下载勾选项。
+`installerPlugins` 标记推荐用于初始设置的外部插件，目前只有 GUI；打包器生成它的独立 ZIP 和分发 catalog。Core 自带经过审核的 Codex 实现与运行时 SDK，外部 GUI 仍独立安装。旧 Adapter 注册、源码文件、启停偏好、授权和数据保留；它们不会覆盖 Core provider、启动第二份实现或触发启动时下载。增加外部官方插件不会自动增加安装器下载勾选项。
 
 ## 可见性与来源迁移
 
-当前源码和三个官方分发仓库均为公开仓库。默认 `-Apply` 只生成草稿；公开目标还须指定 `-AllowPublic`。未认证的 GitHub 导入器不能安装私有或草稿 Release。
+既有源码与三个独立分发仓库的历史可见性不授权本轮发布。当前同步计划只包含未标为 legacy 的插件。默认 `-Apply` 只生成草稿；公开目标还须指定 `-AllowPublic`。未认证的 GitHub 导入器不能安装私有或草稿 Release。
 
 核对草稿后使用 `-Apply -AllowPublic -Publish` 发布。新增分发仓库仍默认私有，需要另外调整可见性；脚本本身不改可见性。仓库仍为私有时 `-Apply -Publish` 只会发布私有 Release，不会让导入器获得访问凭据。
 
@@ -72,6 +76,6 @@ node --test tests/distribution.test.mjs
 powershell -NoProfile -File tests/distribution.ps1
 ```
 
-另外对三个生成目录分别执行独立构建，比较 bundle 的 SHA-256；同步后核对可见性、topics、标签、草稿状态以及 ZIP 与声明 JSON 两个 GitHub 返回的资产 digest，再执行一次同步确认幂等。
+另外对当前计划中的每个生成目录执行独立构建，比较 bundle 的 SHA-256；同步后核对可见性、topics、标签、草稿状态以及 ZIP 与声明 JSON 两个 GitHub 返回的资产 digest，再执行一次同步确认幂等。旧 Adapter 仓库不因 v1 常规 GUI 分发而被改写。
 
 历史演练已验证独立重建、摘要、远端所有权与重复同步；结果范围见 [已知限制](known-issues.md)。重新发布仍必须验证当前提交和当前远端，不能以旧回执代替。

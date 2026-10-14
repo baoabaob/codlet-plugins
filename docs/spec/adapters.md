@@ -1,6 +1,6 @@
 # Codex adapter contract
 
-The adapters translate reviewed Codex Desktop internals into plugin capabilities. Core owns capability resolution, authenticated caller identity, RPC deadlines and permissions; see the [Core contract index](https://github.com/baoabaob/codlet/blob/main/docs/README.md). The adapters are ordinary explicitly authorized plugins, not a privileged bypass around Core.
+This retained Adapter contract describes the capability API imported into Core v1. The implementations now live under Core's `codex/` and are no longer separately installed plugins. Ordinary consumers use `context.codex` without inheriting provider implementation permissions; existing capability descriptors remain compatible. See the [Core Codex contract](https://github.com/baoabaob/codlet/blob/main/docs/spec/codex.md). Profiles, source paths and Native observations in the historical sections below retain their original provenance.
 
 ## Compatibility and ownership
 

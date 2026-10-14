@@ -81,6 +81,13 @@ exports.activate=async context=>{
   async function check(id,fn){if(!owned.alive)throw Error('Test retired');const started=Date.now();try{const detail=await fn();report.checks.push({id,status:'passed',milliseconds:Date.now()-started,detail});}catch(error){report.checks.push({id,status:'failed',milliseconds:Date.now()-started,error:{code:error.code??'test_failed',message:error.message}});}if(owned.alive)save();}
   const authorize=invocation=>assert(invocation.caller.pluginId===context.plugin.id,'Only the test plugin may invoke its Host');
   context.rpc.provide(capability,'native.begin',async(_args,invocation)=>{authorize(invocation);return beginNative();});
+  context.rpc.provide(capability,'native.end',async(_args,invocation)=>{
+    authorize(invocation);assert(!owned.running&&['complete','failed'].includes(report.phase),'Functional checks must settle before fixture traffic is released');
+    const interceptor=owned.nativeInterceptor;if(!interceptor)return {released:true};
+    assert(interceptor.inspect().exchanges===0,'Accepted fixture traffic must settle before release');
+    await interceptor.close();if(owned.nativeInterceptor===interceptor)owned.nativeInterceptor=null;
+    return {released:true};
+  });
   context.rpc.provide(capability,'inspect',(_args,invocation)=>{authorize(invocation);return {fixture:ownership,report,native};});
   context.rpc.provide(capability,'save-report',(args,invocation)=>{
     authorize(invocation);const result=args?.report;
@@ -186,4 +193,16 @@ exports.deactivate=async()=>{
   if(owned.server){owned.server.closeAllConnections();owned.server.close();}
   owned.detached.emitDestroy();
   fs.writeFileSync(path.join(owned.context.root,'cleanup.json'),JSON.stringify({generation:owned.context.plugin.generation,retired:true}));
+};
+// Only explicit completed observations transfer. Live servers, streams, async
+// work and synthetic model operations are recreated only by an explicit run.
+exports.saveState=()=>{
+  assert(state&&!state.running,'Functional checks must settle before state transfer');
+  return {schema:1,value:{report:state.report,native:{...state.native}}};
+};
+exports.restoreState=(snapshot)=>{
+  assert(state&&snapshot?.schema===1&&snapshot.value?.report?.schema===1,'Unsupported functional Host state');
+  assert(['idle','complete','failed'].includes(snapshot.value.report.phase),'Running checks are not transferable');
+  Object.assign(state.report,snapshot.value.report,{version:state.context.plugin.version,generation:state.context.plugin.generation});
+  Object.assign(state.native,snapshot.value.native??{});
 };

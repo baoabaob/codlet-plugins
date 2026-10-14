@@ -14,6 +14,11 @@ export function officialRepository(item){
     source.ownerId===item?.ownerId&&typeof item?.fullName==='string'&&
     source.repository.toLowerCase()===item.fullName.toLowerCase())??null;
 }
+const coreProviders=new Set(['codex.ui.adapter','codex.desktop.adapter']);
+export function coreProvidedRepository(item){
+  const source=officialRepository(item);
+  return !!source&&source.pluginIds.length>0&&source.pluginIds.every(id=>coreProviders.has(id));
+}
 
 export function declaredPackageFor(item){
   const declared=item?.declarationStatus==='matched'?item.declaredPackage:null;

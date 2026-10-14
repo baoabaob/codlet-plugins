@@ -1,11 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {permissionGroups,pluginDependencies} from '../frontend/src/codlet/permissions.js';
+import {permissionGroups,pluginDependencies,permissionBoundary,UNADAPTED_COPY} from '../frontend/src/codlet/permissions.js';
 import {PERMISSION_COPY} from '../frontend/src/codlet/messages.js';
 const cap=(name,scope='target')=>({name,api:1,scope});
 test('every permission appears once in a small readable category set',()=>{
   const requested=Object.keys(PERMISSION_COPY),groups=permissionGroups(requested);
-  assert.equal(groups.length,5);assert.deepEqual(groups.flatMap(g=>g.permissions).sort(),requested.sort());
+  assert.equal(groups.length,6);assert.deepEqual(groups.flatMap(g=>g.permissions).sort(),requested.sort());
+});
+test('standard SDK use is not an unadapted grant and actual exception enforcement is visible',()=>{
+  const standard=['ui.dom','host.fs','host.network','core.clipboard.read','core.tasks'];
+  assert.equal(permissionGroups(standard).some(group=>group.id==='unadapted'),false);
+  assert.equal(permissionBoundary('ui.nativeDom').enforcement,'declaration');
+  assert.equal(permissionBoundary('host.process.spawn').enforcement,'broker');
+  assert.equal(permissionBoundary('host.raw').enforcement,'admission');
+  assert.equal(permissionBoundary('host.process').legacy,true);
+  assert.match(UNADAPTED_COPY,/author maintains/);
 });
 test('dependency summaries collapse interfaces into plugins and omit Core and self',()=>{
   const nav=cap('navigation'),read=cap('read'),write=cap('write'),own=cap('my.host','runtime');

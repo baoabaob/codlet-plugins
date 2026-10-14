@@ -125,7 +125,7 @@ function Preview({s}) {
       {dependencies.missing&&<Copy>{t('Some required plugins are not installed. Install the missing providers before enabling this plugin.')}</Copy>}
     </section>}
     {s.mode==='github'&&<Source source={p.source} metadata={p.metadata}/>}
-    <Compatibility metadata={p.metadata} device={p.deviceCompatibility??s.deviceCompatibility} clientStatus={s.clientStatus}/>
+    <Compatibility metadata={p.metadata} manifest={m} device={p.deviceCompatibility??s.deviceCompatibility} clientStatus={s.clientStatus}/>
     {p.deviceCompatibility?.status==='unknown'&&<div className="market-review-warning" role="status">{t('The author has not declared compatible systems; suitability for this device is unknown.')}</div>}
     {p.deviceCompatibility?.status==='incompatible'&&<div className="market-review-warning" role="alert">{t('Core reports this package is incompatible with this device. Installation is unavailable.')}</div>}
     {s.importOperation==='adopt'&&s.target&&<Copy>{`${t('Installed version')}: ${s.target.version} → ${m.version}`}</Copy>}
@@ -207,9 +207,9 @@ function Details({s}){
 }
 function Confirmation({s}){
   const c=s.confirmation,p=c.plugin,verb=c.kind==='remove'?'Remove':c.kind==='revoke'?'Revoke':'Disable';
-  const title=c.kind==='install'?'Install and restart Codlet?':`${verb} ${name(p)}?`;
+  const title=c.kind==='install'?'Apply Codlet update?':`${verb} ${name(p)}?`;
   const dependents=[...new Set(p?.disableDependents??[])].filter(id=>id!==p.id).map(id=>s.plugins.find(x=>x.id===id)??{id});
-  const copy=c.kind==='install'?'The current client will restart and running local tasks will be interrupted.':c.kind==='remove'?'Remove this plugin’s registration and disable it. Source files and plugin data are kept by default. Selecting deletion below removes the source folder and all its contents.':c.kind==='revoke'?`Revoke ${c.permission}. This stops the package and its running dependents. To grant it again, ${p.ownership==='core-managed-github'?'select a managed version and confirm its permissions again':'import the local folder and confirm its permissions'}.`:p.id===manager.context.pluginId||p.disableDependents?.includes(manager.context.pluginId)?'The Codlet GUI will close in all open windows. Re-enable the plugins from the launcher to restore it.':'These plugins will stay disabled until you enable them again.';
+  const copy=c.kind==='install'?'Compatible Core components apply in this session. Other changes are staged for the next natural start; current tasks and connections continue.':c.kind==='remove'?'Remove this plugin’s registration and disable it. Source files and plugin data are kept by default. Selecting deletion below removes the source folder and all its contents.':c.kind==='revoke'?`Revoke ${c.permission}. This stops the package and its running dependents. To grant it again, ${p.ownership==='core-managed-github'?'select a managed version and confirm its permissions again':'import the local folder and confirm its permissions'}.`:p.id===manager.context.pluginId||p.disableDependents?.includes(manager.context.pluginId)?'The Codlet GUI will close in all open windows. Re-enable the plugins from the launcher to restore it.':'These plugins will stay disabled until you enable them again.';
   return <section className="codlet-page"><h2>{t(title)}</h2><Copy>{t(copy)}</Copy>
     {dependents.length>0&&<section className="codlet-field" aria-labelledby="codlet-affected-heading"><h2 id="codlet-affected-heading">{t(c.kind==='revoke'?'Plugins that will also stop':'Plugins that will also be disabled')}</h2><Copy>{t('Includes indirect dependencies. These plugins and their files will be kept.')}</Copy><ul className="codlet-affected-plugins">{dependents.map(plugin=><li key={plugin.id}><span className="codlet-plugin-name">{name(plugin)}</span><span className="codlet-version">{plugin.id}</span></li>)}</ul></section>}
     {c.kind==='remove'&&<><C.Checkbox checked={c.deleteSource} disabled={!manager.sourceDeletable()||c.busy} aria-label={t('Delete source files')} label={t('Delete the plugin source folder')} onCheckedChange={value=>manager.setDeleteSource(value)}/>
@@ -217,7 +217,7 @@ function Confirmation({s}){
       {c.source?.warning&&<Copy>{c.source.warning}</Copy>}</>}
     {c.error&&<Copy error role="alert">{t(c.error)}</Copy>}
     <div className="codlet-confirmation-actions"><C.Button color="secondary" variant="soft" size="md" disabled={c.submitting} onClick={()=>manager.cancelConfirmation()} data-codlet-cancel="">{t('Cancel')}</C.Button>
-      <C.Button color={c.kind==='install'?'primary':'danger'} variant="solid" size="md" disabled={c.busy||c.submitting} loading={c.submitting} aria-label={t(c.kind==='install'?'Install and restart':verb)} onClick={()=>manager.confirm()}>{t(c.kind==='install'?'Install and restart':verb)}</C.Button></div>
+      <C.Button color={c.kind==='install'?'primary':'danger'} variant="solid" size="md" disabled={c.busy||c.submitting} loading={c.submitting} aria-label={t(c.kind==='install'?'Apply update':verb)} onClick={()=>manager.confirm()}>{t(c.kind==='install'?'Apply update':verb)}</C.Button></div>
   </section>;
 }
 function SkillHelp({s}){
@@ -243,7 +243,7 @@ function Page({s}){
     const changed=!previous.current||previous.current.page!==s.page||previous.current.confirmation!==!!s.confirmation;
     previous.current={page:s.page,confirmation:!!s.confirmation};
     if(!changed&&!jumping)return;
-    if(changed){const scroll=panel.current?.querySelector('.codlet-scroll');if(scroll)scroll.scrollTop=0;}
+    if(changed){const scroll=panel.current?.querySelector('.codlet-scroll');if(scroll)scroll.scrollTop=manager.pendingScroll[s.page]??0;}
     const target=trigger||panel.current?.querySelector(s.confirmation?'[data-codlet-cancel]':jumping?'#codlet-version-heading':s.page==='plugins'?'[data-codlet-plugin-search]':s.page==='market'?'[data-codlet-market-search]':s.page==='settings'?'[data-codlet-page-heading]':'[data-codlet-back-button]');
     target?.focus({preventScroll:!returning});
     if(jumping){
@@ -251,6 +251,11 @@ function Page({s}){
       handledJump.current=s.versionJump;setVersionHighlight(true);clearTimeout(highlightTimer.current);highlightTimer.current=setTimeout(()=>setVersionHighlight(false),2600);
     }else if(s.page!=='settings'){clearTimeout(highlightTimer.current);setVersionHighlight(false);}
   },[s.page,!!s.confirmation,s.versionJump,s.settingsReady,s.settingsBusy]);
+  React.useLayoutEffect(()=>{
+    if(!Object.hasOwn(manager.pendingScroll,s.page)||s.loading||s.market.loading)return;
+    const scroll=panel.current?.querySelector('.codlet-scroll');if(!scroll)return;
+    scroll.scrollTop=manager.pendingScroll[s.page];delete manager.pendingScroll[s.page];
+  },[s.page,s.loading,s.market.loading,s.plugins.length,s.market.items.length]);
   React.useLayoutEffect(()=>{
     const old=focusedRow.current;
     if(!old||old.isConnected)return;
@@ -273,7 +278,7 @@ function Page({s}){
     onBlurCapture={event=>{if(event.relatedTarget||event.target.isConnected&&!event.target.disabled)focusedRow.current=null;}}
     onPointerDownCapture={event=>{if(!event.target.closest('[data-codlet-plugin]'))focusedRow.current=null;}}
     data-codlet-panel="codlet" data-codlet-view={s.confirmation?'confirmation':s.page} aria-label={t(s.confirmation?'Confirm action':settings?'Settings':'Codlet')}>
-    <div className="codlet-scroll">
+    <div className="codlet-scroll" onScroll={event=>manager.rememberScroll(s.page,event.currentTarget.scrollTop)}>
       <header className="codlet-heading codlet-width"><div className="codlet-heading-inner">
         <div className="codlet-brand">{!settings&&<CodletIcon size={32}/>}<h1 data-codlet-page-heading="" tabIndex={-1}>{settings?t('Settings'):'Codlet'}</h1>{!settings&&<><span className="codlet-version">{s.runtimeVersion}</span>{s.page==='plugins'&&<SkillHelp s={s}/>} {notices.length>0&&<IconAction icon={I.ExclamationMarkCircle} iconClassName="codlet-warning-icon" label={notices.join('\n')+'\n'+t('View version information in settings')} onClick={()=>manager.settingsPage(true)} disabled={!!s.confirmation}/>}</>}</div>
         <p className="codlet-subtitle">{descriptionText(t(settings?'Manage Codlet preferences and version updates.':'Create or manage Codlet plugins'))}</p>
@@ -289,10 +294,12 @@ function App(){
 }
 function releaseView(){React=h=C=I=ui=Settings=CodletIcon=ProjectLinks=Marketplace=MarketplaceDetails=Compatibility=PermissionSummary=null;}
 export function deactivate(){epoch++;try{ui?.dispose();}finally{manager?.dispose();manager=null;releaseView();}}
+export function saveState(){return manager?.saveViewState()??{schema:1,value:{open:false,page:'plugins'}};}
+export async function restoreState(snapshot){if(!manager)throw Error('Codlet GUI is not active');const wasOpen=manager.restoreViewState(snapshot);if(wasOpen)await manager.open(document.visibilityState!=='hidden');}
 export async function activate(context){
     deactivate();const current=epoch;context.onDeactivate(deactivate);
     try{
-      if(context.ui?.api!==2)throw new Error('Update the renderer runtime for official UI components');
+      if(context.codex?.api!==1||context.ui?.api!==2)throw new Error('Update Codlet for the Core Codex SDK');
       manager=new Manager(context);
       const owned=manager;
       const options={label:'Codlet',icon:'Codlet',toolbar:false,render:({ui:activeUI})=>{
@@ -302,7 +309,6 @@ export async function activate(context){
         ({Marketplace,MarketplaceDetails,Compatibility}=createMarketplaceView({React,C,I,manager,t,Copy,Back,PluginTags}));
         return <App/>;
       },onActivate:()=>owned.open(document.visibilityState!=='hidden'),onDeactivate:()=>{owned.close();if(context.ui.page)releaseView();}};
-      if(context.ui.page)await context.ui.page(options);
-      else{ui=context.ui.create();await ui.page(options);}
+      await context.codex.navigation.page(options);
     }catch(error){if(current===epoch){try{ui?.dispose();}finally{manager?.dispose();manager=null;releaseView();}context.reportDiagnostic?.({code:'gui_ui_unavailable',message:String(error?.message??error)});}}
 }
