@@ -1,7 +1,7 @@
 const fail = (code, message) => Object.assign(new Error(message), { code });
 const text = (value, max) => typeof value === 'string' ? value.slice(0, max) : null;
 
-export function loadedThreadSummary(thread) {
+export function loadedThreadSummary(thread, working = null) {
   if (!thread) return null;
   if (typeof thread.id !== 'string' || !thread.id || thread.id.length > 256 || thread.hostId != null && thread.hostId !== 'local')
     throw fail('desktop_summary_drift', 'The cached local thread identity changed');
@@ -14,19 +14,21 @@ export function loadedThreadSummary(thread) {
   // fallback on older profiles; never walk canonical history on a token delta.
   const running = status?.type != null ? status.type === 'active' : thread.turns?.at(-1)?.status === 'inProgress';
   return Object.freeze({ id: thread.id, title: text(thread.title ?? thread.displayTitle, 8192), cwd: text(thread.cwd, 8192), hostId: 'local',
-    runtimeStatus: attention ? 'attention' : running ? 'running' : thread.resumeState === 'resumed' ? 'idle' : 'loading' });
+    runtimeStatus: attention ? 'attention' : running ? 'running' : thread.resumeState === 'resumed' ? 'idle' : 'loading',
+    working: typeof working === 'boolean' ? working : null });
 }
 
-export function createLoadedThreads(manager, emit, instance) {
+export function createLoadedThreads(manager, emit, instance, working = {read:()=>null}) {
   const summaries = new Map(), pages = new Map();
   let initialized = false, pageSequence = 0;
   const supported = typeof manager.getCachedConversations === 'function';
-  const same = (a, b) => a === b || a && b && a.id === b.id && a.title === b.title && a.cwd === b.cwd && a.runtimeStatus === b.runtimeStatus;
+  const same = (a, b) => a === b || a && b && a.id === b.id && a.title === b.title && a.cwd === b.cwd && a.runtimeStatus === b.runtimeStatus && a.working === b.working;
+  const project = thread => {const summary=loadedThreadSummary(thread);return summary?loadedThreadSummary(thread,working.read(summary.id,thread)):null;};
   function refresh(threadId, notify = true) {
     if (!supported || typeof threadId !== 'string') return;
-    const next = loadedThreadSummary(manager.getConversation(threadId)), previous = summaries.get(threadId) ?? null;
+    const next = project(manager.getConversation(threadId)), previous = summaries.get(threadId) ?? null;
     if (same(previous, next)) return;
-    if (next) summaries.set(threadId, next); else summaries.delete(threadId);
+    if (next) summaries.set(threadId, next); else {summaries.delete(threadId);working.remove?.(threadId);}
     if (notify) emit({ type: 'thread.summary.changed', threadId, thread: next });
   }
   function initialize() {
@@ -34,7 +36,7 @@ export function createLoadedThreads(manager, emit, instance) {
     if (!supported) throw fail('desktop_summary_unavailable', 'This Desktop manager has no reviewed cached-thread enumeration');
     const threads = manager.getCachedConversations();
     if (!Array.isArray(threads)) throw fail('desktop_summary_drift', 'The cached-thread collection must be an array');
-    for (const thread of threads) { const summary = loadedThreadSummary(thread); if (summary) summaries.set(summary.id, summary); }
+    for (const thread of threads) { const summary = project(thread); if (summary) summaries.set(summary.id, summary); }
     initialized = true;
   }
   function read(args = {}) {
@@ -56,7 +58,7 @@ export function createLoadedThreads(manager, emit, instance) {
       page = pages.get(args.cursor);
       if (!page) throw fail('invalid_argument', 'Loaded-thread cursor is expired or unknown');
       pages.delete(args.cursor);
-    } else page = { entries: [...summaries.values()], offset: 0, expires: now + 15000 };
+    } else { for(const id of summaries.keys())refresh(id,false);page = { entries: [...summaries.values()], offset: 0, expires: now + 15000 }; }
     const threads = page.entries.slice(page.offset, page.offset + limit); page.offset += threads.length;
     let cursor = null;
     if (page.offset < page.entries.length) {
@@ -65,5 +67,5 @@ export function createLoadedThreads(manager, emit, instance) {
     }
     return { threads, cursor };
   }
-  return { read, refresh, dispose() { summaries.clear(); pages.clear(); } };
+  return { read, refresh, dispose() { summaries.clear(); pages.clear(); working.dispose?.(); } };
 }

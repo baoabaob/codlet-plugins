@@ -3,6 +3,7 @@ import { createThreadConfiguration } from './thread-configuration.js';
 import { createThreadReconfiguration } from './thread-reconfiguration.js';
 import { createThreadRestoration } from './thread-restoration.js';
 import { createLoadedThreads } from './loaded-threads.js';
+import { createNativeWorking } from './native-working.js';
 import { createThreadOpener } from './thread-navigation.js';
 import { reviewedNavigator } from '../native-navigation.js';
 import { createPermissions } from './permissions.js';
@@ -310,7 +311,8 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
     const instance = crypto.randomUUID();
     let alive = true, sequence = 0, eventBytes = 0, hookSequence = 0, reloadReason = null, unavailable = null;
     const hooks = new Map(), pendingSubmits = new Set(), events = [], waiters = new Set(), listeners = new Set(), cleanups = [], approvals = new Map(), retiredApprovals = new Map(), tickets = new Map(), submissions = new Map();
-    const loadedThreads = createLoadedThreads(manager, value => emit(value), instance);
+    const nativeWorking=createNativeWorking({changed:id=>{if(alive)loadedThreads.refresh(id);}});
+    const loadedThreads = createLoadedThreads(manager, value => emit(value), instance, nativeWorking);
     let navigation = null, navigationFailure = null, lastSelection = null;
     const check = () => {
         if (!alive) throw fail('adapter_deactivated', 'Desktop adapter was deactivated');
@@ -528,7 +530,7 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
         switch (method) {
             case 'selection.get': fields(args, []); return selection();
             case 'permissions.get': return permissions.get(args);
-            case 'threads.loaded': return loadedThreads.read(args);
+            case 'threads.loaded': await nativeWorking.prepare();check();return loadedThreads.read(args);
             case 'threads.configuration': {
                 fields(args, ['threadId']);
                 const id = identity(args.threadId, 'threadId');

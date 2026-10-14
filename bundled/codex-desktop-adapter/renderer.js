@@ -774,7 +774,7 @@ function createThreadRestoration({ reconfiguration, readConfiguration, check, cl
 // src/desktop/loaded-threads.js
 var fail4 = (code, message) => Object.assign(new Error(message), { code });
 var text2 = (value, max) => typeof value === "string" ? value.slice(0, max) : null;
-function loadedThreadSummary(thread) {
+function loadedThreadSummary(thread, working = null) {
   if (!thread) return null;
   if (typeof thread.id !== "string" || !thread.id || thread.id.length > 256 || thread.hostId != null && thread.hostId !== "local")
     throw fail4("desktop_summary_drift", "The cached local thread identity changed");
@@ -788,20 +788,28 @@ function loadedThreadSummary(thread) {
     title: text2(thread.title ?? thread.displayTitle, 8192),
     cwd: text2(thread.cwd, 8192),
     hostId: "local",
-    runtimeStatus: attention ? "attention" : running ? "running" : thread.resumeState === "resumed" ? "idle" : "loading"
+    runtimeStatus: attention ? "attention" : running ? "running" : thread.resumeState === "resumed" ? "idle" : "loading",
+    working: typeof working === "boolean" ? working : null
   });
 }
-function createLoadedThreads(manager, emit, instance) {
+function createLoadedThreads(manager, emit, instance, working = { read: () => null }) {
   const summaries = /* @__PURE__ */ new Map(), pages = /* @__PURE__ */ new Map();
   let initialized = false, pageSequence = 0;
   const supported = typeof manager.getCachedConversations === "function";
-  const same3 = (a, b) => a === b || a && b && a.id === b.id && a.title === b.title && a.cwd === b.cwd && a.runtimeStatus === b.runtimeStatus;
+  const same3 = (a, b) => a === b || a && b && a.id === b.id && a.title === b.title && a.cwd === b.cwd && a.runtimeStatus === b.runtimeStatus && a.working === b.working;
+  const project = (thread) => {
+    const summary = loadedThreadSummary(thread);
+    return summary ? loadedThreadSummary(thread, working.read(summary.id, thread)) : null;
+  };
   function refresh(threadId, notify = true) {
     if (!supported || typeof threadId !== "string") return;
-    const next = loadedThreadSummary(manager.getConversation(threadId)), previous = summaries.get(threadId) ?? null;
+    const next = project(manager.getConversation(threadId)), previous = summaries.get(threadId) ?? null;
     if (same3(previous, next)) return;
     if (next) summaries.set(threadId, next);
-    else summaries.delete(threadId);
+    else {
+      summaries.delete(threadId);
+      working.remove?.(threadId);
+    }
     if (notify) emit({ type: "thread.summary.changed", threadId, thread: next });
   }
   function initialize() {
@@ -810,7 +818,7 @@ function createLoadedThreads(manager, emit, instance) {
     const threads = manager.getCachedConversations();
     if (!Array.isArray(threads)) throw fail4("desktop_summary_drift", "The cached-thread collection must be an array");
     for (const thread of threads) {
-      const summary = loadedThreadSummary(thread);
+      const summary = project(thread);
       if (summary) summaries.set(summary.id, summary);
     }
     initialized = true;
@@ -834,7 +842,10 @@ function createLoadedThreads(manager, emit, instance) {
       page = pages.get(args.cursor);
       if (!page) throw fail4("invalid_argument", "Loaded-thread cursor is expired or unknown");
       pages.delete(args.cursor);
-    } else page = { entries: [...summaries.values()], offset: 0, expires: now + 15e3 };
+    } else {
+      for (const id of summaries.keys()) refresh(id, false);
+      page = { entries: [...summaries.values()], offset: 0, expires: now + 15e3 };
+    }
     const threads = page.entries.slice(page.offset, page.offset + limit);
     page.offset += threads.length;
     let cursor = null;
@@ -848,279 +859,15 @@ function createLoadedThreads(manager, emit, instance) {
   return { read, refresh, dispose() {
     summaries.clear();
     pages.clear();
-  } };
-}
-
-// src/desktop/thread-navigation.js
-var fail5 = (code, message) => Object.assign(new Error(message), { code });
-function createThreadOpener({ manager, selection, navigation, request, beforeNavigate }) {
-  let opening = false;
-  return async function openThread(args, signal) {
-    if (!args || typeof args !== "object" || Array.isArray(args) || Object.keys(args).some((key) => key !== "threadId")) throw fail5("invalid_argument", "Invalid task navigation arguments");
-    const threadId = args.threadId;
-    if (typeof threadId !== "string" || !/^[a-zA-Z0-9_-]{1,256}$/.test(threadId)) throw fail5("invalid_argument", "threadId must be a local task identity");
-    const before = selection();
-    if (signal?.aborted) throw fail5("invocation_cancelled", "Task navigation was cancelled before dispatch");
-    if (before.threadId === threadId) return { ...before, status: before.resumeState === "resumed" ? "opened" : "opening", alreadySelected: true };
-    if (opening) throw fail5("desktop_navigation_busy", "Another task open request is still being validated");
-    opening = true;
-    try {
-      const nav = navigation(), stamp = nav.stamp();
-      const cached = manager.getConversation(threadId);
-      if (cached?.id !== threadId || cached.hostId != null && cached.hostId !== "local") {
-        const metadata = await request("thread/read", { threadId, includeTurns: false }, signal);
-        if (metadata?.thread?.id !== threadId) throw fail5("desktop_navigation_unavailable", "Desktop did not confirm the requested task identity");
-      }
-      if (signal?.aborted) throw fail5("invocation_cancelled", "Task navigation was cancelled during validation");
-      selection();
-      if (nav.stamp() !== stamp) throw fail5("desktop_navigation_superseded", "The user navigated while this task was being checked");
-      if (signal?.aborted) throw fail5("invocation_cancelled", "Task navigation was cancelled before routing");
-      beforeNavigate?.();
-      nav.open(threadId);
-      const current = selection();
-      if (current.threadId !== threadId) throw fail5("desktop_navigation_superseded", "Desktop selected a different task during navigation");
-      return { ...current, status: current.resumeState === "resumed" ? "opened" : "opening", alreadySelected: false };
-    } finally {
-      opening = false;
-    }
-  };
-}
-
-// src/native-navigation.js
-var bridges = /* @__PURE__ */ new WeakMap();
-var subscribable = /* @__PURE__ */ new WeakSet();
-function reviewedNavigator(navigators, contexts) {
-  if (navigators.size !== 1) return null;
-  const navigator = [...navigators][0];
-  if (typeof navigator?.location?.pathname === "string" && ["push", "replace", "listen"].every((name) => typeof navigator[name] === "function")) return navigator;
-  const matches = [...contexts].filter((value) => value.navigator === navigator && value.router);
-  const routers = new Set(matches.map((value) => value.router));
-  if (routers.size !== 1) return null;
-  const router = [...routers][0];
-  if (typeof router.state?.location?.pathname !== "string" || typeof router.navigate !== "function" || typeof router.subscribe !== "function" || !Array.isArray(router.routes) || router.routes.length !== 1 || router.routes[0].path !== "*") return null;
-  const existing = bridges.get(router);
-  if (existing) return existing.navigator === navigator && existing.navigate === router.navigate && existing.subscribe === router.subscribe ? existing.bridge : null;
-  const navigate = router.navigate, subscribe = router.subscribe;
-  const bridge = {
-    get location() {
-      return router.state.location;
-    },
-    push(to, state) {
-      return navigate.call(router, to, { state });
-    },
-    replace(to, state) {
-      return navigate.call(router, to, { replace: true, state });
-    },
-    go(delta) {
-      return navigate.call(router, delta);
-    },
-    listen(listener) {
-      let location2 = router.state.location;
-      return subscribe.call(router, (state) => {
-        if (state.location === location2) return;
-        location2 = state.location;
-        listener({ location: location2, action: state.historyAction });
-      });
-    }
-  };
-  bridges.set(router, { navigator, navigate, subscribe, bridge });
-  subscribable.add(bridge);
-  return bridge;
-}
-
-// src/desktop/permissions.js
-var fail6 = (code, message) => Object.assign(new Error(message), { code });
-var policyFields = ["approvalPolicy", "approvalsReviewer", "sandboxPolicy", "permissions", "runtimeWorkspaceRoots"];
-var same2 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-var clone = (value) => JSON.parse(JSON.stringify(value));
-var ownerKey = (value) => `${value.pluginId}:${value.generation}`;
-function createPermissions({ manager, client, check, selection, load, emit }) {
-  let driver, preparing, alive = true, revision = 0, current, releaseNative;
-  const owners = /* @__PURE__ */ new Map(), registered = /* @__PURE__ */ new Map(), pending = /* @__PURE__ */ new Set();
-  const nativeStamp = (id) => {
-    const thread = manager.getConversation(id), settings = thread?.latestThreadSettings;
-    return [...policyFields.map((key) => settings?.[key]), settings?.activePermissionProfile, settings?.model, thread?.latestModel];
-  };
-  const ensure = () => preparing ??= Promise.resolve().then(load).then((value) => {
-    if (!alive) throw fail6("adapter_deactivated", "Permission provider retired");
-    if (!value || typeof value.read !== "function" || typeof value.convert !== "function" || typeof value.canonical !== "function" || value.sendPathVerified !== true)
-      throw fail6("permissions_unsupported", "Authoritative Native permission mapping and submission semantics are required");
-    driver = value;
-    releaseNative = value.subscribe?.((id) => changed(id));
-    return value;
-  });
-  function validate(args, update2 = false) {
-    if (!args || typeof args !== "object" || Array.isArray(args) || Object.keys(args).some((key) => !(update2 ? ["threadId", "hostId", "selection", "expectedRevision", "confirmed"] : ["threadId", "hostId"]).includes(key)) || typeof args.threadId !== "string" || !/^[\w-]{1,256}$/.test(args.threadId) || (args.hostId ?? "local") !== "local")
-      throw fail6("invalid_argument", "Invalid permission conversation");
-    if (update2 && (!Number.isSafeInteger(args.expectedRevision) || args.expectedRevision < 0 || args.confirmed !== void 0 && typeof args.confirmed !== "boolean"))
-      throw fail6("invalid_argument", "A permission revision and valid confirmation are required");
-    check();
-    if (!alive) throw fail6("adapter_deactivated", "Permission provider retired");
-    if (selection().threadId !== args.threadId) throw fail6("permissions_not_selected", "Permissions require the current confirmed Native conversation");
-    return args.threadId;
-  }
-  function register(ctx) {
-    check();
-    if (!alive || ctx?.world !== "main" || typeof ctx.onDeactivate !== "function" || typeof ctx.pluginId !== "string" || !Number.isSafeInteger(ctx.generation))
-      throw fail6("invalid_owner", "Permission registration requires the live authenticated main-world context");
-    const key = ownerKey(ctx);
-    if (owners.has(key)) throw fail6("duplicate_registration", "Permission owner is already registered");
-    if (owners.size >= 32) throw fail6("resource_limit", "Too many permission owners");
-    const record = { active: true };
-    let release;
-    const dispose = () => {
-      if (!record.active) return;
-      record.active = false;
-      owners.delete(key);
-      for (const [id, identity2] of registered) if (identity2 === record) {
-        registered.delete(id);
-        changed(id);
-      }
-      release?.();
-    };
-    owners.set(key, record);
-    try {
-      release = ctx.onDeactivate(dispose);
-      if (!record.active) throw fail6("invalid_owner", "Permission owner already retired");
-    } catch (error) {
-      dispose();
-      throw error;
-    }
-    record.dispose = dispose;
-    return dispose;
-  }
-  function principalRecord(principal) {
-    const record = principal && typeof principal.pluginId === "string" && Number.isSafeInteger(principal.generation) && owners.get(ownerKey(principal));
-    if (!record?.active) throw fail6("invalid_owner", "Permission update requires its authenticated live write owner");
-    return record;
-  }
-  function publish(id, value) {
-    const publicValue = { threadId: id, hostId: "local", phase: value.phase, selection: value.selection ?? null, source: value.source ?? "unknown", options: value.options ?? [], diagnostic: value.diagnostic ?? null };
-    const signature = JSON.stringify(publicValue);
-    if (current?.id === id && current.signature === signature) {
-      current.nativeStamp = nativeStamp(id);
-      return clone(current.snapshot);
-    }
-    const snapshot = { ...clone(publicValue), revision: ++revision };
-    current = { id, signature, snapshot, nativeStamp: nativeStamp(id) };
-    return clone(snapshot);
-  }
-  async function get(args) {
-    const id = validate(args);
-    let native;
-    try {
-      native = await ensure();
-    } catch (error) {
-      validate(args);
-      return publish(id, { phase: "unsupported", options: [], diagnostic: { code: "permissions_unsupported", message: error?.message ?? "Native permission mapping is unavailable" } });
-    }
-    validate(args);
-    const value = await native.read(id, { canonical: registered.get(id)?.active === true });
-    validate(args);
-    return publish(id, value);
-  }
-  function changed(id) {
-    if (!alive || current?.id !== id) return;
-    current = null;
-    emit({ type: "permissions.changed", threadId: id, hostId: "local", revision: ++revision });
-  }
-  function observe(id) {
-    if (current?.id !== id) return;
-    const next = nativeStamp(id);
-    if (next.some((value, index) => value !== current.nativeStamp[index])) changed(id);
-  }
-  async function update(args, signal, principal) {
-    const id = validate(args, true), identity2 = principalRecord(principal);
-    if (pending.has(id)) throw fail6("permissions_busy", "A permission update is pending");
-    if (signal?.aborted) throw fail6("invocation_cancelled", "Permission update cancelled before dispatch");
-    pending.add(id);
-    let dispatched = false, confirmed = false, release;
-    try {
-      const snapshot = await get({ threadId: id, hostId: "local" });
-      if (snapshot.revision !== args.expectedRevision) throw fail6("permissions_stale", "Permission options changed before dispatch");
-      const option = snapshot.options.find((option2) => option2.enabled && same2(option2.selection, args.selection));
-      if (snapshot.phase !== "ready" || !option) throw fail6("permissions_unavailable", "The selected permission is not currently allowed by Native");
-      if (option.requiresConfirmation && args.confirmed !== true) throw fail6("permissions_confirmation_required", "Native requires confirmation for this permission choice");
-      const settings = await driver.convert(id, args.selection);
-      validate(args, true);
-      principalRecord(principal);
-      const latest = await get({ threadId: id, hostId: "local" });
-      if (latest.revision !== args.expectedRevision) throw fail6("permissions_stale", "Native permissions changed during conversion");
-      if (signal?.aborted) throw fail6("invocation_cancelled", "Permission update cancelled before dispatch");
-      if (!settings || Object.keys(settings).some((key) => !policyFields.includes(key))) throw fail6("permissions_unsupported", "Native permission conversion produced unsupported fields");
-      if (typeof manager.updateThreadPermissions !== "function" || typeof manager.waitForPendingThreadSettingsUpdate !== "function" || typeof client.addRequestLifecycleListener !== "function")
-        throw fail6("permissions_unsupported", "Native per-thread permission lifecycle is unavailable");
-      if (manager.getConversation(id)?.resumeState !== "resumed" || manager.getStreamRole(id)?.role !== "owner")
-        throw fail6("permissions_not_owner", "Use the Native window owning this resumed conversation to change permissions");
-      if (!registered.has(id) && registered.size >= 256) throw fail6("resource_limit", "Too many registered permission conversations");
-      const requestIds = /* @__PURE__ */ new Set();
-      release = client.addRequestLifecycleListener((event) => {
-        if (event.type === "started" && event.method === "thread/settings/update" && event.params?.threadId === id) requestIds.add(event.id);
-        if (event.type === "completed" && event.method === "thread/settings/update" && requestIds.has(event.id) && event.error == null && Object.hasOwn(event, "result") && event.result?.applied !== false) confirmed = true;
-      });
-      registered.set(id, identity2);
-      dispatched = true;
-      await manager.updateThreadPermissions(id, settings);
-      check();
-      await manager.waitForPendingThreadSettingsUpdate(id);
-      check();
-      principalRecord(principal);
-      if (signal?.aborted) throw fail6("outcome_unknown", "Permission update may have applied after cancellation");
-      changed(id);
-      const after = await get({ threadId: id, hostId: "local" });
-      if (after.phase !== "ready" || !same2(after.selection, args.selection)) throw fail6("permissions_unconfirmed", "Native did not confirm the selected thread permission");
-      return Object.freeze({ threadId: id, hostId: "local", selection: clone(args.selection), status: confirmed ? "confirmed" : "staged", revision: after.revision });
-    } catch (error) {
-      if (dispatched) {
-        changed(id);
-        throw fail6("outcome_unknown", "Permission update may have applied; refresh its Native settings before retrying");
-      }
-      throw error;
-    } finally {
-      release?.();
-      pending.delete(id);
-    }
-  }
-  function intercept(message, dispatch) {
-    const request = message?.request, id = request?.params?.threadId, identity2 = registered.get(id);
-    if (!alive || message?.type !== "mcp-request" || message.hostId !== "local" || !identity2?.active || !["thread/resume", "turn/start"].includes(request?.method)) return dispatch(message);
-    const requestId = request.id;
-    if (request.method === "thread/resume" && pending.has(id)) {
-      if (client.requestPromises.has(requestId)) client.onError(requestId, fail6("permissions_busy", "A permission update is pending; resume after it settles"));
-      return;
-    }
-    Promise.resolve().then(async () => {
-      check();
-      await manager.waitForPendingThreadSettingsUpdate(id);
-      check();
-      if (!alive || !client.requestPromises.has(requestId)) throw fail6("permissions_request_retired", "Native permission request retired before dispatch");
-      if (!identity2.active || registered.get(id) !== identity2) throw fail6("permissions_owner_retired", "Permission owner retired before dispatch");
-      const settings = driver.canonical(id);
-      if (!settings || !policyFields.some((key) => settings[key] !== void 0)) throw fail6("permissions_unconfirmed", "Native canonical thread permissions are unavailable");
-      const params = { ...request.params };
-      for (const key of policyFields) if (key !== "runtimeWorkspaceRoots" || settings[key] !== void 0) delete params[key];
-      for (const key of policyFields) if (settings[key] !== void 0) params[key] = clone(settings[key]);
-      dispatch({ ...message, request: { ...request, params } });
-    }).catch((error) => {
-      if (client.requestPromises.has(requestId)) client.onError(requestId, error);
-    });
-  }
-  return { get, update, changed, observe, register, intercept, dispose() {
-    alive = false;
-    for (const record of [...owners.values()]) record.dispose();
-    registered.clear();
-    pending.clear();
-    current = null;
-    releaseNative?.();
-    driver?.dispose?.();
+    working.dispose?.();
   } };
 }
 
 // src/host-discovery.js
-var fail7 = (code, message) => Object.assign(new Error(message), { code });
+var fail5 = (code, message) => Object.assign(new Error(message), { code });
 function desktopDocument() {
   if (location.origin !== "app://-" || location.pathname !== "/index.html")
-    throw fail7("desktop_document_unsupported", "This is not a Desktop document");
+    throw fail5("desktop_document_unsupported", "This is not a Desktop document");
 }
 function hostFibers(limit = 2e4) {
   const root = document.getElementById("root");
@@ -1128,7 +875,7 @@ function hostFibers(limit = 2e4) {
   const container = key && root[key], current = container?.stateNode?.current ?? container;
   const rails = root ? [...root.querySelectorAll?.('nav[data-app-navigation-rail="true"]') ?? []] : [];
   const landmarks = rails.length ? rails : root ? [...root.querySelectorAll?.("nav") ?? []].filter((nav) => [...nav.querySelectorAll("button.sidebar-item")].some((button) => !button.closest("[data-codlet-native-navigation]"))) : [];
-  if (landmarks.length > 1) throw fail7("desktop_host_drift", "Native navigation ownership is ambiguous");
+  if (landmarks.length > 1) throw fail5("desktop_host_drift", "Native navigation ownership is ambiguous");
   if (landmarks.length === 1) {
     const landmark = landmarks[0], attachedKey = Object.keys(landmark).find((key2) => key2.startsWith("__reactFiber$"));
     const attached = attachedKey && landmark[attachedKey];
@@ -1137,13 +884,13 @@ function hostFibers(limit = 2e4) {
       const chain = currentAncestry(start, current);
       if (chain) return chain;
     }
-    throw fail7("desktop_host_pending", "Waiting for the current native navigation tree");
+    throw fail5("desktop_host_pending", "Waiting for the current native navigation tree");
   }
   const pending = [current], seen = /* @__PURE__ */ new Set();
   while (pending.length) {
     const fiber = pending.pop();
     if (!fiber || seen.has(fiber)) continue;
-    if (seen.size >= limit) throw fail7("desktop_host_drift", "Desktop tree exceeds the discovery limit");
+    if (seen.size >= limit) throw fail5("desktop_host_drift", "Desktop tree exceeds the discovery limit");
     seen.add(fiber);
     if (fiber.sibling) pending.push(fiber.sibling);
     if (fiber.child) pending.push(fiber.child);
@@ -1200,8 +947,8 @@ function createScopeLocator(token, fibers = hostFibers()) {
     return token && node2?.token === token && node2?.store && node2.familyBindings instanceof Map;
   });
   const nodes = new Set(owners.map((fiber) => fiber.memoizedProps.value.get(token.id)));
-  if (nodes.size > 1) throw fail7("desktop_scope_ambiguous", "Desktop AppScope has multiple owners");
-  if (!owners.length) throw fail7("desktop_scope_missing", "Desktop AppScope is not mounted; reload the adapter after Desktop is ready");
+  if (nodes.size > 1) throw fail5("desktop_scope_ambiguous", "Desktop AppScope has multiple owners");
+  if (!owners.length) throw fail5("desktop_scope_missing", "Desktop AppScope is not mounted; reload the adapter after Desktop is ready");
   const depth = (fiber) => {
     const seen = /* @__PURE__ */ new Set();
     while (fiber && !seen.has(fiber) && seen.size < 256) {
@@ -1214,24 +961,24 @@ function createScopeLocator(token, fibers = hostFibers()) {
   const node = [...nodes][0];
   return () => {
     if (document.getElementById("root") !== root || root[key] !== container)
-      throw fail7("desktop_scope_missing", "Desktop AppScope root was replaced");
+      throw fail5("desktop_scope_missing", "Desktop AppScope root was replaced");
     const current = container?.stateNode?.current ?? container;
     for (const owner of owners) for (const fiber of [owner, owner.alternate]) {
       if (!currentAncestry(fiber, current)) continue;
       const chain = fiber.memoizedProps?.value, present = chain instanceof Map && chain.get(token.id);
       if (present?.token !== token) continue;
-      if (present !== node) throw fail7("desktop_connection_replaced", "Desktop AppScope was replaced");
+      if (present !== node) throw fail5("desktop_connection_replaced", "Desktop AppScope was replaced");
       return { chain, node };
     }
-    throw fail7("desktop_scope_missing", "Desktop AppScope is no longer mounted");
+    throw fail5("desktop_scope_missing", "Desktop AppScope is no longer mounted");
   };
 }
 function loadedAsset(role) {
   desktopDocument();
-  if (!["shared", "initial"].includes(role)) throw fail7("desktop_asset_invalid", "Unknown native module role");
+  if (!["shared", "initial"].includes(role)) throw fail5("desktop_asset_invalid", "Unknown native module role");
   const pattern = new RegExp("^app://-/assets/app-" + role + "-[A-Za-z0-9_-]+\\.js$");
   const candidates = [...new Set(Array.from(document.querySelectorAll('link[rel="modulepreload"]'), (item) => item.href).filter((url) => pattern.test(url)))];
-  if (candidates.length !== 1) throw fail7(candidates.length ? "desktop_asset_ambiguous" : "ui_host_pending", `A unique loaded Desktop ${role} module is required`);
+  if (candidates.length !== 1) throw fail5(candidates.length ? "desktop_asset_ambiguous" : "ui_host_pending", `A unique loaded Desktop ${role} module is required`);
   return candidates[0];
 }
 function localConnection() {
@@ -1245,11 +992,11 @@ function localConnection() {
     for (const node of chain.values()) {
       if (!node?.token || chain.get(node.token.id) !== node || !(node.familyBindings instanceof Map) || nodes.has(node)) continue;
       nodes.add(node);
-      if (nodes.size > 256 || (metadataEntries += node.familyBindings.size) > 32768) throw fail7("desktop_scope_drift", "Desktop scope exceeds the discovery limit");
+      if (nodes.size > 256 || (metadataEntries += node.familyBindings.size) > 32768) throw fail5("desktop_scope_drift", "Desktop scope exceeds the discovery limit");
       const bound = [];
       for (const [family, bindings] of node.familyBindings) {
         if (family?.scope !== node.token || typeof family.read !== "function" || !(bindings instanceof Map) || !bindings.has("local")) continue;
-        if (++localReads > 512) throw fail7("desktop_scope_drift", "Desktop local bindings exceed the discovery limit");
+        if (++localReads > 512) throw fail5("desktop_scope_drift", "Desktop local bindings exceed the discovery limit");
         const value = family.read(node, chain, "local");
         bound.push({ family, value });
       }
@@ -1260,18 +1007,18 @@ function localConnection() {
         if (clients.length !== 1) continue;
         const previous = matches.get(manager);
         if (previous && (previous.node !== node || previous.clientFamily !== clients[0].family))
-          throw fail7("desktop_scope_ambiguous", "Desktop connection has multiple owners");
+          throw fail5("desktop_scope_ambiguous", "Desktop connection has multiple owners");
         matches.set(manager, { node, chain, managerFamily, clientFamily: clients[0].family, manager, client });
       }
     }
   }
-  if (matches.size !== 1) throw fail7(matches.size ? "desktop_scope_ambiguous" : "desktop_connection_not_ready", "A unique existing local Desktop connection is required");
+  if (matches.size !== 1) throw fail5(matches.size ? "desktop_scope_ambiguous" : "desktop_connection_not_ready", "A unique existing local Desktop connection is required");
   const connection = [...matches.values()][0], locate = createScopeLocator(connection.node.token, fibers);
   connection.check = () => {
     desktopDocument();
     const { node, chain } = locate(), { managerFamily, clientFamily, manager, client } = connection;
     if (!node.familyBindings.get(managerFamily)?.has("local") || !node.familyBindings.get(clientFamily)?.has("local") || managerFamily.read(node, chain, "local") !== manager || clientFamily.read(node, chain, "local") !== client || manager.getHostId() !== "local" || manager.requestClient !== client)
-      throw fail7("desktop_connection_replaced", "The existing local Desktop connection was replaced");
+      throw fail5("desktop_connection_replaced", "The existing local Desktop connection was replaced");
     connection.chain = chain;
     return connection;
   };
@@ -1294,8 +1041,383 @@ function componentSource(value) {
 function uniqueExport(module2, predicate, role, optional2 = false) {
   const values = [...new Set(Object.values(module2).filter(predicate))];
   if (!values.length && optional2) return void 0;
-  if (values.length !== 1) throw fail7("desktop_contract_drift", `A unique native ${role} is required (found ${values.length})`);
+  if (values.length !== 1) throw fail5("desktop_contract_drift", `A unique native ${role} is required (found ${values.length})`);
   return values[0];
+}
+
+// src/desktop/native-working.js
+function mountedWorkingScope(connection) {
+  const { node } = connection;
+  for (const fiber of hostFibers()) for (let hook = fiber.memoizedState, count = 0; hook && count++ < 128; hook = hook.next) {
+    const value = hook.memoizedState?.current;
+    if (value?.scope === node.token && value.node === node && value.chain?.get(node.token.id) === node && typeof value.get === "function" && typeof value.watch === "function") return value;
+  }
+  throw Error("Native Working AppScope facade is not mounted");
+}
+var WORKING_PROFILE = Object.freeze({
+  initial: "app-initial-b8e1c8014bb4.js",
+  shared: "app-shared-737655e1fb23.js",
+  response: "vfn",
+  pending: "nfn",
+  publishing: "AW"
+});
+function nativeWorkingState(response, pending, publishing) {
+  if (!["loading", "idle", "error"].includes(response) || typeof publishing !== "boolean" || pending !== null && (!pending || !["input", "approval"].includes(pending.kind) || typeof pending.blocking !== "boolean")) return null;
+  if (publishing) return true;
+  if (response !== "loading") return false;
+  return pending?.blocking !== true;
+}
+async function loadNativeWorking({ load = (url) => import(url), connect = localConnection, scope = mountedWorkingScope, asset = loadedAsset } = {}) {
+  const initialUrl = asset("initial"), sharedUrl = asset("shared");
+  if (initialUrl !== `app://-/assets/${WORKING_PROFILE.initial}` || sharedUrl !== `app://-/assets/${WORKING_PROFILE.shared}`) throw Error("Native Working profile is not reviewed");
+  const [initial] = await Promise.all([load(initialUrl), load(sharedUrl)]), connection = connect(), facade = scope(connection);
+  const roles = { response: initial[WORKING_PROFILE.response], pending: initial[WORKING_PROFILE.pending], publishing: initial[WORKING_PROFILE.publishing] };
+  for (const role of Object.values(roles)) if (!role || role.scope !== connection.node.token || typeof role.read !== "function") throw Error("Native Working selector is unavailable");
+  if (!facade || facade.node !== connection.node || facade.scope !== connection.node.token || typeof facade.get !== "function" || typeof facade.watch !== "function") throw Error("Native Working AppScope facade is unavailable");
+  const check = () => {
+    connection.check?.();
+    if (asset("initial") !== initialUrl || asset("shared") !== sharedUrl || Object.entries(roles).some(([name, role]) => initial[WORKING_PROFILE[name]] !== role)) throw Error("Native Working profile changed");
+  };
+  const read = (id, get) => {
+    const key = { hostId: "local", conversationId: id };
+    return nativeWorkingState(get(roles.response, key), get(roles.pending, key), get(roles.publishing, key));
+  };
+  return { read(id) {
+    check();
+    return read(id, facade.get.bind(facade));
+  }, watch(id, listener) {
+    check();
+    return facade.watch(({ get }) => {
+      try {
+        check();
+        listener(read(id, get));
+      } catch {
+        listener(null);
+      }
+    });
+  } };
+}
+function createNativeWorking({ load = () => loadNativeWorking(), changed } = {}) {
+  let driver, preparing, disposed = false;
+  const values = /* @__PURE__ */ new Map(), subscriptions = /* @__PURE__ */ new Map();
+  function set(id, value, notify = true) {
+    const normalized = typeof value === "boolean" ? value : null, previous = values.get(id) ?? null;
+    values.set(id, normalized);
+    if (notify && previous !== normalized) changed?.(id);
+  }
+  async function prepare() {
+    if (disposed) return;
+    if (driver) return;
+    if (!preparing) preparing = Promise.resolve().then(load).then((value) => {
+      if (!disposed) driver = value;
+      else value.dispose?.();
+    }).catch(() => {
+    }).finally(() => {
+      preparing = null;
+    });
+    await preparing;
+  }
+  function read(id, thread) {
+    if (disposed || !driver) return null;
+    let current = null;
+    try {
+      current = driver.read(id);
+    } catch {
+    }
+    set(id, current, false);
+    try {
+      if (!subscriptions.has(id)) {
+        subscriptions.set(id, null);
+        const release = driver.watch(id, (value) => {
+          if (!disposed && subscriptions.has(id)) set(id, value);
+        });
+        if (typeof release !== "function") throw Error("Native Working watch did not return cleanup");
+        subscriptions.set(id, release);
+      }
+      return values.get(id) ?? null;
+    } catch {
+      subscriptions.get(id)?.();
+      subscriptions.delete(id);
+      values.set(id, null);
+      return null;
+    }
+  }
+  return { prepare, read, remove(id) {
+    subscriptions.get(id)?.();
+    subscriptions.delete(id);
+    values.delete(id);
+  }, dispose() {
+    disposed = true;
+    for (const release of subscriptions.values()) release?.();
+    subscriptions.clear();
+    values.clear();
+    driver?.dispose?.();
+  } };
+}
+
+// src/desktop/thread-navigation.js
+var fail6 = (code, message) => Object.assign(new Error(message), { code });
+function createThreadOpener({ manager, selection, navigation, request, beforeNavigate }) {
+  let opening = false;
+  return async function openThread(args, signal) {
+    if (!args || typeof args !== "object" || Array.isArray(args) || Object.keys(args).some((key) => key !== "threadId")) throw fail6("invalid_argument", "Invalid task navigation arguments");
+    const threadId = args.threadId;
+    if (typeof threadId !== "string" || !/^[a-zA-Z0-9_-]{1,256}$/.test(threadId)) throw fail6("invalid_argument", "threadId must be a local task identity");
+    const before = selection();
+    if (signal?.aborted) throw fail6("invocation_cancelled", "Task navigation was cancelled before dispatch");
+    if (before.threadId === threadId) return { ...before, status: before.resumeState === "resumed" ? "opened" : "opening", alreadySelected: true };
+    if (opening) throw fail6("desktop_navigation_busy", "Another task open request is still being validated");
+    opening = true;
+    try {
+      const nav = navigation(), stamp = nav.stamp();
+      const cached = manager.getConversation(threadId);
+      if (cached?.id !== threadId || cached.hostId != null && cached.hostId !== "local") {
+        const metadata = await request("thread/read", { threadId, includeTurns: false }, signal);
+        if (metadata?.thread?.id !== threadId) throw fail6("desktop_navigation_unavailable", "Desktop did not confirm the requested task identity");
+      }
+      if (signal?.aborted) throw fail6("invocation_cancelled", "Task navigation was cancelled during validation");
+      selection();
+      if (nav.stamp() !== stamp) throw fail6("desktop_navigation_superseded", "The user navigated while this task was being checked");
+      if (signal?.aborted) throw fail6("invocation_cancelled", "Task navigation was cancelled before routing");
+      beforeNavigate?.();
+      nav.open(threadId);
+      const current = selection();
+      if (current.threadId !== threadId) throw fail6("desktop_navigation_superseded", "Desktop selected a different task during navigation");
+      return { ...current, status: current.resumeState === "resumed" ? "opened" : "opening", alreadySelected: false };
+    } finally {
+      opening = false;
+    }
+  };
+}
+
+// src/native-navigation.js
+var bridges = /* @__PURE__ */ new WeakMap();
+var subscribable = /* @__PURE__ */ new WeakSet();
+function reviewedNavigator(navigators, contexts) {
+  if (navigators.size !== 1) return null;
+  const navigator = [...navigators][0];
+  if (typeof navigator?.location?.pathname === "string" && ["push", "replace", "listen"].every((name) => typeof navigator[name] === "function")) return navigator;
+  const matches = [...contexts].filter((value) => value.navigator === navigator && value.router);
+  const routers = new Set(matches.map((value) => value.router));
+  if (routers.size !== 1) return null;
+  const router = [...routers][0];
+  if (typeof router.state?.location?.pathname !== "string" || typeof router.navigate !== "function" || typeof router.subscribe !== "function" || !Array.isArray(router.routes) || router.routes.length !== 1 || router.routes[0].path !== "*") return null;
+  const existing = bridges.get(router);
+  if (existing) return existing.navigator === navigator && existing.navigate === router.navigate && existing.subscribe === router.subscribe ? existing.bridge : null;
+  const navigate = router.navigate, subscribe = router.subscribe;
+  const bridge = {
+    get location() {
+      return router.state.location;
+    },
+    push(to, state) {
+      return navigate.call(router, to, { state });
+    },
+    replace(to, state) {
+      return navigate.call(router, to, { replace: true, state });
+    },
+    go(delta) {
+      return navigate.call(router, delta);
+    },
+    listen(listener) {
+      let location2 = router.state.location;
+      return subscribe.call(router, (state) => {
+        if (state.location === location2) return;
+        location2 = state.location;
+        listener({ location: location2, action: state.historyAction });
+      });
+    }
+  };
+  bridges.set(router, { navigator, navigate, subscribe, bridge });
+  subscribable.add(bridge);
+  return bridge;
+}
+
+// src/desktop/permissions.js
+var fail7 = (code, message) => Object.assign(new Error(message), { code });
+var policyFields = ["approvalPolicy", "approvalsReviewer", "sandboxPolicy", "permissions", "runtimeWorkspaceRoots"];
+var same2 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+var clone = (value) => JSON.parse(JSON.stringify(value));
+var ownerKey = (value) => `${value.pluginId}:${value.generation}`;
+function createPermissions({ manager, client, check, selection, load, emit }) {
+  let driver, preparing, alive = true, revision = 0, current, releaseNative;
+  const owners = /* @__PURE__ */ new Map(), registered = /* @__PURE__ */ new Map(), pending = /* @__PURE__ */ new Set();
+  const nativeStamp = (id) => {
+    const thread = manager.getConversation(id), settings = thread?.latestThreadSettings;
+    return [...policyFields.map((key) => settings?.[key]), settings?.activePermissionProfile, settings?.model, thread?.latestModel];
+  };
+  const ensure = () => preparing ??= Promise.resolve().then(load).then((value) => {
+    if (!alive) throw fail7("adapter_deactivated", "Permission provider retired");
+    if (!value || typeof value.read !== "function" || typeof value.convert !== "function" || typeof value.canonical !== "function" || value.sendPathVerified !== true)
+      throw fail7("permissions_unsupported", "Authoritative Native permission mapping and submission semantics are required");
+    driver = value;
+    releaseNative = value.subscribe?.((id) => changed(id));
+    return value;
+  });
+  function validate(args, update2 = false) {
+    if (!args || typeof args !== "object" || Array.isArray(args) || Object.keys(args).some((key) => !(update2 ? ["threadId", "hostId", "selection", "expectedRevision", "confirmed"] : ["threadId", "hostId"]).includes(key)) || typeof args.threadId !== "string" || !/^[\w-]{1,256}$/.test(args.threadId) || (args.hostId ?? "local") !== "local")
+      throw fail7("invalid_argument", "Invalid permission conversation");
+    if (update2 && (!Number.isSafeInteger(args.expectedRevision) || args.expectedRevision < 0 || args.confirmed !== void 0 && typeof args.confirmed !== "boolean"))
+      throw fail7("invalid_argument", "A permission revision and valid confirmation are required");
+    check();
+    if (!alive) throw fail7("adapter_deactivated", "Permission provider retired");
+    if (selection().threadId !== args.threadId) throw fail7("permissions_not_selected", "Permissions require the current confirmed Native conversation");
+    return args.threadId;
+  }
+  function register(ctx) {
+    check();
+    if (!alive || ctx?.world !== "main" || typeof ctx.onDeactivate !== "function" || typeof ctx.pluginId !== "string" || !Number.isSafeInteger(ctx.generation))
+      throw fail7("invalid_owner", "Permission registration requires the live authenticated main-world context");
+    const key = ownerKey(ctx);
+    if (owners.has(key)) throw fail7("duplicate_registration", "Permission owner is already registered");
+    if (owners.size >= 32) throw fail7("resource_limit", "Too many permission owners");
+    const record = { active: true };
+    let release;
+    const dispose = () => {
+      if (!record.active) return;
+      record.active = false;
+      owners.delete(key);
+      for (const [id, identity2] of registered) if (identity2 === record) {
+        registered.delete(id);
+        changed(id);
+      }
+      release?.();
+    };
+    owners.set(key, record);
+    try {
+      release = ctx.onDeactivate(dispose);
+      if (!record.active) throw fail7("invalid_owner", "Permission owner already retired");
+    } catch (error) {
+      dispose();
+      throw error;
+    }
+    record.dispose = dispose;
+    return dispose;
+  }
+  function principalRecord(principal) {
+    const record = principal && typeof principal.pluginId === "string" && Number.isSafeInteger(principal.generation) && owners.get(ownerKey(principal));
+    if (!record?.active) throw fail7("invalid_owner", "Permission update requires its authenticated live write owner");
+    return record;
+  }
+  function publish(id, value) {
+    const publicValue = { threadId: id, hostId: "local", phase: value.phase, selection: value.selection ?? null, source: value.source ?? "unknown", options: value.options ?? [], diagnostic: value.diagnostic ?? null };
+    const signature = JSON.stringify(publicValue);
+    if (current?.id === id && current.signature === signature) {
+      current.nativeStamp = nativeStamp(id);
+      return clone(current.snapshot);
+    }
+    const snapshot = { ...clone(publicValue), revision: ++revision };
+    current = { id, signature, snapshot, nativeStamp: nativeStamp(id) };
+    return clone(snapshot);
+  }
+  async function get(args) {
+    const id = validate(args);
+    let native;
+    try {
+      native = await ensure();
+    } catch (error) {
+      validate(args);
+      return publish(id, { phase: "unsupported", options: [], diagnostic: { code: "permissions_unsupported", message: error?.message ?? "Native permission mapping is unavailable" } });
+    }
+    validate(args);
+    const value = await native.read(id, { canonical: registered.get(id)?.active === true });
+    validate(args);
+    return publish(id, value);
+  }
+  function changed(id) {
+    if (!alive || current?.id !== id) return;
+    current = null;
+    emit({ type: "permissions.changed", threadId: id, hostId: "local", revision: ++revision });
+  }
+  function observe(id) {
+    if (current?.id !== id) return;
+    const next = nativeStamp(id);
+    if (next.some((value, index) => value !== current.nativeStamp[index])) changed(id);
+  }
+  async function update(args, signal, principal) {
+    const id = validate(args, true), identity2 = principalRecord(principal);
+    if (pending.has(id)) throw fail7("permissions_busy", "A permission update is pending");
+    if (signal?.aborted) throw fail7("invocation_cancelled", "Permission update cancelled before dispatch");
+    pending.add(id);
+    let dispatched = false, confirmed = false, release;
+    try {
+      const snapshot = await get({ threadId: id, hostId: "local" });
+      if (snapshot.revision !== args.expectedRevision) throw fail7("permissions_stale", "Permission options changed before dispatch");
+      const option = snapshot.options.find((option2) => option2.enabled && same2(option2.selection, args.selection));
+      if (snapshot.phase !== "ready" || !option) throw fail7("permissions_unavailable", "The selected permission is not currently allowed by Native");
+      if (option.requiresConfirmation && args.confirmed !== true) throw fail7("permissions_confirmation_required", "Native requires confirmation for this permission choice");
+      const settings = await driver.convert(id, args.selection);
+      validate(args, true);
+      principalRecord(principal);
+      const latest = await get({ threadId: id, hostId: "local" });
+      if (latest.revision !== args.expectedRevision) throw fail7("permissions_stale", "Native permissions changed during conversion");
+      if (signal?.aborted) throw fail7("invocation_cancelled", "Permission update cancelled before dispatch");
+      if (!settings || Object.keys(settings).some((key) => !policyFields.includes(key))) throw fail7("permissions_unsupported", "Native permission conversion produced unsupported fields");
+      if (typeof manager.updateThreadPermissions !== "function" || typeof manager.waitForPendingThreadSettingsUpdate !== "function" || typeof client.addRequestLifecycleListener !== "function")
+        throw fail7("permissions_unsupported", "Native per-thread permission lifecycle is unavailable");
+      if (manager.getConversation(id)?.resumeState !== "resumed" || manager.getStreamRole(id)?.role !== "owner")
+        throw fail7("permissions_not_owner", "Use the Native window owning this resumed conversation to change permissions");
+      if (!registered.has(id) && registered.size >= 256) throw fail7("resource_limit", "Too many registered permission conversations");
+      const requestIds = /* @__PURE__ */ new Set();
+      release = client.addRequestLifecycleListener((event) => {
+        if (event.type === "started" && event.method === "thread/settings/update" && event.params?.threadId === id) requestIds.add(event.id);
+        if (event.type === "completed" && event.method === "thread/settings/update" && requestIds.has(event.id) && event.error == null && Object.hasOwn(event, "result") && event.result?.applied !== false) confirmed = true;
+      });
+      registered.set(id, identity2);
+      dispatched = true;
+      await manager.updateThreadPermissions(id, settings);
+      check();
+      await manager.waitForPendingThreadSettingsUpdate(id);
+      check();
+      principalRecord(principal);
+      if (signal?.aborted) throw fail7("outcome_unknown", "Permission update may have applied after cancellation");
+      changed(id);
+      const after = await get({ threadId: id, hostId: "local" });
+      if (after.phase !== "ready" || !same2(after.selection, args.selection)) throw fail7("permissions_unconfirmed", "Native did not confirm the selected thread permission");
+      return Object.freeze({ threadId: id, hostId: "local", selection: clone(args.selection), status: confirmed ? "confirmed" : "staged", revision: after.revision });
+    } catch (error) {
+      if (dispatched) {
+        changed(id);
+        throw fail7("outcome_unknown", "Permission update may have applied; refresh its Native settings before retrying");
+      }
+      throw error;
+    } finally {
+      release?.();
+      pending.delete(id);
+    }
+  }
+  function intercept(message, dispatch) {
+    const request = message?.request, id = request?.params?.threadId, identity2 = registered.get(id);
+    if (!alive || message?.type !== "mcp-request" || message.hostId !== "local" || !identity2?.active || !["thread/resume", "turn/start"].includes(request?.method)) return dispatch(message);
+    const requestId = request.id;
+    if (request.method === "thread/resume" && pending.has(id)) {
+      if (client.requestPromises.has(requestId)) client.onError(requestId, fail7("permissions_busy", "A permission update is pending; resume after it settles"));
+      return;
+    }
+    Promise.resolve().then(async () => {
+      check();
+      await manager.waitForPendingThreadSettingsUpdate(id);
+      check();
+      if (!alive || !client.requestPromises.has(requestId)) throw fail7("permissions_request_retired", "Native permission request retired before dispatch");
+      if (!identity2.active || registered.get(id) !== identity2) throw fail7("permissions_owner_retired", "Permission owner retired before dispatch");
+      const settings = driver.canonical(id);
+      if (!settings || !policyFields.some((key) => settings[key] !== void 0)) throw fail7("permissions_unconfirmed", "Native canonical thread permissions are unavailable");
+      const params = { ...request.params };
+      for (const key of policyFields) if (key !== "runtimeWorkspaceRoots" || settings[key] !== void 0) delete params[key];
+      for (const key of policyFields) if (settings[key] !== void 0) params[key] = clone(settings[key]);
+      dispatch({ ...message, request: { ...request, params } });
+    }).catch((error) => {
+      if (client.requestPromises.has(requestId)) client.onError(requestId, error);
+    });
+  }
+  return { get, update, changed, observe, register, intercept, dispose() {
+    alive = false;
+    for (const record of [...owners.values()]) record.dispose();
+    registered.clear();
+    pending.clear();
+    current = null;
+    releaseNative?.();
+    driver?.dispose?.();
+  } };
 }
 
 // src/adapter/workspace-native-input.js
@@ -2063,7 +2185,10 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
   const instance = crypto.randomUUID();
   let alive = true, sequence = 0, eventBytes = 0, hookSequence = 0, reloadReason = null, unavailable = null;
   const hooks = /* @__PURE__ */ new Map(), pendingSubmits = /* @__PURE__ */ new Set(), events = [], waiters = /* @__PURE__ */ new Set(), listeners = /* @__PURE__ */ new Set(), cleanups = [], approvals = /* @__PURE__ */ new Map(), retiredApprovals = /* @__PURE__ */ new Map(), tickets = /* @__PURE__ */ new Map(), submissions = /* @__PURE__ */ new Map();
-  const loadedThreads = createLoadedThreads(manager, (value) => emit(value), instance);
+  const nativeWorking = createNativeWorking({ changed: (id) => {
+    if (alive) loadedThreads.refresh(id);
+  } });
+  const loadedThreads = createLoadedThreads(manager, (value) => emit(value), instance, nativeWorking);
   let navigation = null, navigationFailure = null, lastSelection = null;
   const check = () => {
     if (!alive) throw fail9("adapter_deactivated", "Desktop adapter was deactivated");
@@ -2360,6 +2485,8 @@ function createAdapter(connection, context, { compatibilityProvided = false } = 
       case "permissions.get":
         return permissions.get(args);
       case "threads.loaded":
+        await nativeWorking.prepare();
+        check();
         return loadedThreads.read(args);
       case "threads.configuration": {
         fields2(args, ["threadId"]);

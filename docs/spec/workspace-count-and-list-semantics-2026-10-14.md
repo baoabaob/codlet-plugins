@@ -26,6 +26,8 @@ Extracted, formatted read-only evidence is saved under `.artifacts/workspace-con
 
 Smallest proposed generic extension, not implemented here: an optional normalized `sidebarWorkingIndicator:boolean|null` on the loaded summary and its existing change event. Derive it from the supported Native sidebar selectors and normal row presentation; null means that profile/row mapping is not proved. This permits a spinner-only activity filter while preserving the current broader runtimeStatus meaning. It must cover blocking/nonblocking input, child work, publication, unread count and overrides; it should not guess from activeFlags, poll the whole UI or expose Native scopes. Additional acceptance would be needed before publishing that field.
 
+Subsequent interface decision: that proposal is superseded by implemented `working:boolean|null`, which expresses ongoing Native work and deliberately excludes unread/folded/virtualized presentation overrides. See [the current Working contract](workspace-working-contract-2026-10-14.md). The audit above continues to explain why the older runtimeStatus is not that contract.
+
 ## Public list pagination and search
 
 Current implementation: `frontend/src/desktop/entry.js`, read switch lines 527 and 541–545. The authenticated `codex.backend.read@1` method is:
