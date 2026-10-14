@@ -224,7 +224,7 @@ test('native thread references are bounded, reject remote/consumer/main nodes, a
   assert.equal(session.getSurface().available, false); assert.equal(session.getSnapshot().diagnostic.code, 'workspace_host_drift');
 });
 
-test('loaded summaries are bounded metadata only, update one affected thread and emit nothing for unchanged tokens', () => {
+test('loaded summaries contain metadata only, update one affected thread and emit nothing for unchanged tokens', () => {
   const threads = new Map(Array.from({ length: 105 }, (_, i) => ['thread-' + i, { id: 'thread-' + i, title: 'Task ' + i, cwd: 'X:/fixture', resumeState: 'resumed', turns: [{ status: i === 0 ? 'inProgress' : 'completed', items: [{ text: 'private history' }] }], requests: [] }]));
   let enumerations = 0; const events = [], manager = { getCachedConversations() { enumerations++; return [...threads.values()]; }, getConversation: id => threads.get(id) };
   const summaries = createLoadedThreads(manager, event => events.push(event), 'instance');
@@ -236,6 +236,19 @@ test('loaded summaries are bounded metadata only, update one affected thread and
   assert.throws(() => summaries.read({ cursor: first.cursor }), { code: 'invalid_argument' });
   threads.delete('thread-0'); summaries.refresh('thread-0'); assert.equal(events.at(-1).thread, null);
   assert.deepEqual(summaries.read({ threadId: 'missing' }), { threads: [], cursor: null }); assert.equal(enumerations, 1); summaries.dispose();
+});
+
+test('more than 4096 loaded summaries page completely and later additions and updates remain available',()=>{
+  const threads=new Map(Array.from({length:4205},(_,index)=>{const id='large-loaded-'+index;return[id,{id,title:'Task '+index,cwd:'X:/fixture',resumeState:'resumed',threadRuntimeStatus:{type:'idle'},requests:[]}];})),events=[];
+  let enumerations=0;const summaries=createLoadedThreads({getCachedConversations(){enumerations++;return[...threads.values()];},getConversation:id=>threads.get(id)},event=>events.push(event),'large-instance');
+  const readAll=()=>{const ids=[];let cursor;do{const page=summaries.read({limit:100,...(cursor?{cursor}:{})});assert.ok(page.threads.length<=100);ids.push(...page.threads.map(thread=>thread.id));cursor=page.cursor;}while(cursor);return ids;};
+  assert.deepEqual(readAll(),[...threads.keys()]);assert.equal(enumerations,1);
+  const id='large-added-after-initialization';threads.set(id,{id,title:'New cached task',resumeState:'resumed',threadRuntimeStatus:{type:'active',activeFlags:[]},requests:[]});summaries.refresh(id);
+  assert.equal(events.at(-1).thread.runtimeStatus,'running');assert.equal(summaries.read({threadId:id}).threads[0].id,id);
+  threads.get('large-loaded-4100').title='Updated beyond previous cap';summaries.refresh('large-loaded-4100');assert.equal(events.at(-1).thread.title,'Updated beyond previous cap');
+  assert.deepEqual(readAll(),[...threads.keys()]);assert.equal(enumerations,1);
+  assert.throws(()=>summaries.read({limit:101}),{code:'invalid_argument'});assert.throws(()=>summaries.read({cursor:'foreign-cursor'}),{code:'invalid_argument'});
+  threads.delete(id);summaries.refresh(id);assert.equal(events.at(-1).thread,null);assert.deepEqual(summaries.read({threadId:id}),{threads:[],cursor:null});summaries.dispose();
 });
 
 function native(f) {
@@ -462,6 +475,38 @@ test('transcripts share discovery/history/listener, preserve roots and scroll on
   handles[0].update({ threadId: 'thread-b' }); await tick(); await tick(); assert.equal(loads, 2); assert.equal(N.roots(), 12);
   owner.ctx.retire(); assert.equal(callbacks.size, 0); assert.equal(interests, 0); assert.equal(f.document.querySelectorAll('[data-codlet-workspace-owned]').length, 0);
   assert.throws(() => handles[0].getScrollPosition(), { code: 'workspace_retired' });
+});
+
+test('more than 32 transcripts per owner and Target render, reuse containers and retire independently',async t=>{
+  const f=fixture(t),N=native(f),first=f.connect('many-first'),second=f.connect('many-second'),callbacks=new Set(),active=new Map();let discoveries=0,loads=0;
+  N.manager={getConversation:()=>({resumeState:'resumed',turns:[{}]}),loadBackgroundThreadHistoryPage(){loads++;},addConversationStateCallback(fn){callbacks.add(fn);return()=>callbacks.delete(fn);}};
+  N.Scope=({children})=>children;N.composerScope={};N.composerValue=route=>({id:route.conversationId});N.ThreadSubscription=()=>null;
+  N.Content=({conversationId})=>{N.React.useEffect(()=>{active.set(conversationId,(active.get(conversationId)??0)+1);return()=>{const next=active.get(conversationId)-1;next?active.set(conversationId,next):active.delete(conversationId);};},[conversationId]);return N.React.createElement('div',{className:'thread-scroll-container'},N.React.createElement('div',{'data-thread-find-target':'conversation'},'body '+conversationId));};
+  f.discovery.transcript=async()=>{discoveries++;return N;};
+  const mount=(owner,count,prefix)=>Array.from({length:count},(_,index)=>{const box=f.document.createElement('div');f.document.body.append(box);const id=prefix+index;return{box,id,handle:owner.session.mountTranscript(box,{threadId:id})};});
+  const a=mount(first,48,'many-first-'),b=mount(second,40,'many-second-'),all=[...a,...b];await Promise.all(all.map(view=>view.handle.ready));await tick();
+  assert.equal(N.roots(),88);assert.equal(active.size,88);assert.equal(discoveries,1);assert.equal(callbacks.size,1);assert.equal(loads,0);
+  for(const view of all)assert.equal(view.box.querySelector('[data-thread-find-target]').textContent,'body '+view.id);
+  const bodies=all.map(view=>view.box.querySelector('[data-thread-find-target]'));
+  for(const view of all){view.handle.setScrollPosition({top:61,left:-5});view.handle.update({readOnly:false,trackReadState:true});}await tick();
+  for(let index=0;index<all.length;index++){assert.equal(all[index].box.querySelector('[data-thread-find-target]'),bodies[index]);assert.deepEqual(plain(all[index].handle.getScrollPosition()),{top:61,left:-5});}
+  assert.equal(N.roots(),88);assert.equal(active.size,88);
+  assert.throws(()=>first.session.mountTranscript(a[0].box,{threadId:'duplicate-thread'}),{code:'invalid_argument'});
+  const reused=a[32];reused.handle.dispose();assert.equal(reused.box.childNodes.length,0);reused.handle=first.session.mountTranscript(reused.box,{threadId:'many-reused-container'});await reused.handle.ready;
+  assert.equal(reused.box.querySelector('[data-thread-find-target]').textContent,'body many-reused-container');assert.equal(active.size,88);assert.equal(N.roots(),89);
+  first.ctx.retire();assert.equal(active.size,40);assert.equal(callbacks.size,1);for(const view of a)assert.equal(view.box.childNodes.length,0);assert.throws(()=>first.session.mountTranscript(a[0].box,{threadId:'after-owner-retirement'}),{code:'workspace_retired'});
+  for(const view of b)assert.equal(view.box.querySelector('[data-thread-find-target]'),bodies[48+b.indexOf(view)]);
+  second.ctx.retire();assert.equal(active.size,0);assert.equal(callbacks.size,0);for(const view of all)assert.equal(view.box.childNodes.length,0);assert.equal(f.document.querySelectorAll('[data-codlet-workspace-owned]').length,0);
+});
+
+test('retiring more than 32 pending transcripts cancels queued history without late roots',async t=>{
+  const f=fixture(t),N=native(f),owner=f.connect(),callbacks=new Set(),finishes=[];let loads=0;
+  N.manager={getConversation:()=>({resumeState:'needs_resume'}),loadBackgroundThreadHistoryPage(){loads++;return new Promise(resolve=>finishes.push(resolve));},loadRemainingTurnItems(){assert.fail('retired reads must not hydrate further items');},addConversationStateCallback(fn){callbacks.add(fn);return()=>callbacks.delete(fn);}};
+  f.discovery.transcript=async()=>N;
+  const views=Array.from({length:40},(_,index)=>{const box=f.document.createElement('div');f.document.body.append(box);return{box,handle:owner.session.mountTranscript(box,{threadId:'queued-many-'+index})};});
+  const settled=Promise.allSettled(views.map(view=>view.handle.ready));await tick();assert.equal(loads,2);assert.equal(N.roots(),0);
+  owner.ctx.retire();for(const finish of finishes)finish();const result=await settled;await tick();
+  assert.ok(result.every(value=>value.status==='rejected'&&value.reason.code==='workspace_retired'));assert.equal(loads,2);assert.equal(N.roots(),0);assert.equal(callbacks.size,0);for(const view of views)assert.equal(view.box.childNodes.length,0);
 });
 
 test('different cold read-only transcripts hydrate full turn items without resume, navigation or active stream interests',async t=>{

@@ -72,6 +72,7 @@ export interface WorkspaceSession {
   getSurface(): Readonly<WorkspaceSurface>; resolveThreadReference(element: Element): { threadId: string; hostId: 'local' } | null;
   createSlot(name: 'activity.before' | 'workspace.overlay'): { container: HTMLElement; dispose(): void };
   acquireSurface(options: SurfaceOptions): { update(options: SurfaceOptions): void; dispose(): void };
+  /** No per-session or per-Target transcript count cap; each accepted handle keeps its own lifecycle. */
   mountTranscript(container: HTMLElement, options: TranscriptOptions): TranscriptHandle;
   mountComposer(container: HTMLElement, options: ComposerOptions): ComposerHandle;
   registerShortcut(options: ShortcutOptions): ShortcutHandle; dispose(): void;

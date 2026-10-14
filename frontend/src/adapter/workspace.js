@@ -261,7 +261,7 @@ export function createWorkspace(context, { locate, baseNative, discovery: suppli
     const live = () => { check(); if (!record.alive) throw workspaceError('workspace_retired', 'Workspace consumer retired'); };
     function own(kind, limit, factory) {
       live(); const entries = record.handles.get(kind) ?? new Set(); record.handles.set(kind, entries);
-      if (entries.size >= limit) throw workspaceError('resource_limit', `Too many owned ${kind} handles`);
+      if (limit !== null && entries.size >= limit) throw workspaceError('resource_limit', `Too many owned ${kind} handles`);
       const value = factory();
       const descriptors = Object.getOwnPropertyDescriptors(value);
       descriptors.dispose = { enumerable: true, value() { if (!entries.delete(result)) return; value.dispose(); } };
@@ -295,7 +295,7 @@ export function createWorkspace(context, { locate, baseNative, discovery: suppli
         return { update(partial) { live(); if (!active) throw workspaceError('workspace_retired', 'Surface lease retired'); lease.options = surfaceOptions(partial, lease.options); control.reconcile(surface); },
           dispose() { active = false; control.leases.delete(lease); control.reconcile(surface); } };
       }); },
-      mountTranscript(container, options) { return own('transcript', 16, () => { if (host?.auxiliary) throw workspaceError('workspace_transcript_unavailable', 'Auxiliary windows have no transcripts'); return transcripts.mount(container, options, ownerKey); }); },
+      mountTranscript(container, options) { return own('transcript', null, () => { if (host?.auxiliary) throw workspaceError('workspace_transcript_unavailable', 'Auxiliary windows have no transcripts'); return transcripts.mount(container, options, ownerKey); }); },
       mountComposer(container, options) { return own('composer',16,()=>{if(host?.auxiliary)throw workspaceError('workspace_composer_unavailable','Auxiliary windows have no composers');return composers.mount(container,options,ownerKey,live);}); },
       createNavigation() { return own('navigation',1,()=>navigation.create(live)); },
       captureLocation() { return own('location',4,()=>locations.capture(live)); },

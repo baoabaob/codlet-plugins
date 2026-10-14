@@ -8105,7 +8105,6 @@ function createTranscripts({ document: document2, load, surface, check, report, 
   }
   function mount(container, options4, owned) {
     check();
-    if (records.size >= 32) throw workspaceError("resource_limit", "At most 32 native transcripts per Target are supported");
     if (!(container instanceof document2.defaultView.HTMLElement) || container.ownerDocument !== document2 || !container.isConnected || container.childNodes.length || containers.has(container) || container.matches("main,[data-codex-composer-root],.thread-scroll-container") || container.closest("[data-codex-composer-root]"))
       throw workspaceError("invalid_argument", "Transcript requires a connected empty consumer container");
     const record = { container, options: transcriptOptions(options4), disposed: false, epoch: 0, phase: null, root: null, viewId: metrics?.nextView() };
@@ -10866,7 +10865,7 @@ function createWorkspace(context, {
       live();
       const entries = record.handles.get(kind) ?? /* @__PURE__ */ new Set();
       record.handles.set(kind, entries);
-      if (entries.size >= limit) throw workspaceError("resource_limit", `Too many owned ${kind} handles`);
+      if (limit !== null && entries.size >= limit) throw workspaceError("resource_limit", `Too many owned ${kind} handles`);
       const value = factory();
       const descriptors = Object.getOwnPropertyDescriptors(value);
       descriptors.dispose = { enumerable: true, value() {
@@ -10956,7 +10955,7 @@ function createWorkspace(context, {
         });
       },
       mountTranscript(container, options4) {
-        return own("transcript", 16, () => {
+        return own("transcript", null, () => {
           if (host?.auxiliary) throw workspaceError("workspace_transcript_unavailable", "Auxiliary windows have no transcripts");
           return transcripts.mount(container, options4, ownerKey);
         });

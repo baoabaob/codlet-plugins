@@ -67,7 +67,6 @@ export function createTranscripts({ document, load, surface, check, report, isol
   }
   function mount(container, options, owned) {
     check();
-    if (records.size >= 32) throw workspaceError('resource_limit', 'At most 32 native transcripts per Target are supported');
     if (!(container instanceof document.defaultView.HTMLElement) || container.ownerDocument !== document || !container.isConnected || container.childNodes.length || containers.has(container) ||
         container.matches('main,[data-codex-composer-root],.thread-scroll-container') || container.closest('[data-codex-composer-root]'))
       throw workspaceError('invalid_argument', 'Transcript requires a connected empty consumer container');

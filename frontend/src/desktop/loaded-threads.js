@@ -26,14 +26,14 @@ export function createLoadedThreads(manager, emit, instance) {
     if (!supported || typeof threadId !== 'string') return;
     const next = loadedThreadSummary(manager.getConversation(threadId)), previous = summaries.get(threadId) ?? null;
     if (same(previous, next)) return;
-    if (next) { if (!summaries.has(threadId) && summaries.size >= 4096) throw fail('resource_limit', 'Too many cached-thread summaries'); summaries.set(threadId, next); } else summaries.delete(threadId);
+    if (next) summaries.set(threadId, next); else summaries.delete(threadId);
     if (notify) emit({ type: 'thread.summary.changed', threadId, thread: next });
   }
   function initialize() {
     if (initialized) return;
     if (!supported) throw fail('desktop_summary_unavailable', 'This Desktop manager has no reviewed cached-thread enumeration');
     const threads = manager.getCachedConversations();
-    if (!Array.isArray(threads) || threads.length > 4096) throw fail('desktop_summary_drift', 'The cached-thread collection exceeds the summary boundary');
+    if (!Array.isArray(threads)) throw fail('desktop_summary_drift', 'The cached-thread collection must be an array');
     for (const thread of threads) { const summary = loadedThreadSummary(thread); if (summary) summaries.set(summary.id, summary); }
     initialized = true;
   }
