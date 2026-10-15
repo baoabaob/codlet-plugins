@@ -1,6 +1,6 @@
-// Deterministic demo responses use checked-in client profile identifiers.
+// Deterministic SDK and legacy metadata examples are synthetic GUI fixtures.
 // They never call GitHub, install packages or alter a real runtime.
-import reviewedProfiles from '../compatibility/client-profiles.json' with {type:'json'};
+import {PREVIEW_LEGACY_PROFILE,PREVIEW_SDK} from './preview-fixtures.mjs';
 export function createPreviewRuntime() {
   const cap=(name,scope='target')=>({name,api:1,scope});
   const uiProvides=[cap('codex.ui.navigation.page'),cap('codex.ui.composer.action')];
@@ -20,17 +20,18 @@ export function createPreviewRuntime() {
     {repositoryId:5678,ownerId:4321,repositoryUrl:'https://github.com/example/codlet-notes',fullName:'example/codlet-notes',owner:'example',name:'GitHub Notes',description:'A note panel for your workspace.',topics:['codlet-plugin','tool','notes'],author:'Community Demo',latestRelease:{id:21,tag:'v3.0.0',name:'Notes 3.0',publishedAt:'2026-09-22T08:00:00Z',prerelease:false,assets:[{id:201,name:'notes.zip',size:12800,downloadCount:null}]},latestReleaseVerified:false,latestInstallablePublishedAt:null,totalDownloads:null},
   ];
   const manifest={id:'local.notes',name:'Local Notes',description:'Keep notes beside your project.',version:'1.2.0',permissions:['ui.dom'],renderer:{entry:'renderer.js',world:'isolated'},requires:[],provides:[]};
-  const clientProfiles=reviewedProfiles.builds.map(profile=>({appVersion:profile.appVersion,buildNumber:profile.buildNumber,appServerVersion:profile.appServerVersion}));
-  const marketMetadata=item=>({platforms:['windows-x86_64','windows-aarch64','macos-aarch64'],runtimeApi:1,author:item?.author??'Community Demo',adapters:{codex:item?.repositoryId===1379359689?{clientProfiles}:{testedBuilds:['26.915.31945/9922'],limitations:['Local preview fixture']}}});
+  const marketMetadata=item=>({runtimeApi:1,author:item?.author??'Community Demo',...(item?.repositoryId===1379359689?{sdk:structuredClone(PREVIEW_SDK)}:{platforms:['windows-x86_64'],adapters:{codex:{testedBuilds:[`${PREVIEW_LEGACY_PROFILE.appVersion}/${PREVIEW_LEGACY_PROFILE.buildNumber}`],limitations:['Synthetic legacy metadata preview; no Native verification']}}})});
   marketItems[0].declarationStatus='matched';
   marketItems[0].latestInstallablePublishedAt=marketItems[0].latestRelease.publishedAt;
   marketItems[0].totalDownloads=18;
   marketItems[0].declaredPackage={basis:'publisher-release-declaration',releaseId:101,publishedAt:marketItems[0].latestRelease.publishedAt,
     manifest:{...manifest,id:'codlet-gui',name:'Codlet GUI',description:'Manage Codlet plugins.',tags:['UI','Tool'],version:'0.2.0'},
     metadata:marketMetadata(marketItems[0]),asset:{id:1001,name:'codlet-gui.zip',bytes:12000,sha256:'c'.repeat(64),downloadCount:18},
-    deviceCompatibility:{platform:'windows-x86_64',runtimeApi:1,status:'compatible',basis:'author-declaration'}};
+    deviceCompatibility:{platform:'windows-x86_64',runtimeApi:1,status:'compatible',basis:'sdk-declaration'}};
   marketItems[1].declarationStatus='missing';marketItems[1].declaredPackage=null;
   const preview=()=>({schema:1,kind:'codlet.local-import-preview',path:'C:/Projects/Local Notes',contentDigest:'a'.repeat(64),registrationDigest:'b'.repeat(64),manifest:state.capabilityPreview?testManifest:manifest,ownership:'development-directory'});
+  // Legacy registration rows intentionally exercise backwards-compatible GUI
+  // review and dependency notices; they do not launch or install any provider.
   const plugins=()=>[
     {id:'codlet-gui',name:'Codlet GUI',tags:['UI','Tool'],description:'Manage plugins, imports, permissions, and Codlet updates.',i18n:{zh:{name:'Codlet 管理界面',description:'管理插件、导入、权限和 Codlet 更新。'}},version:'0.1.0',source:'bundled',ownership:'installer-seed',enabled:true},
     {id:'codex.ui.adapter',name:'Codex UI Adapter',tags:['UI','Adapter'],description:'Connect plugin pages to Codex navigation.',i18n:{zh:{name:'Codex 界面适配器',description:'将插件页面接入 Codex 主导航。'}},version:'0.1.0',source:'bundled',enabled:true,disableDependents:['codlet-gui']},

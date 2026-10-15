@@ -1,11 +1,19 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {createPreviewRuntime} from '../scripts/preview-runtime.mjs';
-import {uiFixture,tick,deferred} from './support/ui-fixture.mjs';
+import {uiFixture,tick,deferred,uiSource,pageSource,i18nSource} from './support/ui-fixture.mjs';
+import {createPreviewContext} from '../scripts/preview-context.mjs';
 import {displayPath} from '../frontend/src/codlet/paths.js';
 async function fixture(t,locale='en'){const demo=createPreviewRuntime(),f=uiFixture({locale,request:demo.request}),plugin=f.load('bundled/codlet/dist/renderer.js');t.after(()=>{plugin.deactivate();f.dispose();});await plugin.activate(f.context);return {...f,demo,plugin};}
 async function importPlugins(f){const add=f.control('Add');add.focus();await f.key(add,'ArrowDown');await f.click('Import plugin');}
 
+test('GUI fixture models absent browser-only selector states without recursive native fallback',{timeout:5000},t=>{
+  const f=uiFixture();t.after(()=>f.dispose());
+  const button=f.document.createElement('button'),details=f.document.createElement('details');f.document.body.append(button,details);
+  for(const selector of [':fullscreen',':modal',':popover-open',':open',':closed'])assert.equal(button.matches(selector),false);
+  assert.equal(details.matches('details:closed'),true);details.open=true;assert.equal(details.matches('details:open'),true);
+  button.disabled=true;assert.equal(button.matches(':disabled'),true);assert.equal(button.matches('button:not(:fullscreen):not(:modal)'),true);
+});
 test('installer channel enables the actual check and update-all controls without a managed GitHub registration',async t=>{
   const f=await fixture(t,'en');
   const list=await f.demo.request(null,'list',null);
@@ -30,6 +38,15 @@ test('a missing Core semantic facade reports the required upgrade without partia
   delete f.context.codex;t.after(()=>{plugin.deactivate();f.dispose();});
   await plugin.activate(f.context);assert.equal(f.document.querySelector('[data-codlet-panel]'),null);
   assert.equal(f.errors[0]?.code,'gui_ui_unavailable');assert.match(f.errors[0]?.message,/Core Codex SDK/);
+});
+test('browser preview context mounts the production GUI through actual Core page and UI bundles',async t=>{
+  const demo=createPreviewRuntime(),f=uiFixture({request:demo.request}),plugin=f.load('bundled/codlet/dist/renderer.js');
+  t.after(()=>{plugin.deactivate();f.dispose();});
+  const context=createPreviewContext({pluginId:'codlet-gui',generation:1,onDeactivate:f.context.onDeactivate,reportDiagnostic:f.context.reportDiagnostic,request:f.context.rpc.request,createUI:f.window.eval(uiSource),createPage:f.window.eval(pageSource),createI18n:f.window.eval(i18nSource)});
+  await plugin.activate(context);await f.open();
+  assert.ok(f.document.querySelector('section[data-codlet-panel]'));
+  assert.ok(f.control('Search plugins'));assert.equal(f.errors.length,0);
+  await f.leave();assert.equal(f.document.querySelector('[data-codlet-panel]'),null);
 });
 test('rows show names, adjacent versions and descriptions without normal state labels or row tooltips',async t=>{
   const f=await fixture(t,'zh');await f.open();const row=f.document.querySelector('[data-codlet-plugin="codex.ui.adapter"]');assert.match(row.textContent,/Codex 界面适配器0\.1\.0/);assert.match(row.textContent,/将插件页面接入 Codex 主导航/);assert.equal(row.hasAttribute('title'),false);assert.doesNotMatch(row.textContent,/running|运行正常|not active/i);

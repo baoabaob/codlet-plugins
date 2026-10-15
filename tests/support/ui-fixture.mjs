@@ -1,10 +1,14 @@
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import {resolve,isAbsolute} from 'node:path';
+import {fileURLToPath} from 'node:url';
 const require=createRequire(new URL('../../frontend/package.json',import.meta.url));
 const {JSDOM,VirtualConsole}=require('jsdom');
-export const uiSource=readFileSync(new URL('../../.core-sdk/bundled/runtime/ui.js',import.meta.url),'utf8');
-const i18nSource=readFileSync(new URL('../../.core-sdk/bundled/runtime/i18n.js',import.meta.url),'utf8');
-const pageSource=readFileSync(new URL('../../.core-sdk/bundled/runtime/page.js',import.meta.url),'utf8');
+const sdk=process.env.CODLET_CORE_SDK_ROOT??fileURLToPath(new URL('../../.core-sdk',import.meta.url));
+if(!isAbsolute(sdk))throw Error('CODLET_CORE_SDK_ROOT must be an absolute prepared snapshot');
+export const uiSource=readFileSync(resolve(sdk,'bundled/runtime/ui.js'),'utf8');
+export const i18nSource=readFileSync(resolve(sdk,'bundled/runtime/i18n.js'),'utf8');
+export const pageSource=readFileSync(resolve(sdk,'bundled/runtime/page.js'),'utf8');
 export const tick=async()=>{for(let i=0;i<4;i++)await new Promise(resolve=>setTimeout(resolve,0));};
 export const deferred=()=>{let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b;});return {promise,resolve,reject};};
 export function uiFixture({locale='en',request=async()=>({plugins:[]})}={}){
@@ -12,6 +16,17 @@ export function uiFixture({locale='en',request=async()=>({plugins:[]})}={}){
   const dom=new JSDOM('<!doctype html><html lang="'+locale+'"><head></head><body><nav></nav><main></main><input id="host-editor"></body></html>',{url:'http://localhost',runScripts:'outside-only',pretendToBeVisual:true,virtualConsole:vc});
   const {window}=dom,{document}=window;
   window.TextEncoder=TextEncoder;window.TextDecoder=TextDecoder;
+  // jsdom has no native fullscreen/modal/popover state. NWSAPI 2.2.27 falls
+  // back to Element.matches for these states, which re-enters NWSAPI forever.
+  // Model only that missing state; ordinary and composite selectors still use
+  // jsdom's selector engine, including its real disabled/focus/ownership checks.
+  const matches=window.Element.prototype.matches;
+  window.Element.prototype.matches=function(selector){
+    if(selector===':fullscreen')return document.fullscreenElement===this;
+    if(selector===':modal'||selector===':popover-open')return false;
+    if(selector===':open'||selector===':closed')return /^(details|dialog)$/.test(this.localName)&&this.open===(selector===':open');
+    return matches.call(this,selector);
+  };
   // jsdom does not implement the modern CSS cascade used by the official
   // package. Keep style contents for ownership assertions; visuals run in Chromium.
   const create=document.createElement.bind(document);document.createElement=(tag,...args)=>{const node=create(tag,...args);if(tag==='style')node.type='text/plain';return node;};

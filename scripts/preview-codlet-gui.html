@@ -21,21 +21,22 @@
 <label><input id="known-candidate" type="checkbox">已确认候选</label><label><input id="version-failure" type="checkbox">版本读取失败</label><label><input id="settings-failure" type="checkbox">设置失败</label><label><input id="long" type="checkbox">长列表</label><label><input id="failure" type="checkbox">列表失败</label><button id="unload">卸载界面</button><button id="reload">重载界面</button><span>状态由页面自动轮询读取（最多5秒）</span></footer>
 <script type="module">
 import {createPreviewRuntime} from './preview-runtime.mjs';
+import {createPreviewContext} from './preview-context.mjs';
 import {pluginPuzzlePath} from '../frontend/src/icons.js';
 const runtime=createPreviewRuntime(),params=new URLSearchParams(location.search),main=document.getElementById('main'),nav=document.querySelector('nav');
-const [uiSource,guiSource,i18nSource]=await Promise.all(['../bundled/runtime/ui.js','../bundled/codlet/dist/renderer.js','../bundled/runtime/i18n.js'].map(url=>fetch(url).then(r=>r.text())));
-const createUI=(0,eval)(uiSource),createI18n=(0,eval)(i18nSource),module={exports:{}};new Function('module','exports',guiSource)(module,module.exports);const gui=module.exports;
+const [uiSource,guiSource,i18nSource,pageSource]=await Promise.all(['../bundled/runtime/ui.js','../bundled/codlet/dist/renderer.js','../bundled/runtime/i18n.js','../bundled/runtime/page.js'].map(url=>fetch(url).then(r=>r.text())));
+const createUI=(0,eval)(uiSource),createI18n=(0,eval)(i18nSource),createPage=(0,eval)(pageSource),module={exports:{}};new Function('module','exports',guiSource)(module,module.exports);const gui=module.exports;
 const brand=new DOMParser().parseFromString(`<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="${pluginPuzzlePath}"/></svg>`,'image/svg+xml').documentElement;
 let generation=0,context;const cleanups=new Set();
 function show(id,token,withToolbar){main.replaceChildren();const header=document.getElementById('native-toolbar');header.replaceChildren();header.style.display=withToolbar?'flex':'none';if(token&&withToolbar){const slot=document.createElement('div');slot.dataset.codletPageToolbar=token;header.append(slot);}for(const button of nav.children)button.removeAttribute('aria-current');document.getElementById(id)?.setAttribute('aria-current','page');const page=document.createElement('div');page.style.height='100%';if(token)page.dataset.codletPageHost=token;else{page.className='preview-placeholder';page.textContent=id==='tasks'?'任务页面':'定时任务页面';}main.appendChild(page);}
 for(const id of ['tasks','scheduled'])document.getElementById(id).onclick=()=>show(id);
 function stop(){gui.deactivate();for(const fn of [...cleanups])fn();cleanups.clear();document.getElementById('codlet')?.remove();show('tasks');}
-async function activate(){stop();context={pluginId:'codlet-gui',generation:++generation,onDeactivate(fn){cleanups.add(fn);return()=>cleanups.delete(fn);},reportDiagnostic(e){document.getElementById('preview-error').textContent=e.message;},rpc:{request:async(cap,method,args)=>{
+async function activate(){stop();context=createPreviewContext({pluginId:'codlet-gui',generation:++generation,createUI,createPage,createI18n,onDeactivate(fn){cleanups.add(fn);return()=>cleanups.delete(fn);},reportDiagnostic(e){document.getElementById('preview-error').textContent=e.message;},request:async(cap,method,args)=>{
   if(cap.name==='codex.ui.navigation.page'&&method==='register'){
     const button=document.createElement('button');button.id='codlet';button.title='Codlet';button.setAttribute('aria-label','Codlet');button.className='preview-nav-button';button.append(document.importNode(brand,true),args.label);button.dataset.codletNavigationEntry='codlet-gui';button.onclick=()=>show('codlet',args.token,args.toolbar);nav.appendChild(button);return {api:1,token:args.token,path:'/codlet/codlet-gui'};
   }
   return runtime.request(cap,method,args);
-}}};context.i18n=createI18n(context);context.ui={api:2,create:()=>createUI(context)};await gui.activate(context);document.getElementById('codlet')?.click();}
+}});await gui.activate(context);document.getElementById('codlet')?.click();}
 document.getElementById('theme').value=params.get('theme')||'light';document.documentElement.dataset.theme=document.getElementById('theme').value;
 document.getElementById('language').value=params.get('lang')||'zh';document.documentElement.lang=document.getElementById('language').value;
 document.getElementById('theme').onchange=e=>document.documentElement.dataset.theme=e.target.value;

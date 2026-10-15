@@ -17,11 +17,13 @@ node tests/fixtures/runtime-compatibility/package.mjs ABSOLUTE_OUTPUT_DIRECTORY
 
 Build Core's opt-in `codlet-desktop-acceptance` binary and use the Core runner
 `scripts/desktop-acceptance.mjs` with a new absolute `root`, verified official
-`clientApp`, four-component `packageVersion`, `pluginsRoot`, and `testBinary`.
-Supply this absolute `consumer` path in `extraPlugins`. Generate the probe first:
+`clientApp`, four-component `packageVersion`, `guiPlugin` (the absolute built GUI
+directory), and `testBinary`. The old `pluginsRoot` setting remains a GUI-only
+fallback. Supply this absolute `consumer` path in `extraPlugins`. From the Core
+checkout, generate the retained explicit probe first:
 
 ```text
-node tests/fixtures/runtime-compatibility/build-probe.mjs ABSOLUTE_PROBE_JS
+node codex/tests/fixtures/runtime-compatibility/build-probe.mjs ABSOLUTE_PROBE_JS
 ```
 
 Pass that file as `probeScript`; configure `localApiKeyFixture: true`,
@@ -87,4 +89,5 @@ MSIX installation, native dialogs/clipboard/notifications/shortcuts and other
 platforms are not established by these synthetic checks. That historical record
 does not certify the v1 candidate. Current source/SDK and managed Host state tests
 are automated evidence; new Native acceptance must name its actual client build,
-fixture, protocol, report and lifecycle receipt.
+fixture, protocol, report and lifecycle receipt. The completed v1 candidate record
+is in [Core validation](https://github.com/baoabaob/codlet/blob/main/docs/releases/1.0.0-rc.1/validation.md).

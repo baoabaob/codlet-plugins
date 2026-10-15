@@ -21,7 +21,7 @@ async function readBounded(path,limit){
 }
 
 // A bounded, read-only audit. Signals are review hints, not proof that dynamic
-// JavaScript cannot escape an Adapter or a substitute for native acceptance.
+// JavaScript is isolated or a substitute for Native acceptance.
 export async function auditPortability(directory){
   const root=await realpath(resolve(directory)),issues=[],files=[];
   const manifestPath=resolve(root,'codlet.json');
@@ -35,10 +35,10 @@ export async function auditPortability(directory){
   const add=(code,path,explicit=false)=>{if(!issues.some(i=>i.code===code&&i.path===path))issues.push({code,path,explicit});};
   const requirements=[...(manifest.requires??[]),...(manifest.host?.requires??[])];
   if(requirements.some(r=>!r||typeof r.name!=='string'))throw Error('Invalid plugin requirements');
-  const hasAdapter=requirements.some(r=>typeof r.name==='string'&&r.name.startsWith('codex.'));
+  const hasSdkCapability=requirements.some(r=>/^(?:codex|codlet)\./.test(r.name));
   if(manifest.host)add('host-code-needs-review','codlet.json');
-  if((manifest.permissions??[]).some(p=>['ui.mainWorld','cdp.raw','host.process','host.process.spawn','host.system'].includes(p)))add('direct-access-permission','codlet.json');
-  if(!hasAdapter)add('adapter-dependency-not-declared','codlet.json');
+  if((manifest.permissions??[]).some(p=>['ui.mainWorld','ui.nativeDom','cdp.raw','host.raw','host.process','host.process.spawn'].includes(p)))add('direct-access-permission','codlet.json');
+  if(!hasSdkCapability)add('sdk-capability-not-declared','codlet.json');
   let total=0,entries=0;
   async function visit(folder){
     for await(const item of await opendir(folder)){
@@ -65,8 +65,8 @@ export async function auditPortability(directory){
   }
   await visit(root);
   if(!files.length)add('no-inspectable-source','codlet.json');
-  const status=issues.some(i=>i.explicit)?'explicit-platforms-required':issues.length?'review-required':'adapter-candidate';
-  return {schema:1,pluginId:manifest.id,status,verified:false,candidateForAdapterInheritance:status==='adapter-candidate',requiredCapabilities:requirements.map(r=>({name:r.name,api:r.api,scope:r.scope})),issues,files,limitations:'Static inspection only; resolve the actually bound Adapter capabilities and transitive platform intersection before inferring support'};
+  const status=issues.some(i=>i.explicit)?'explicit-platforms-required':issues.length?'review-required':'sdk-candidate';
+  return {schema:1,pluginId:manifest.id,status,verified:false,candidateForSdkCompatibility:status==='sdk-candidate',requiredCapabilities:requirements.map(r=>({name:r.name,api:r.api,scope:r.scope})),issues,files,limitations:'Static inspection only; SDK declarations and actual capability availability do not establish Native verification or isolation'};
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
   if(process.argv.length!==3)throw Error('Usage: node scripts/audit-portability.mjs PLUGIN_DIRECTORY');

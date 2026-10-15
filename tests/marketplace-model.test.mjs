@@ -37,7 +37,7 @@ test('read-only source audit distinguishes a portable candidate from direct OS a
   });
   await writeFile(join(directory,'codlet.json'),JSON.stringify({id:'dev.portable',renderer:{entry:'renderer.js'},permissions:[],requires:[{name:'codex.backend.read',api:1,scope:'target'}]}));
   await writeFile(join(directory,'renderer.js'),'module.exports={activate:context=>context.rpc.request({name:"codex.backend.read",api:1,scope:"target"},"get",null)}');
-  let result=await auditPortability(directory);assert.equal(result.status,'adapter-candidate');assert.equal(result.verified,false);
+  let result=await auditPortability(directory);assert.equal(result.status,'sdk-candidate');assert.equal(result.verified,false);assert.equal(result.candidateForSdkCompatibility,true);assert.equal(result.candidateForAdapterInheritance,undefined);
   await writeFile(join(directory,'renderer.js'),'const fs=require("node:fs"); module.exports={}');
   result=await auditPortability(directory);assert.equal(result.status,'explicit-platforms-required');
   await writeFile(join(directory,'renderer.js'),'import "node:fs";');

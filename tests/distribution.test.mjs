@@ -9,7 +9,7 @@ import {validateConfig,safePath,hash,blobHash,prepareDistribution} from '../scri
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const config=JSON.parse(await readFile(resolve(root,'plugins.json'),'utf8'));
 test('distribution destinations and discovery metadata are unique and cannot point at the development repository',()=>{
-  assert.equal(validateConfig(structuredClone(config)).plugins.length,3);
+  assert.equal(validateConfig(structuredClone(config)).plugins.length,1);
   for(const edit of [c=>c.plugins.push(c.plugins[0]),c=>c.plugins[0].repository=c.sourceRepository,c=>c.plugins[0].repository='someone-else/plugin',c=>c.plugins[0].topics=[],c=>c.plugins[0].dependencies=['missing'],c=>c.installerPlugins=['missing'],c=>c.installerPlugins.push(c.installerPlugins[0])]){
     const copy=structuredClone(config);edit(copy);assert.throws(()=>validateConfig(copy));
   }
@@ -47,10 +47,8 @@ test('each source snapshot contains its own installable bundle and build closure
       assert.equal(metadata.platforms,undefined);
       assert.equal(metadata.adapters,undefined);
       assert.equal(paths.includes('codlet-release.json'),false);
-      if(manifest.host){
-        for(const required of [manifest.host.entry,'frontend/build-host.mjs','host/desktop-launch.cjs','host/electron-main.cjs','host/backend-spawn.cjs','host/vendor/plaintext-source-client.cjs'])assert.ok(paths.includes(required),required);
-        assert((await readFile(resolve(folder,'frontend/build.mjs'),'utf8')).includes('buildDesktopHost'));
-      }
+      assert.equal(manifest.host,undefined);
+      assert.equal(paths.some(path=>path.startsWith('host/')||path.includes('build-host')),false);
       for(const required of ['frontend/build-plugin.mjs','frontend/build.mjs','frontend/package-lock.json','.codlet-distribution.json'])assert.ok(paths.includes(required));
       assert.ok(paths.every(p=>!p.includes('node_modules')&&!p.startsWith('.core-sdk')&&!p.startsWith('.git/')));
       const readme=await readFile(resolve(folder,'README.md'),'utf8');assert.ok(readme.includes(`https://github.com/${plugin.repository}`));

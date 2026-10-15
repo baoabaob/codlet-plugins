@@ -1,43 +1,42 @@
 # Codlet official plugins
 
-The source repository for ordinary first-party Codlet plugins and the complete functional test consumer. For the **1.0.0-rc.1** candidate, [Codlet Core](https://github.com/baoabaob/codlet) owns the imported UI/Desktop implementations and the `context.codex` SDK. The management GUI stays an ordinary independently packaged plugin. This candidate has not been publicly released.
+Source for ordinary first-party Codlet plugins and the complete functional acceptance consumer. [Codlet Core](https://github.com/baoabaob/codlet) owns the UI/Desktop implementations, Native profiles and `context.codex` SDK. The **1.0.0-rc.1** candidate remains local and unpublished.
 
 | Package ID | Distribution repository | Dependency |
 | --- | --- | --- |
-| `codlet-gui` | [GUI](https://github.com/baoabaob/codlet-gui) | Core Codex SDK |
+| `codlet-gui` | [GUI](https://github.com/baoabaob/codlet-gui) | Core SDK |
 
-The legacy UI/Desktop Adapter sources, profiles and regression fixtures remain here for provenance and old releases. They are excluded from new package/distribution output; maintained implementation changes belong under Core's `codex/`. Existing Adapter registrations and data are preserved by Core without running duplicate providers. The Core-provided runtime skill and CLI remain usable without the GUI.
+Develop the GUI here. The separate GUI repository is a reproducible distribution output. The former Adapter sources, Native tools and duplicated types have been removed from this working tree; their maintained copies and [historical records](https://github.com/baoabaob/codlet/blob/main/docs/history/adapters/README.md) are in Core. Old Adapter tags and Release downloads remain unchanged. No separate Adapter installation is required for Core v1.
 
 Build and package with Node 24 and the locked npm dependencies:
 
 ```text
 npm ci --prefix frontend
-node scripts/prepare-core-sdk.mjs ABSOLUTE_CORE_CHECKOUT
 node frontend/build.mjs
 node scripts/package.mjs --output .artifacts/gui-v1
 ```
 
-Run the plugin suite against the SDK built from the matching Core checkout:
+For SDK-dependent tests, first build the matching Core checkout, then prepare an explicit snapshot:
 
 ```text
+node scripts/prepare-core-sdk.mjs ABSOLUTE_CORE_CHECKOUT
 node --test tests/*.test.mjs
 ```
 
-The selected fresh output contains the GUI ZIP and a catalog with file hashes. Existing output is never overwritten. Packaging does not execute plugins or publish a release. Core installers offer only the optional GUI. The complete migrated [functional test plugin](tests/fixtures/runtime-compatibility/consumer/README.md) has a separate fixture packaging command and never becomes an installer default.
-`prepare-core-sdk.mjs` also refreshes the Desktop source client used by retained legacy regression fixtures. This is not a second maintained v1 Adapter release.
+The snapshot contains Core UI, page and i18n bundles in ignored `.core-sdk/`. An optional second absolute argument selects another fresh snapshot directory; set `CODLET_CORE_SDK_ROOT` to use it in tests and previews. GUI build/package does not need a sibling Core checkout.
+
+The selected fresh package output contains the GUI ZIP and a catalog with hashes. Existing output is never overwritten. Core installers offer only the optional GUI. The [complete functional test consumer](tests/fixtures/runtime-compatibility/consumer/README.md) has a separate packaging command and is never an installer default.
 
 ## Development and contracts
 
-- [Documentation map](docs/README.md): current contracts and ownership.
-- [Contributing and testing](docs/development.md): clean checkout setup, fixtures, previews and validation.
-- [Distribution](docs/publishing.md): prepare and review independent packages; publishing is a separate explicit operation.
-- [Known issues](docs/known-issues.md): renderer environment retention and acceptance limits.
-- [Contributing](CONTRIBUTING.md) and [security reporting](SECURITY.md).
+- [Documentation map](docs/README.md), [development and tests](docs/development.md), [publishing](docs/publishing.md).
+- [Known limits](docs/known-issues.md), [contributing](CONTRIBUTING.md), [security](SECURITY.md).
+- [Core repository ownership](https://github.com/baoabaob/codlet/blob/main/docs/repository-layout.md) and [SDK contracts](https://github.com/baoabaob/codlet/blob/main/docs/README.md).
 
-Edit plugins here, not in generated repositories. Add packages through `plugins.json`; change installer presets only as a separate product decision. Keep generated renderer bundles reproducible from their checked-in sources. Do not replace bytes under an existing release version.
+Add ordinary plugins through `plugins.json`; an installer preset is a separate product decision. Rebuild generated renderer bundles from their checked-in source. Never replace bytes under an existing release version.
 
-The [marketplace](docs/spec/marketplace.md) is integrated into the production GUI. It discovers public GitHub plugin repositories, shows matched publisher release declarations, and sends the selected ZIP through Core's package and permission review before installation. Search follows public repository names, descriptions and tags; missing or incomplete declarations leave compatibility and download statistics unknown. SDK compatibility, explicit author exclusions, runtime capability probes and actual Native verification are separate claims.
+The [marketplace](docs/spec/marketplace.md) is part of the production GUI. It discovers public GitHub plugin repositories and sends selected packages through Core review. SDK declarations, publisher exclusions, runtime capability probes and actual Native verification are separate claims.
 
 ## License
 
-Codlet official plugins are licensed under [Apache-2.0](LICENSE); see [NOTICE](NOTICE) for attribution. Third-party dependencies retain their own licenses and notices. This license choice does not require independently developed third-party Codlet plugins to use Apache-2.0.
+Codlet official plugins are licensed under [Apache-2.0](LICENSE); see [NOTICE](NOTICE). Third-party dependency licenses remain unchanged. Independently developed plugins need not use Apache-2.0.
