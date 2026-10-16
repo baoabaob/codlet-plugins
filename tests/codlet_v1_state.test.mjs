@@ -63,7 +63,7 @@ test('only pinned Core provider repositories disappear from the normal v1 market
   assert.deepEqual(manager.marketFiltered().map(item=>item.fullName),['community/custom-adapter']);manager.dispose();
 });
 
-test('current GUI review renders actual enforcement and keeps author evidence separate from SDK claims',()=>{
+test('GUI review keeps permission checks and shows only actionable system availability',()=>{
   const React=require('react'),{renderToStaticMarkup}=require('react-dom/server');
   const {createPermissionSummary}=viewModule('src/codlet/permissions-view.jsx');
   const Summary=createPermissionSummary({React,C:{Button:({children,...props})=>React.createElement('button',props,children)},I:{ChevronDown:()=>null},t:value=>value});
@@ -73,7 +73,9 @@ test('current GUI review renders actual enforcement and keeps author evidence se
   const {Compatibility}=createMarketplaceView({React,C:{},I:{},manager:{state:{locale:'en'}},t:value=>value});
   const metadata={runtimeApi:1,sdk:{api:1,capabilities:[{name:'codex.backend.read',api:1,scope:'target'}]},verification:[{kind:'automated',platform:'windows-x86_64',clientVersion:'fixture-only',status:'passed',evidence:'synthetic JSONL suite'}]};
   const compatibility=renderToStaticMarkup(React.createElement(Compatibility,{metadata,device:{platform:'windows-x86_64',status:'compatible',basis:'sdk-declaration'}}));
-  assert.match(compatibility,/SDK and capabilities/);assert.match(compatibility,/SDK contract declared/);assert.match(compatibility,/codex.backend.read@1/);assert.match(compatibility,/Author-supplied test evidence/);assert.match(compatibility,/does not certify/);assert.match(compatibility,/synthetic JSONL suite/);
+  assert.equal(compatibility,'');
+  const unavailable=renderToStaticMarkup(React.createElement(Compatibility,{metadata:{...metadata,platforms:['windows-x86_64']},status:'incompatible'}));
+  assert.match(unavailable,/Supported systems/);assert.match(unavailable,/Windows/);assert.match(unavailable,/Not available on this device/);
 });
 
 test('deferred update is shown as locally staged with separate activation scope and no install or restart action',()=>{

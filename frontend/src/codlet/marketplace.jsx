@@ -42,27 +42,14 @@ export function createMarketplaceView({React,C,I,manager,t,Copy,Back,PluginTags}
     const date=published&&Number.isFinite(Date.parse(published))?new Intl.DateTimeFormat(manager.state.locale==='zh'?'zh-CN':'en',{year:'numeric',month:'short',day:'numeric'}).format(new Date(published)):t('Date unknown');
     return <><time dateTime={published||undefined}>{t(item.preparedManifest?'Package Release':declared?'Publisher Release':'Release candidate')} · {date}</time><span>{formatDownloads(item.totalDownloads,manager.state.locale)}</span></>;
   }
-  function Compatibility({metadata,manifest,device,status,clientStatus,declared=false}){
-    const platforms=Array.isArray(metadata?.platforms)&&metadata.platforms.length?metadata.platforms.map(label).join(', '):t('Unknown (not declared)');
-    const current=device?.platform?label(device.platform):t('Unknown');
-    const verdict=status??device?.status??'unknown';
-    const adapters=metadata?.adapters,profiles=Array.isArray(adapters?.codex?.clientProfiles)?[...new Set(adapters.codex.clientProfiles.map(profile=>profile?.appVersion).filter(value=>typeof value==='string'&&value.length>0))]:[];
-    const builds=Array.isArray(adapters?.codex?.testedBuilds)?adapters.codex.testedBuilds.filter(value=>typeof value==='string'):[],limitations=Array.isArray(adapters?.codex?.limitations)?adapters.codex.limitations.filter(value=>typeof value==='string'):[];
-    const sdk=metadata?.sdk?.api===1,capabilities=metadata?.sdk?.capabilities??[...(manifest?.requires??[]),...(manifest?.host?.requires??[])],records=Array.isArray(metadata?.verification)?metadata.verification.filter(record=>record&&['passed','failed','notRun'].includes(record.status)):[];
-    return <section className="market-detail-section market-compatibility"><div className="market-compat-heading"><h2>{t('SDK and capabilities')}</h2><span className={verdict==='compatible'?'market-compatible':'market-platform-note market-unknown'}>{t(sdk&&verdict==='compatible'?'SDK contract declared':verdict==='compatible'?(declared?'Author declares this device compatible':'Package declares this device compatible'):verdict==='incompatible'?(declared?'Author declares this device incompatible':'Package declares this device incompatible'):'Compatibility unknown')}</span></div><dl>
-      <dt>{t('Declared Codlet SDK')}</dt><dd>{sdk?'API 1':t('Unknown (not declared)')}</dd>
-      <dt>{t('Package ABI')}</dt><dd>{metadata?.runtimeApi==null?t('Unknown (not declared)'):`API ${metadata.runtimeApi}`}</dd>
-      <dt>{t('Required capabilities (author declaration)')}</dt><dd>{capabilities.length?capabilities.map(capability=>`${capability.name}@${capability.api} [${capability.scope}]`).join(', '):t('None declared')}</dd>
-      <dt>{t('Current client')}</dt><dd>{clientStatus?.runningVersion||t('Unknown')}</dd>
-    </dl><p className="codlet-copy">{t('SDK compatibility describes the API contract. Core probes capability availability in the current client; this is separate from native test evidence.')}</p>
-      <section className="market-detail-section"><h3>{t('Author-supplied test evidence')}</h3><p className="codlet-copy">{t('These records are supplied by the package author. Package review does not certify their results.')}</p>{records.length?<ul>{records.map((record,index)=><li key={index}>{[t(record.kind==='native'?'Native check':'Automated check'),record.platform?label(record.platform):t('Platform not recorded'),record.clientVersion??t('Client version not recorded'),t(({passed:'Passed',failed:'Failed',notRun:'Not run'})[record.status]),record.evidence].filter(Boolean).join(' · ')}</li>)}</ul>:<p className="codlet-copy">{t('No test evidence declared')}</p>}</section>
-      <details><summary>{t('Author system and client exceptions')}</summary><dl>
-      <dt>{t('Declared systems')}</dt><dd>{platforms}</dd><dt>{t('Current device')}</dt><dd>{current}</dd>
-      {profiles.length>0&&<><dt>{t('Publisher-declared client versions')}</dt><dd>{profiles.join(', ')}</dd></>}
-      {builds.length>0&&<><dt>{t('Author-declared client builds')}</dt><dd>{builds.join(', ')}</dd></>}
-      {limitations.length>0&&<><dt>{t('Author-declared limitations')}</dt><dd>{limitations.join('; ')}</dd></>}
-      {adapters&&typeof adapters==='object'&&!Array.isArray(adapters)&&Object.keys(adapters).length>0&&<><dt>{t('Adapter declarations')}</dt><dd>{Object.keys(adapters).join(', ')}</dd></>}
-    </dl></details></section>;
+  function Compatibility({metadata,device,status}){
+    const platforms=Array.isArray(metadata?.platforms)?metadata.platforms.filter(value=>typeof value==='string').map(label):[];
+    const unavailable=(status??device?.status)==='incompatible';
+    if(!platforms.length&&!unavailable)return null;
+    return <section className="market-detail-section market-compatibility">
+      {!!platforms.length&&<><h2>{t('Supported systems')}</h2><p className="codlet-copy">{platforms.join(', ')}</p></>}
+      {unavailable&&<p className="codlet-copy" role="status">{t('Not available on this device')}</p>}
+    </section>;
   }
   function Action({item,s}){
     const installed=manager.marketInstalled(item),status=manager.marketKnownCompatibility(item),assets=marketAssets(item);
@@ -90,7 +77,7 @@ export function createMarketplaceView({React,C,I,manager,t,Copy,Back,PluginTags}
             {manifest?<PluginTags tags={declaredTags} show={showTags}/>:<PluginTags tags={topicTags} show={showTags} query={market.query} onSelect={tag=>manager.marketChangeQuery(insertTag(market.query,tag).query)}/>}
           </div>
           {(manifest?.description||item.description)&&<div className="codlet-plugin-description">{manifest?.description||item.description}</div>}
-          <div className="market-meta"><Origin item={item}/><Metrics item={item}/><span className="market-platform-note market-unknown"><I.InfoCircle/>{t(compatibility==='compatible'&&((item.preparedMetadata??declared?.metadata)?.sdk?.api===1)?'SDK contract declared':compatibility==='compatible'?(item.preparedManifest?'Package declares this device compatible':'Author declares this device compatible'):compatibility==='incompatible'?(item.preparedManifest?'Package declares this device incompatible':'Author declares this device incompatible'):declared||item.preparedManifest?'Compatibility unknown':'Systems unknown until package review')}</span></div>
+          <div className="market-meta"><Origin item={item}/><Metrics item={item}/>{compatibility==='incompatible'&&<span className="market-platform-note market-unknown"><I.InfoCircle/>{t('Not available on this device')}</span>}</div>
         </div><div className="codlet-plugin-actions"><C.Button color="secondary" variant="ghost" size="sm" aria-label={t(`Details for ${manifest?.name||item.name||item.fullName}`)} onClick={()=>manager.marketDetails(item)}>{t('Details')}</C.Button><Action item={item} s={s}/></div></article>;
       })}</div>}
       {market.hasMore&&<C.Button color="secondary" variant="ghost" size="sm" disabled={market.loading} loading={market.loading} onClick={()=>manager.marketLoadMore()}>{t('Load more')}</C.Button>}
