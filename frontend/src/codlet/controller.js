@@ -32,6 +32,7 @@ export class Manager {
       runtimeVersion:'', clientStatus:null, localManagement:null, githubAvailable:false, runtimeSkill:null, confirmation:null,createBusy:false,
       mode:'local', importOperation:'install', importPreviousPage:'plugins', target:null, path:'', url:'', catalog:null, release:'', asset:'',
       preview:null, importBusy:false, importStatus:'', importError:'', importWarning:null, importReviewError:'', grants:[], trusted:false, enableAfter:false,
+      installMode:null, installationComplete:null,
       details:null, detailsBusy:false, detailsError:'',
       update:null, updateBusy:false, updateUncertain:false, updateError:'', versionError:'',versionLoading:false,versionJump:0,
       officialUpdate:null,combinedConfirmation:null,
@@ -59,17 +60,14 @@ export class Manager {
   createPlugin(){return this.openSkillTask('create');}
   quickStart(){return this.openSkillTask('help');}
   reviewImport(){return this.openSkillTask('review',this.state.preview);}
-  uninstallWithCodex(){return this.openSkillTask('remove',this.state.details);}
-  removalRequiresCli(plugin){return !!plugin&&(plugin.id===this.context.pluginId||plugin.disableDependents?.includes(this.context.pluginId)===true);}
   async openSkillTask(mode,subject=null){
-    const page=mode==='review'?'import':mode==='remove'?'details':'plugins',activePage=this.state.page,errorKey=mode==='review'?'importReviewError':mode==='remove'?'detailsError':'operationError';
+    const page=mode==='review'?'import':'plugins',activePage=this.state.page,errorKey=mode==='review'?'importReviewError':'operationError';
     if(!this.available()||this.state.createBusy||(activePage!==page&&!(page==='plugins'&&activePage==='market')))return false;
-    if(mode==='review'&&(!this.state.importWarning||this.state.importWarning.preview!==subject)||mode==='remove'&&(!subject||this.state.detailsBusy||!this.removalRequiresCli(subject)))return false;
+    if(mode==='review'&&(!this.state.importWarning||this.state.importWarning.preview!==subject))return false;
     const sequence=this.sequence.page;
     this.set({createBusy:true,[errorKey]:''});
     try{
-      const selected=mode==='remove'?{...subject,name:this.messages.name(subject)}:subject;
-      const prompt=skillPrompt(this.state.runtimeSkill,this.state.locale,mode,selected);
+      const prompt=skillPrompt(this.state.runtimeSkill,this.state.locale,mode,subject);
       const reply=await this.context.codex.navigation.newTaskDraft({prompt});
       if(reply?.opened!==true||reply.submitted!==false)throw new Error('The new task could not be opened.');
       if(mode==='review'&&this.current('page',sequence,activePage))this.cancelImportWarning();
@@ -114,7 +112,7 @@ export class Manager {
     const batch=this.state.pluginInstall?.id;if(!batch)return;
     this.invalidateImport();const sequence=this.sequence.page;
     this.set({page:'import',mode:'github',target:plugin,importOperation:plugin.updateSource?.operation??'update',importBusy:true,catalog:null,release:'',asset:'',importStatus:'Loading update review...',importError:''});
-    try{const p=await this.rpc('pluginUpdateReview',{batchId:batch,pluginId:plugin.id});if(!this.current('page',sequence,'import'))return;this.validatePreview(p,true);this.set({preview:p,trusted:false,grants:[],enableAfter:p.existingEnabled===true,importStatus:p.changes?.restartRequired?'This update changes plugin entry shape. Apply it with the CLI while Codlet is stopped, then restart Codlet.':p.operation==='adopt'?'Review the first update from the installer package to its GitHub channel. Existing settings will be preserved.':'Review the changed permissions and dependencies before installing.'});}
+    try{const p=await this.rpc('pluginUpdateReview',{batchId:batch,pluginId:plugin.id});if(!this.current('page',sequence,'import'))return;this.validatePreview(p,true);this.set({preview:p,trusted:false,grants:[],enableAfter:p.existingEnabled===true,importStatus:p.changes?.restartRequired?'This version changes plugin entry types. Choose Replace to install it.':p.operation==='adopt'?'Review the first update from the installer package to its GitHub channel. Existing settings will be preserved.':'Review the changed permissions and dependencies before installing.'});}
     catch(error){if(this.current('page',sequence,'import'))this.set({importStatus:message(error)});}
     finally{if(this.current('page',sequence,'import'))this.set({importBusy:false});}
   }
@@ -142,6 +140,8 @@ export class Manager {
       if (!Array.isArray(reply?.plugins) || reply.plugins.some(p=>!p || typeof p.id!=='string' || !p.id) || new Set(reply.plugins.map(p=>p.id)).size!==reply.plugins.length) throw new Error('Plugin list unavailable');
       this.set({plugins:reply.plugins,listStale:false,localManagement:reply.localManagement??null,githubAvailable:reply.githubManagement?.available===true,deviceCompatibility:reply.deviceCompatibility??null,
         runtimeVersion:reply.runtimeVersion??'',runtimeSkill:reply.runtimeSkill??null});
+      const completed=reply.plugins.find(plugin=>plugin.importCompletion&&digest(plugin.importCompletion.contentDigest)&&typeof plugin.importCompletion.path==='string');
+      if(completed&&!this.state.installationComplete)this.set({installationComplete:{...completed.importCompletion,pluginId:completed.id,name:this.messages.name(completed),deleteSource:true,busy:false,error:''}});
     } catch(error) { if(this.current('list',sequence)) this.set({listStale:true,listError:'Plugin state could not be refreshed. Displayed values may be out of date.\n'+(error?.code==='rpc_timeout'?'Plugin list timed out. Refresh to try again.':message(error))}); }
     finally { if(this.current('list',sequence)) this.set({loading:false}); }
   }
@@ -255,9 +255,10 @@ export class Manager {
     finally{if(this.alive)this.set({folderBusy:null});}
   }
   setFilter(filter){if(['all','enabled','disabled'].includes(filter))this.set({filter});}
-  async mutate(pluginId, action, extra = {}, name) {
+  async mutate(pluginId, action, extra = {}, name, installation=null) {
     if (!this.available()) return;
     const expected={pluginId,action,name:name||this.messages.name(this.state.plugins.find(p=>p.id===pluginId)??{id:pluginId}),id:null,checking:false,deleteSource:!!extra.remove_source};
+    expected.installation=installation;
     this.pending=expected; this.set({operationError:'',operationStatus:`${expected.name}: preparing...`});
     try {
       const prepared=await this.rpc('prepare',{action,plugin_id:pluginId,...extra});
@@ -292,7 +293,8 @@ export class Manager {
         // that actionable explanation, suppress the audited successful receipt.
         const deletionWarning=success && expected.deleteSource && report.message && report.message!==
           'The plugin was unregistered and its confirmed source directory was deleted. Separate plugin data was preserved.' ? report.message : '';
-        return this.finishMutation(expected,success?deletionWarning:result?.error?.message||report?.message||'The action finished with an error. Refresh for the current state.');
+        const details=(report?.target_failures??[]).map(failure=>failure.error).filter(Boolean).join('\n');
+        return this.finishMutation(expected,success?deletionWarning:[result?.error?.message||report?.message||'The action finished with an error. Refresh for the current state.',details].filter(Boolean).join('\n'),success);
       }
       if(!['queued','running'].includes(reply.status)) {this.set({operationError:reply?.error||'The action was not confirmed. Refresh checks the same action without repeating it.'});return;}
       this.set({operationStatus:`${expected.name}: ${reply.status==='queued'?'waiting':'updating'}...`});
@@ -300,9 +302,10 @@ export class Manager {
     } catch { if(this.alive && this.pending===expected) this.set({operationError:'Action status unavailable. Refresh to check again.'}); }
     finally { expected.checking=false; }
   }
-  async finishMutation(expected,error='') {
+  async finishMutation(expected,error='',success=false) {
     if(this.pending!==expected) return;
     this.pending=null; this.clearTimer('mutation'); this.set({operationStatus:'',operationError:error});
+    if(success&&expected.installation)this.set({installationComplete:{...expected.installation,pluginId:expected.pluginId,name:expected.name,deleteSource:true,busy:false,error:''}});
     if(this.state.open) await this.refresh();
   }
   disable(plugin) {
@@ -314,19 +317,10 @@ export class Manager {
   cancelConfirmation() { if(this.state.confirmation?.submitting) return; this.sequence.removal++; this.set({confirmation:null}); }
   async requestRemoval(plugin,permission=null) {
     if(!this.available()) return;
-    if(!permission&&this.removalRequiresCli(plugin))return;
-    const confirmation={kind:permission?'revoke':'remove',permission,plugin,busy:!permission,submitting:false,error:'',source:null,deleteSource:false,previousPage:this.state.page};
-    const sequence=++this.sequence.removal; this.set({confirmation});
-    if(permission) return;
-    try {
-      const preview=await this.rpc('sourceRemovalPreview',{pluginId:plugin.id});
-      if(!this.current('removal',sequence) || this.state.confirmation!==confirmation) return;
-      if(preview?.pluginId!==plugin.id || !['available','missing','blocked'].includes(preview.status)) throw new Error('The source folder could not be checked. You can still remove registration and keep files.');
-      this.set({confirmation:{...confirmation,busy:false,source:preview}});
-    } catch(error) { if(this.current('removal',sequence)) this.set({confirmation:{...confirmation,busy:false,error:message(error)}}); }
+    if(!permission&&this.state.localManagement?.installationLifecycle!==true){this.set({detailsError:'Update Codlet Core to use the current installation and uninstall features.'});return;}
+    if(!permission){this.set({page:'plugins'});return this.mutate(plugin.id,'remove',{cascade:true});}
+    this.set({confirmation:{kind:'revoke',permission,plugin,busy:false,submitting:false,error:'',previousPage:this.state.page}});
   }
-  sourceDeletable() { const s=this.state.confirmation?.source; return s?.status==='available' && digest(s.registrationDigest) && typeof s.sourceIdentity==='string' && !!s.sourceIdentity; }
-  setDeleteSource(value) { if(this.sourceDeletable()) this.set({confirmation:{...this.state.confirmation,deleteSource:!!value}}); }
   async confirm() {
     const selected=this.state.confirmation;
     if(!selected || selected.busy || selected.submitting || this.pending) return;
@@ -349,7 +343,6 @@ export class Manager {
     }
     const extra=selected.kind==='revoke'?{permission:selected.permission}:{};
     if(dependents.length && ['disable','remove'].includes(selected.kind)) extra.cascade=true;
-    if(selected.kind==='remove' && selected.deleteSource && this.sourceDeletable()) extra.remove_source={registrationDigest:selected.source.registrationDigest,sourceIdentity:selected.source.sourceIdentity};
     this.set({confirmation:null,page:'plugins'}); this.sequence.removal++;
     return this.mutate(plugin.id,selected.kind,extra);
   }
@@ -360,7 +353,7 @@ export class Manager {
   clearJobTimers(){for(const name of ['github','github-slow','github-deadline'])this.clearTimer(name);}
   invalidateImport() {
     this.cancelJob(); this.clearTimer('preview'); this.clearTimer('picker'); this.sequence.page++;
-    this.set({preview:null,importBusy:false,importWarning:null,importReviewError:'',grants:[],trusted:false,enableAfter:false,jobRetry:false});
+    this.set({preview:null,importBusy:false,importWarning:null,importReviewError:'',grants:[],trusted:false,enableAfter:false,jobRetry:false,installMode:null});
   }
   back() {
     if(this.pending) return;
@@ -405,7 +398,7 @@ export class Manager {
     try {
       const preview=await this.rpc('previewLocal',{path:this.state.path.trim()});
       if(!this.current('page',sequence,'import')) return;
-      this.validatePreview(preview); this.set({preview,importStatus:'Plugin recognized. Review permissions and confirm to import.'});
+      this.validatePreview(preview); this.set({preview,enableAfter:preview.existingRegistration?preview.existingEnabled===true:false,importStatus:'Plugin recognized. Review permissions and confirm to import.'});
     } catch(error) { if(this.current('page',sequence,'import')) this.set({importStatus:'This folder could not be recognized as a plugin. Check the path and codlet.json.',importError:message(error)}); }
     finally {if(this.current('page',sequence,'import')) this.set({importBusy:false});}
   }
@@ -423,7 +416,7 @@ export class Manager {
     try {await accept(await this.rpc('chooseLocalFolder',{locale:this.context.i18n?.locale??'en'}));}catch(error){fail(error);}
   }
   consent(value) { this.set({trusted:value===true,grants:value===true?[...(this.state.preview?.manifest.permissions??[])]:[]}); }
-  importReady() {const s=this.state;return this.available() && s.localManagement?.clientPermissions===true && s.page==='import' && !!s.preview && !s.preview.changes?.restartRequired && s.preview.deviceCompatibility?.status!=='incompatible' && !s.importBusy && !s.createBusy && s.trusted && s.preview.manifest.permissions.every(p=>s.grants.includes(p));}
+  importReady() {const s=this.state;return this.available() && s.localManagement?.installationLifecycle===true && s.localManagement?.clientPermissions===true && s.page==='import' && !!s.preview && (!s.preview.existingRegistration||['update','replace'].includes(s.installMode)) && (!s.preview.changes?.restartRequired||s.installMode==='replace') && s.preview.deviceCompatibility?.status!=='incompatible' && !s.importBusy && !s.createBusy && s.trusted && s.preview.manifest.permissions.every(p=>s.grants.includes(p));}
   submitImport() {
     if(!this.importReady()||this.state.importWarning) return;
     this.set({importWarning:{preview:this.state.preview,sequence:this.sequence.page},importReviewError:''});
@@ -434,13 +427,23 @@ export class Manager {
     if(!warning||warning.preview!==this.state.preview||warning.sequence!==this.sequence.page||!this.importReady())return;
     this.set({importWarning:null,importReviewError:''});
     const s=this.state,p=s.preview;
-    const prior=p.existingRegistration?.brokerPolicy;
+    const prior=s.installMode==='replace'?null:p.existingRegistration?.brokerPolicy;
     const brokerPolicy={clientPermissions:true,...Object.fromEntries(['executables','cwdRoots','envKeys'].filter(key=>Array.isArray(prior?.[key])&&prior[key].length).map(key=>[key,[...prior[key]]]))};
-    const local_import={path:p.path,contentDigest:p.contentDigest,registrationDigest:p.registrationDigest,trusted:true,grants:[...new Set([...s.grants,...(p.existingRegistration?.grants??[]).filter(permission=>!p.manifest.permissions.includes(permission))])],brokerPolicy,enable:s.enableAfter,...(s.mode==='github'?{managed:s.importOperation}:{})};
+    const local_import={path:p.path,contentDigest:p.contentDigest,registrationDigest:p.registrationDigest,trusted:true,grants:[...new Set([...s.grants,...(s.installMode==='replace'?[]:p.existingRegistration?.grants??[]).filter(permission=>!p.manifest.permissions.includes(permission))])],brokerPolicy,enable:s.enableAfter,...(s.mode==='github'?{managed:s.importOperation}:{}),...(s.installMode?{mode:s.installMode}:{})};
     const action=s.mode==='github' && s.importOperation==='adopt'?'update':s.mode==='github' && s.importOperation!=='install'?s.importOperation:'import';
     const marketReturn=s.market.reviewReturn;
     this.invalidateImport();this.marketSet({reviewReturn:false});this.set({page:marketReturn?'marketDetails':'plugins'});
-    return this.mutate(p.manifest.id,action,{local_import},this.messages.name(p.manifest));
+    return this.mutate(p.manifest.id,action,{local_import},this.messages.name(p.manifest),s.mode==='local'?{path:p.path,contentDigest:p.contentDigest}:null);
+  }
+  async finishInstallation(keepSource=false){
+    const selected=this.state.installationComplete;
+    if(!selected||selected.busy)return;
+    this.set({installationComplete:{...selected,busy:true,error:''}});
+    try{
+      const reply=await this.rpc('completeImport',{pluginId:selected.pluginId,contentDigest:selected.contentDigest,deleteSource:!keepSource&&selected.deleteSource});
+      if(reply?.completed!==true||reply.pluginId!==selected.pluginId)throw new Error('Import completion was not confirmed.');
+      this.set({installationComplete:null});
+    }catch(error){this.set({installationComplete:{...selected,busy:false,error:message(error)}});}
   }
   setUrl(url) {this.invalidateImport();this.set({url,catalog:null,release:'',asset:'',importStatus:'',importError:''});}
   selectRelease(release) {this.invalidateImport();this.set({release,asset:'',importStatus:'',importError:''});}
@@ -499,7 +502,7 @@ export class Manager {
           if(declarationChanged)job.declarationChanged=true;
         }
         const existing=reply.result.existingRegistration;
-        this.set({preview:reply.result,...(existing?{grants:[],trusted:false,enableAfter:reply.result.existingEnabled===true}:{}),importStatus:reply.result.changes?.restartRequired?'This update changes plugin entry shape. Apply it with the CLI while Codlet is stopped, then restart Codlet.':job.declarationChanged?'Published listing details differ from the reviewed ZIP. Review the actual package below.':'Review the exact source, compatibility, dependencies and permissions before confirming.'});
+        this.set({preview:reply.result,...(existing?{grants:[],trusted:false,enableAfter:reply.result.existingEnabled===true}:{}),importStatus:reply.result.changes?.restartRequired?'This version changes plugin entry types. Choose Replace to install it.':job.declarationChanged?'Published listing details differ from the reviewed ZIP. Review the actual package below.':'Review the exact source, compatibility, dependencies and permissions before confirming.'});
       }
     } else if(['cancelled','failed'].includes(reply.status)) this.set({importStatus:reply.error?.code==='github_timeout'?githubTimeout(job.kind):reply.error?.message||'GitHub task cancelled. No installation was submitted; temporary download files may remain.'});
     else throw new Error('GitHub task returned an unknown status.');

@@ -55,8 +55,9 @@ export function createPreviewRuntime() {
       if(method==='saveSettings'){if(args.expectedRevision!==state.settingsRevision)throw Error('Settings changed in another window. Review the current values before saving again.');state.settings={...args.values};state.settingsRevision++;state.checkedAt=Date.now();}
       return settings();
     }
-    if(method==='list'){if(state.failure)throw Error('Preview: connection unavailable. Refresh to retry.');return {plugins:plugins(),runtimeVersion:'0.1.0',clientStatus:{status:'matched'},deviceCompatibility:{platform:'windows-x86_64',runtimeApi:1,status:'unknown',basis:'unknown'},runtimeSkill:{available:true,name:'codlet',path:'C:/Preview/runtime-skills/codlet/SKILL.md'},localManagement:{available:true,folderPicker:true,clientPermissions:true},githubManagement:{available:true}};}
+    if(method==='list'){if(state.failure)throw Error('Preview: connection unavailable. Refresh to retry.');return {plugins:plugins(),runtimeVersion:'0.1.0',clientStatus:{status:'matched'},deviceCompatibility:{platform:'windows-x86_64',runtimeApi:1,status:'unknown',basis:'unknown'},runtimeSkill:{available:true,name:'codlet',path:'C:/Preview/runtime-skills/codlet/SKILL.md'},localManagement:{available:true,folderPicker:true,clientPermissions:true,installationLifecycle:true},githubManagement:{available:true}};}
     if(method==='previewLocal')return {...preview(),path:args.path};
+    if(method==='completeImport'){state.sourceDeleted=args.deleteSource;return {completed:true,pluginId:args.pluginId};}
     if(method==='chooseLocalFolder')return {selectionId:'fixture-folder',status:'selected',path:'C:/Projects/Local Notes'};
     if(method==='permissions')return {pluginId:args.pluginId,registration:{path:'C:/Projects/Local Notes',grants:['ui.dom'],brokerPolicy:{}},ownership:args.pluginId==='managed.notes'?'core-managed-github':'development-directory',managedSource:source};
     if(method==='openFolder')return {pluginId:args.pluginId,opened:true};

@@ -42,17 +42,12 @@ test('local source review uses the preview directory and leaves its warning visi
   assert.ok(f.m.state.importWarning);assert.match(f.m.state.importReviewError,/could not be opened/);assert.equal(count(f,'newTaskDraft'),1);assert.equal(count(f,'submit'),0);
   assert.equal(f.semanticDrafts.length,1);assert.equal(count(f,'turns.start'),0);
 });
-test('GUI self and direct or transitive provider removal use a native Codex draft, with no lifecycle mutation',async t=>{
+test('GUI self and dependent removal use the same one-shot uninstall request',async t=>{
   const f=await setup(t),self=f.m.state.plugins.find(p=>p.id==='codlet-gui'),provider=f.m.state.plugins.find(p=>p.id==='codex.ui.adapter');
   for(const plugin of [self,provider,{id:'custom.provider',disableDependents:['another','codlet-gui']}]){
-    assert.equal(f.m.removalRequiresCli(plugin),true);await f.m.requestRemoval(plugin);assert.equal(f.m.state.confirmation,null);
+    await f.m.requestRemoval(plugin);assert.equal(f.m.state.confirmation,null);
   }
-  assert.equal(f.m.removalRequiresCli({id:'unrelated',disableDependents:['other']}),false);assert.equal(count(f,'sourceRemovalPreview'),0);
-  await f.m.details(provider);const pending=deferred();f.overrides.set('newTaskDraft',()=>pending.promise);
-  const opening=f.m.uninstallWithCodex();await f.m.uninstallWithCodex();assert.equal(count(f,'newTaskDraft'),1);
-  assert.equal(f.semanticDrafts.length,1);assert.equal(f.calls.find(c=>c.method==='newTaskDraft').capability.scope,'target');
-  const prompt=f.calls.find(c=>c.method==='newTaskDraft').args.prompt;assert.match(prompt,/codex\.ui\.adapter/);assert.match(prompt,/Codex 界面适配器/);assert.match(prompt,/CLI/);assert.match(prompt,/不能单独卸载/);
-  pending.resolve({opened:true,submitted:false});await opening;assert.equal(count(f,'prepare'),0);assert.equal(count(f,'submit'),0);
+  assert.equal(count(f,'sourceRemovalPreview'),0);assert.equal(count(f,'newTaskDraft'),0);assert.equal(count(f,'prepare'),3);assert.equal(count(f,'submit'),3);assert.ok(f.calls.filter(c=>c.method==='prepare').every(c=>c.args.cascade===true));
 });
 test('task metadata cannot close its JSON line and an unavailable skill never becomes plain slash text',()=>{
   const skill={available:true,name:'codlet',path:'C:/Skills/codlet/SKILL.md'};
@@ -65,14 +60,9 @@ async function gui(t,locale='zh'){
   const demo=createPreviewRuntime(),f=uiFixture({locale,request:demo.request}),plugin=f.load('bundled/codlet/dist/renderer.js');
   t.after(()=>{plugin.deactivate();f.dispose();});await plugin.activate(f.context);await f.open();return {...f,demo};
 }
-test('GUI details explain self/provider removal in both locales and link to a draft with the correct plugin',async t=>{
+test('plugin details expose direct uninstall without a CLI detour',async t=>{
   const f=await gui(t);
-  for(const label of ['Codlet 管理界面 的详情','Codex 界面适配器 的详情']){
-    await f.click(label);assert.match(f.document.querySelector('.codlet-removal-notice').textContent,/无法在GUI插件中卸载自己（及其依赖）/);
-    assert.equal(f.control('移除插件'),undefined);await f.click('使用 Codex');assert.match(f.demo.state.draft,/通过当前 Codlet 实例的 CLI/);await f.click('返回');
-  }
-  await f.locale('en');await f.click('Details for Codex UI Adapter');assert.match(f.document.querySelector('.codlet-removal-notice').textContent,/cannot uninstall itself/);assert.ok(f.control('use Codex'));
-  await f.click('Back');await f.click('Details for Local Notes');assert.equal(f.document.querySelector('.codlet-removal-notice'),null);assert.ok(f.control('Remove Local Notes'));
+  await f.locale('en');await f.click('Details for Local Notes');assert.equal(f.document.querySelector('.codlet-removal-notice'),null);assert.ok(f.control('Remove Local Notes'));
   assert.equal(f.calls.some(c=>['prepare','submit','sourceRemovalPreview'].includes(c.method)),false);
 });
 test('native install modal preserves reviewed text and focus, cancels on Escape, and imports only after acknowledgment',async t=>{
@@ -82,5 +72,5 @@ test('native install modal preserves reviewed text and focus, cancels on Escape,
   assert.ok(modal.closest('[data-codlet-page-overlays]'));await f.key(f.document.activeElement,'Escape');assert.equal(f.document.querySelector('[role=dialog]'),null);assert.equal(f.document.activeElement,trigger);
   await f.click('Confirm local import');await f.click('Cancel');assert.equal(f.calls.some(c=>c.method==='prepare'),false);
   await f.click('Confirm local import');await f.locale('zh');modal=f.document.querySelector('[role=dialog]');assert.match(modal.textContent,/安装须知/);assert.match(modal.textContent,/Codlet不为任何非官方插件的安全性作保障/);
-  await f.click('知道了');await tick();assert.equal(f.document.querySelector('[role=dialog]'),null);assert.equal(f.calls.filter(c=>c.method==='prepare').length,1);assert.equal(f.calls.filter(c=>c.method==='submit').length,1);
+  await f.click('知道了');await tick();assert.match(f.document.querySelector('[role=dialog]').textContent,/安装完成/);assert.equal(f.control('删除源文件').getAttribute('aria-checked'),'true');assert.equal(f.calls.filter(c=>c.method==='prepare').length,1);assert.equal(f.calls.filter(c=>c.method==='submit').length,1);assert.equal(f.calls.some(c=>c.method==='completeImport'),false);await f.click('完成');assert.equal(f.document.querySelector('[role=dialog]'),null);assert.equal(f.calls.find(c=>c.method==='completeImport').args.deleteSource,true);
 });

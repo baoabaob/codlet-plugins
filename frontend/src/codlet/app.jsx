@@ -131,13 +131,14 @@ function Preview({s}) {
     {s.importOperation==='adopt'&&s.target&&<Copy>{`${t('Installed version')}: ${s.target.version} → ${m.version}`}</Copy>}
     {p.currentVersion&&<><Copy>{t(`Version: ${p.currentVersion.manifest.version} → ${m.version}\nRepository: ${p.currentVersion.source.repositoryUrl} → ${p.source.repositoryUrl}\nRelease: ${p.currentVersion.source.tag} → ${p.source.tag}`)}</Copy>
       {(p.changes?.requirementsAdded?.length>0||p.changes?.requirementsRemoved?.length>0)&&<Copy>{t('Plugin dependencies changed. Review the required plugins above.')}</Copy>}</>}
-    {p.existingRegistration&&s.mode==='local'&&<Copy>{t('This plugin is already registered. Confirming replaces its authorization with the permissions shown below.')}</Copy>}
+    {p.existingRegistration&&<section className="codlet-import-section"><h2>{t('This plugin is already installed')}</h2><Copy>{t('Choose how to install this version')}</Copy><div className="codlet-confirmation-actions">{[['update','Update — keep data'],['replace','Replace — clear data']].map(([mode,label])=><C.Button key={mode} color={mode==='replace'?'danger':'primary'} variant={s.installMode===mode?'solid':'outline'} size="md" aria-pressed={s.installMode===mode} onClick={()=>manager.set({installMode:mode})}>{t(label)}</C.Button>)}</div></section>}
     <section className="codlet-import-section"><h2>{t('Requested permissions')}</h2>
     {!m.permissions.length&&<Copy>{t('No permissions requested.')}</Copy>}
     <PermissionSummary key={p.contentDigest} permissions={m.permissions}/>
     </section>
     <div className="codlet-import-enable"><span>{t('Enable immediately after importing')}</span><C.Switch checked={s.enableAfter} aria-label={t('Enable after import')} onCheckedChange={enableAfter=>manager.set({enableAfter})}/></div>
     {s.localManagement?.clientPermissions!==true&&<Copy error>{t('Update Codlet to use simplified authorization.')}</Copy>}
+    {s.localManagement?.installationLifecycle!==true&&<Copy error>{t('Update Codlet Core to install plugins with this version of the manager.')}</Copy>}
     <C.Checkbox checked={s.trusted} aria-label={t('Agree and authorize')} label={t('I understand the permissions above, trust this plugin and agree to authorize them.')} onCheckedChange={value=>manager.consent(value)}/>
   </div>;
 }
@@ -198,23 +199,28 @@ function Details({s}){
       <Compatibility metadata={p.metadata} device={p.deviceCompatibility??s.deviceCompatibility} clientStatus={s.clientStatus}/>
       {p.grants?.length>0&&<h2>{t('Granted permissions')}</h2>}
       <PermissionSummary key={p.id} pluginId={p.id} permissions={p.grants??[]} expandedPermission={s.detailsPermission} onRevoke={p.source!=='bundled'?permission=>{manager.set({detailsPermission:permission});manager.requestRemoval(p,permission);}:null}/>
-      {manager.removalRequiresCli(p)?<div className="codlet-removal-notice"><Copy>{t('The GUI plugin cannot uninstall itself or its dependencies')}</Copy><p className="codlet-copy codlet-removal-actions"><span>{t('To uninstall, use the CLI or ')}</span><button type="button" className="codlet-inline-link" disabled={s.createBusy||s.detailsBusy||mutationBusy(s)} onClick={()=>manager.uninstallWithCodex()}>{t('use Codex')}<I.ArrowUpRight aria-hidden="true"/></button></p></div>:p.source!=='bundled'&&<C.Button color="danger" variant="soft" size="md" data-codlet-focus-key={`remove:${p.id}`} aria-label={t(`Remove ${name(p)}`)} onClick={()=>manager.requestRemoval(p)}>{t('Remove plugin')}</C.Button>}
+      {p.source!=='bundled'&&<><C.Button color="danger" variant="soft" size="md" data-codlet-focus-key={`remove:${p.id}`} aria-label={t(`Remove ${name(p)}`)} disabled={mutationBusy(s)||s.localManagement?.installationLifecycle!==true} onClick={()=>manager.requestRemoval(p)}>{t('Remove plugin')}</C.Button>{s.localManagement?.installationLifecycle!==true&&<Copy>{t('Update Codlet Core to use the current installation and uninstall features.')}</Copy>}</>}
       {(p.updateSource===undefined?p.ownership==='core-managed-github':p.updateSource?.kind==='github')&&<>
         <C.Button color="secondary" variant="soft" size="md" aria-label={t('Check GitHub versions')} onClick={()=>manager.importPage('github',p)}>{t('Check GitHub versions')}</C.Button>
       </>}
     </>}
   </section>;
 }
+function InstallationComplete({s}){
+  const c=s.installationComplete;
+  return <C.Dialog.Root open={!!c} onOpenChange={open=>{if(!open&&!c?.busy)void manager.finishInstallation(true);}}><C.Dialog.Portal><C.Dialog.Overlay className="codlet-help-overlay"/><C.Dialog.Content className="codlet-help-dialog">
+    <C.Dialog.Title>{t('Installation complete')}</C.Dialog.Title>
+    <C.Dialog.Description>{c?.name}</C.Dialog.Description>
+    {c&&<><C.Checkbox checked={c.deleteSource} disabled={c.busy} label={t('Delete source files')} aria-label={t('Delete source files')} onCheckedChange={value=>manager.set({installationComplete:{...c,deleteSource:value===true}})}/><Copy>{displayPath(c.path)}</Copy>{c.error&&<Copy error role="alert">{c.error}</Copy>}<div className="codlet-help-actions"><C.Button color="primary" variant="solid" size="md" disabled={c.busy} loading={c.busy} onClick={()=>manager.finishInstallation()}>{t('Done')}</C.Button></div></>}
+  </C.Dialog.Content></C.Dialog.Portal></C.Dialog.Root>;
+}
 function Confirmation({s}){
-  const c=s.confirmation,p=c.plugin,verb=c.kind==='remove'?'Remove':c.kind==='revoke'?'Revoke':'Disable';
+  const c=s.confirmation,p=c.plugin,verb=c.kind==='revoke'?'Revoke':'Disable';
   const title=c.kind==='install'?'Apply Codlet update?':`${verb} ${name(p)}?`;
   const dependents=[...new Set(p?.disableDependents??[])].filter(id=>id!==p.id).map(id=>s.plugins.find(x=>x.id===id)??{id});
-  const copy=c.kind==='install'?'Compatible Core components apply in this session. Other changes are staged for the next natural start; current tasks and connections continue.':c.kind==='remove'?'Remove this plugin’s registration and disable it. Source files and plugin data are kept by default. Selecting deletion below removes the source folder and all its contents.':c.kind==='revoke'?`Revoke ${c.permission}. This stops the package and its running dependents. To grant it again, ${p.ownership==='core-managed-github'?'select a managed version and confirm its permissions again':'import the local folder and confirm its permissions'}.`:p.id===manager.context.pluginId||p.disableDependents?.includes(manager.context.pluginId)?'The Codlet GUI will close in all open windows. Re-enable the plugins from the launcher to restore it.':'These plugins will stay disabled until you enable them again.';
+  const copy=c.kind==='install'?'Compatible Core components apply in this session. Other changes are staged for the next natural start; current tasks and connections continue.':c.kind==='revoke'?`Revoke ${c.permission}. This stops the package and its running dependents. To grant it again, ${p.ownership==='core-managed-github'?'select a managed version and confirm its permissions again':'import the local folder and confirm its permissions'}.`:p.id===manager.context.pluginId||p.disableDependents?.includes(manager.context.pluginId)?'The Codlet GUI will close in all open windows. Re-enable the plugins from the launcher to restore it.':'These plugins will stay disabled until you enable them again.';
   return <section className="codlet-page"><h2>{t(title)}</h2><Copy>{t(copy)}</Copy>
     {dependents.length>0&&<section className="codlet-field" aria-labelledby="codlet-affected-heading"><h2 id="codlet-affected-heading">{t(c.kind==='revoke'?'Plugins that will also stop':'Plugins that will also be disabled')}</h2><Copy>{t('Includes indirect dependencies. These plugins and their files will be kept.')}</Copy><ul className="codlet-affected-plugins">{dependents.map(plugin=><li key={plugin.id}><span className="codlet-plugin-name">{name(plugin)}</span><span className="codlet-version">{plugin.id}</span></li>)}</ul></section>}
-    {c.kind==='remove'&&<><C.Checkbox checked={c.deleteSource} disabled={!manager.sourceDeletable()||c.busy} aria-label={t('Delete source files')} label={t('Delete the plugin source folder')} onCheckedChange={value=>manager.setDeleteSource(value)}/>
-      <Copy>{t(c.busy?'Checking source folder...':manager.sourceDeletable()?`Source folder: ${displayPath(c.source.path)}`:c.source?.status==='missing'?'The source folder is missing or moved. Removing registration is still available.':'Source deletion is unavailable. Removing registration keeps the remaining files.')}</Copy>
-      {c.source?.warning&&<Copy>{c.source.warning}</Copy>}</>}
     {c.error&&<Copy error role="alert">{t(c.error)}</Copy>}
     <div className="codlet-confirmation-actions"><C.Button color="secondary" variant="soft" size="md" disabled={c.submitting} onClick={()=>manager.cancelConfirmation()} data-codlet-cancel="">{t('Cancel')}</C.Button>
       <C.Button color={c.kind==='install'?'primary':'danger'} variant="solid" size="md" disabled={c.busy||c.submitting} loading={c.submitting} aria-label={t(c.kind==='install'?'Apply update':verb)} onClick={()=>manager.confirm()}>{t(c.kind==='install'?'Apply update':verb)}</C.Button></div>
@@ -290,7 +296,7 @@ function Page({s}){
 }
 function App(){
   const s=React.useSyncExternalStore(manager.subscribe,manager.snapshot);
-  return <><style>{layout+marketplaceStyle}</style><Page s={s}/></>;
+  return <><style>{layout+marketplaceStyle}</style><Page s={s}/><InstallationComplete s={s}/></>;
 }
 function releaseView(){React=h=C=I=ui=Settings=CodletIcon=ProjectLinks=Marketplace=MarketplaceDetails=Compatibility=PermissionSummary=null;}
 export function deactivate(){epoch++;try{ui?.dispose();}finally{manager?.dispose();manager=null;releaseView();}}

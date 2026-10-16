@@ -61,6 +61,14 @@ var PERMISSION_COPY = Object.freeze({
 });
 function createMessages(context) {
   const TRANSLATIONS = {
+    "Update Codlet Core to use the current installation and uninstall features.": "\u8BF7\u66F4\u65B0 Codlet Core \u540E\u4F7F\u7528\u65B0\u7248\u5B89\u88C5\u548C\u5378\u8F7D\u529F\u80FD\u3002",
+    "Installation complete": "\u5B89\u88C5\u5B8C\u6210",
+    "Done": "\u5B8C\u6210",
+    "This plugin is already installed": "\u5DF2\u5B89\u88C5\u76F8\u540C ID \u7684\u63D2\u4EF6",
+    "Choose how to install this version": "\u8BF7\u9009\u62E9\u5B89\u88C5\u65B9\u5F0F",
+    "Update \u2014 keep data": "\u66F4\u65B0\uFF0C\u4FDD\u7559\u6570\u636E",
+    "Replace \u2014 clear data": "\u66FF\u6362\uFF0C\u6E05\u9664\u6570\u636E",
+    "Update Codlet Core to install plugins with this version of the manager.": "\u8BF7\u66F4\u65B0 Codlet Core \u540E\u518D\u5B89\u88C5\u63D2\u4EF6\u3002",
     "Select executable scopes with the Codlet CLI --executable option before running this feature. Broad service consent does not select a program.": "\u4F7F\u7528\u8BE5\u529F\u80FD\u524D\uFF0C\u8BF7\u901A\u8FC7 Codlet CLI \u7684 --executable \u9009\u9879\u660E\u786E\u9009\u62E9\u53EF\u6267\u884C\u6587\u4EF6\u3002\u666E\u901A\u670D\u52A1\u7684\u5E7F\u6CDB\u6388\u6743\u4E0D\u4F1A\u81EA\u52A8\u9009\u62E9\u7A0B\u5E8F\u3002",
     "SDK and capabilities": "SDK \u4E0E\u80FD\u529B",
     "SDK contract declared": "\u5DF2\u58F0\u660E SDK \u5951\u7EA6",
@@ -217,7 +225,7 @@ function createMessages(context) {
     "Plugins with update channels are up to date": "\u5177\u6709\u66F4\u65B0\u6E20\u9053\u7684\u63D2\u4EF6\u5DF2\u662F\u6700\u65B0\u7248\u672C",
     "Installer update channel": "\u5B89\u88C5\u5305\u58F0\u660E\u7684\u66F4\u65B0\u6E20\u9053",
     "Review the first update from the installer package to its GitHub channel. Existing settings will be preserved.": "\u9996\u6B21\u4ECE\u9884\u88C5\u5305\u5207\u6362\u5230\u5176 GitHub \u6E20\u9053\uFF0C\u8BF7\u786E\u8BA4\u6B64\u6B21\u66F4\u65B0\u3002\u539F\u6709\u7981\u7528\u72B6\u6001\u3001\u6743\u9650\u548C\u6388\u6743\u8303\u56F4\u4F1A\u4FDD\u7559\u3002",
-    "This update changes plugin entry shape. Apply it with the CLI while Codlet is stopped, then restart Codlet.": "\u6B64\u6B21\u66F4\u65B0\u6539\u53D8\u63D2\u4EF6\u5165\u53E3\u7C7B\u578B\uFF0C\u9700\u8981\u505C\u6B62\u5E76\u91CD\u542F Codlet \u540E\u5E94\u7528\u3002",
+    "This version changes plugin entry types. Choose Replace to install it.": "\u6B64\u7248\u672C\u6539\u53D8\u4E86\u63D2\u4EF6\u5165\u53E3\u7C7B\u578B\uFF0C\u8BF7\u9009\u62E9\u201C\u66FF\u6362\u201D\u8FDB\u884C\u5B89\u88C5\u3002",
     "Plugin update check failed.": "\u63D2\u4EF6\u66F4\u65B0\u68C0\u67E5\u5931\u8D25",
     "Plugin update status is unavailable.": "\u6682\u65F6\u65E0\u6CD5\u83B7\u53D6\u63D2\u4EF6\u66F4\u65B0\u72B6\u6001",
     "Some releases could not be checked or compared. Open plugin details to check their GitHub versions.": "\u90E8\u5206\u53D1\u5E03\u65E0\u6CD5\u81EA\u52A8\u68C0\u67E5\u6216\u6BD4\u8F83\uFF0C\u53EF\u8FDB\u5165\u5BF9\u5E94\u63D2\u4EF6\u8BE6\u60C5\u67E5\u770B GitHub \u7248\u672C",
@@ -460,7 +468,7 @@ function createMessages(context) {
     "I trust this plugin\u2019s author and this local folder.": "\u6211\u4FE1\u4EFB\u8FD9\u4E2A\u63D2\u4EF6\u7684\u4F5C\u8005\u548C\u672C\u5730\u6587\u4EF6\u5939\u3002",
     "Loading permissions...": "\u6B63\u5728\u8BFB\u53D6\u6743\u9650\u2026",
     "Open plugin folder": "\u6253\u5F00\u63D2\u4EF6\u6587\u4EF6\u5939",
-    "Delete source files": "\u540C\u65F6\u5220\u9664\u6E90\u6587\u4EF6",
+    "Delete source files": "\u5220\u9664\u6E90\u6587\u4EF6",
     "Delete the plugin source folder": "\u540C\u65F6\u5220\u9664\u63D2\u4EF6\u6E90\u6587\u4EF6\u5939",
     "Checking source folder...": "\u6B63\u5728\u68C0\u67E5\u6E90\u6587\u4EF6\u5939\u2026",
     "Plugin details": "\u63D2\u4EF6\u8BE6\u60C5",
@@ -941,6 +949,8 @@ var Manager = class {
       grants: [],
       trusted: false,
       enableAfter: false,
+      installMode: null,
+      installationComplete: null,
       details: null,
       detailsBusy: false,
       detailsError: "",
@@ -1012,21 +1022,14 @@ var Manager = class {
   reviewImport() {
     return this.openSkillTask("review", this.state.preview);
   }
-  uninstallWithCodex() {
-    return this.openSkillTask("remove", this.state.details);
-  }
-  removalRequiresCli(plugin) {
-    return !!plugin && (plugin.id === this.context.pluginId || plugin.disableDependents?.includes(this.context.pluginId) === true);
-  }
   async openSkillTask(mode, subject = null) {
-    const page = mode === "review" ? "import" : mode === "remove" ? "details" : "plugins", activePage = this.state.page, errorKey = mode === "review" ? "importReviewError" : mode === "remove" ? "detailsError" : "operationError";
+    const page = mode === "review" ? "import" : "plugins", activePage = this.state.page, errorKey = mode === "review" ? "importReviewError" : "operationError";
     if (!this.available() || this.state.createBusy || activePage !== page && !(page === "plugins" && activePage === "market")) return false;
-    if (mode === "review" && (!this.state.importWarning || this.state.importWarning.preview !== subject) || mode === "remove" && (!subject || this.state.detailsBusy || !this.removalRequiresCli(subject))) return false;
+    if (mode === "review" && (!this.state.importWarning || this.state.importWarning.preview !== subject)) return false;
     const sequence = this.sequence.page;
     this.set({ createBusy: true, [errorKey]: "" });
     try {
-      const selected = mode === "remove" ? { ...subject, name: this.messages.name(subject) } : subject;
-      const prompt = skillPrompt(this.state.runtimeSkill, this.state.locale, mode, selected);
+      const prompt = skillPrompt(this.state.runtimeSkill, this.state.locale, mode, subject);
       const reply = await this.context.codex.navigation.newTaskDraft({ prompt });
       if (reply?.opened !== true || reply.submitted !== false) throw new Error("The new task could not be opened.");
       if (mode === "review" && this.current("page", sequence, activePage)) this.cancelImportWarning();
@@ -1119,7 +1122,7 @@ var Manager = class {
       const p = await this.rpc("pluginUpdateReview", { batchId: batch, pluginId: plugin.id });
       if (!this.current("page", sequence, "import")) return;
       this.validatePreview(p, true);
-      this.set({ preview: p, trusted: false, grants: [], enableAfter: p.existingEnabled === true, importStatus: p.changes?.restartRequired ? "This update changes plugin entry shape. Apply it with the CLI while Codlet is stopped, then restart Codlet." : p.operation === "adopt" ? "Review the first update from the installer package to its GitHub channel. Existing settings will be preserved." : "Review the changed permissions and dependencies before installing." });
+      this.set({ preview: p, trusted: false, grants: [], enableAfter: p.existingEnabled === true, importStatus: p.changes?.restartRequired ? "This version changes plugin entry types. Choose Replace to install it." : p.operation === "adopt" ? "Review the first update from the installer package to its GitHub channel. Existing settings will be preserved." : "Review the changed permissions and dependencies before installing." });
     } catch (error) {
       if (this.current("page", sequence, "import")) this.set({ importStatus: message(error) });
     } finally {
@@ -1178,6 +1181,8 @@ var Manager = class {
         runtimeVersion: reply.runtimeVersion ?? "",
         runtimeSkill: reply.runtimeSkill ?? null
       });
+      const completed = reply.plugins.find((plugin) => plugin.importCompletion && digest(plugin.importCompletion.contentDigest) && typeof plugin.importCompletion.path === "string");
+      if (completed && !this.state.installationComplete) this.set({ installationComplete: { ...completed.importCompletion, pluginId: completed.id, name: this.messages.name(completed), deleteSource: true, busy: false, error: "" } });
     } catch (error) {
       if (this.current("list", sequence)) this.set({ listStale: true, listError: "Plugin state could not be refreshed. Displayed values may be out of date.\n" + (error?.code === "rpc_timeout" ? "Plugin list timed out. Refresh to try again." : message(error)) });
     } finally {
@@ -1368,9 +1373,10 @@ var Manager = class {
   setFilter(filter) {
     if (["all", "enabled", "disabled"].includes(filter)) this.set({ filter });
   }
-  async mutate(pluginId, action, extra = {}, name2) {
+  async mutate(pluginId, action, extra = {}, name2, installation = null) {
     if (!this.available()) return;
     const expected = { pluginId, action, name: name2 || this.messages.name(this.state.plugins.find((p) => p.id === pluginId) ?? { id: pluginId }), id: null, checking: false, deleteSource: !!extra.remove_source };
+    expected.installation = installation;
     this.pending = expected;
     this.set({ operationError: "", operationStatus: `${expected.name}: preparing...` });
     try {
@@ -1409,7 +1415,8 @@ var Manager = class {
         const result = operation.completion, report = result?.kind === "report" ? result.report : null;
         const success = ["applied", "unchanged"].includes(report?.outcome);
         const deletionWarning = success && expected.deleteSource && report.message && report.message !== "The plugin was unregistered and its confirmed source directory was deleted. Separate plugin data was preserved." ? report.message : "";
-        return this.finishMutation(expected, success ? deletionWarning : result?.error?.message || report?.message || "The action finished with an error. Refresh for the current state.");
+        const details = (report?.target_failures ?? []).map((failure) => failure.error).filter(Boolean).join("\n");
+        return this.finishMutation(expected, success ? deletionWarning : [result?.error?.message || report?.message || "The action finished with an error. Refresh for the current state.", details].filter(Boolean).join("\n"), success);
       }
       if (!["queued", "running"].includes(reply.status)) {
         this.set({ operationError: reply?.error || "The action was not confirmed. Refresh checks the same action without repeating it." });
@@ -1423,11 +1430,12 @@ var Manager = class {
       expected.checking = false;
     }
   }
-  async finishMutation(expected, error = "") {
+  async finishMutation(expected, error = "", success = false) {
     if (this.pending !== expected) return;
     this.pending = null;
     this.clearTimer("mutation");
     this.set({ operationStatus: "", operationError: error });
+    if (success && expected.installation) this.set({ installationComplete: { ...expected.installation, pluginId: expected.pluginId, name: expected.name, deleteSource: true, busy: false, error: "" } });
     if (this.state.open) await this.refresh();
   }
   disable(plugin) {
@@ -1443,26 +1451,15 @@ var Manager = class {
   }
   async requestRemoval(plugin, permission = null) {
     if (!this.available()) return;
-    if (!permission && this.removalRequiresCli(plugin)) return;
-    const confirmation = { kind: permission ? "revoke" : "remove", permission, plugin, busy: !permission, submitting: false, error: "", source: null, deleteSource: false, previousPage: this.state.page };
-    const sequence = ++this.sequence.removal;
-    this.set({ confirmation });
-    if (permission) return;
-    try {
-      const preview = await this.rpc("sourceRemovalPreview", { pluginId: plugin.id });
-      if (!this.current("removal", sequence) || this.state.confirmation !== confirmation) return;
-      if (preview?.pluginId !== plugin.id || !["available", "missing", "blocked"].includes(preview.status)) throw new Error("The source folder could not be checked. You can still remove registration and keep files.");
-      this.set({ confirmation: { ...confirmation, busy: false, source: preview } });
-    } catch (error) {
-      if (this.current("removal", sequence)) this.set({ confirmation: { ...confirmation, busy: false, error: message(error) } });
+    if (!permission && this.state.localManagement?.installationLifecycle !== true) {
+      this.set({ detailsError: "Update Codlet Core to use the current installation and uninstall features." });
+      return;
     }
-  }
-  sourceDeletable() {
-    const s = this.state.confirmation?.source;
-    return s?.status === "available" && digest(s.registrationDigest) && typeof s.sourceIdentity === "string" && !!s.sourceIdentity;
-  }
-  setDeleteSource(value) {
-    if (this.sourceDeletable()) this.set({ confirmation: { ...this.state.confirmation, deleteSource: !!value } });
+    if (!permission) {
+      this.set({ page: "plugins" });
+      return this.mutate(plugin.id, "remove", { cascade: true });
+    }
+    this.set({ confirmation: { kind: "revoke", permission, plugin, busy: false, submitting: false, error: "", previousPage: this.state.page } });
   }
   async confirm() {
     const selected = this.state.confirmation;
@@ -1490,7 +1487,6 @@ var Manager = class {
     }
     const extra = selected.kind === "revoke" ? { permission: selected.permission } : {};
     if (dependents.length && ["disable", "remove"].includes(selected.kind)) extra.cascade = true;
-    if (selected.kind === "remove" && selected.deleteSource && this.sourceDeletable()) extra.remove_source = { registrationDigest: selected.source.registrationDigest, sourceIdentity: selected.source.sourceIdentity };
     this.set({ confirmation: null, page: "plugins" });
     this.sequence.removal++;
     return this.mutate(plugin.id, selected.kind, extra);
@@ -1510,7 +1506,7 @@ var Manager = class {
     this.clearTimer("preview");
     this.clearTimer("picker");
     this.sequence.page++;
-    this.set({ preview: null, importBusy: false, importWarning: null, importReviewError: "", grants: [], trusted: false, enableAfter: false, jobRetry: false });
+    this.set({ preview: null, importBusy: false, importWarning: null, importReviewError: "", grants: [], trusted: false, enableAfter: false, jobRetry: false, installMode: null });
   }
   back() {
     if (this.pending) return;
@@ -1577,7 +1573,7 @@ var Manager = class {
       const preview = await this.rpc("previewLocal", { path: this.state.path.trim() });
       if (!this.current("page", sequence, "import")) return;
       this.validatePreview(preview);
-      this.set({ preview, importStatus: "Plugin recognized. Review permissions and confirm to import." });
+      this.set({ preview, enableAfter: preview.existingRegistration ? preview.existingEnabled === true : false, importStatus: "Plugin recognized. Review permissions and confirm to import." });
     } catch (error) {
       if (this.current("page", sequence, "import")) this.set({ importStatus: "This folder could not be recognized as a plugin. Check the path and codlet.json.", importError: message(error) });
     } finally {
@@ -1617,7 +1613,7 @@ var Manager = class {
   }
   importReady() {
     const s = this.state;
-    return this.available() && s.localManagement?.clientPermissions === true && s.page === "import" && !!s.preview && !s.preview.changes?.restartRequired && s.preview.deviceCompatibility?.status !== "incompatible" && !s.importBusy && !s.createBusy && s.trusted && s.preview.manifest.permissions.every((p) => s.grants.includes(p));
+    return this.available() && s.localManagement?.installationLifecycle === true && s.localManagement?.clientPermissions === true && s.page === "import" && !!s.preview && (!s.preview.existingRegistration || ["update", "replace"].includes(s.installMode)) && (!s.preview.changes?.restartRequired || s.installMode === "replace") && s.preview.deviceCompatibility?.status !== "incompatible" && !s.importBusy && !s.createBusy && s.trusted && s.preview.manifest.permissions.every((p) => s.grants.includes(p));
   }
   submitImport() {
     if (!this.importReady() || this.state.importWarning) return;
@@ -1631,15 +1627,27 @@ var Manager = class {
     if (!warning || warning.preview !== this.state.preview || warning.sequence !== this.sequence.page || !this.importReady()) return;
     this.set({ importWarning: null, importReviewError: "" });
     const s = this.state, p = s.preview;
-    const prior = p.existingRegistration?.brokerPolicy;
+    const prior = s.installMode === "replace" ? null : p.existingRegistration?.brokerPolicy;
     const brokerPolicy = { clientPermissions: true, ...Object.fromEntries(["executables", "cwdRoots", "envKeys"].filter((key2) => Array.isArray(prior?.[key2]) && prior[key2].length).map((key2) => [key2, [...prior[key2]]])) };
-    const local_import = { path: p.path, contentDigest: p.contentDigest, registrationDigest: p.registrationDigest, trusted: true, grants: [.../* @__PURE__ */ new Set([...s.grants, ...(p.existingRegistration?.grants ?? []).filter((permission) => !p.manifest.permissions.includes(permission))])], brokerPolicy, enable: s.enableAfter, ...s.mode === "github" ? { managed: s.importOperation } : {} };
+    const local_import = { path: p.path, contentDigest: p.contentDigest, registrationDigest: p.registrationDigest, trusted: true, grants: [.../* @__PURE__ */ new Set([...s.grants, ...(s.installMode === "replace" ? [] : p.existingRegistration?.grants ?? []).filter((permission) => !p.manifest.permissions.includes(permission))])], brokerPolicy, enable: s.enableAfter, ...s.mode === "github" ? { managed: s.importOperation } : {}, ...s.installMode ? { mode: s.installMode } : {} };
     const action = s.mode === "github" && s.importOperation === "adopt" ? "update" : s.mode === "github" && s.importOperation !== "install" ? s.importOperation : "import";
     const marketReturn = s.market.reviewReturn;
     this.invalidateImport();
     this.marketSet({ reviewReturn: false });
     this.set({ page: marketReturn ? "marketDetails" : "plugins" });
-    return this.mutate(p.manifest.id, action, { local_import }, this.messages.name(p.manifest));
+    return this.mutate(p.manifest.id, action, { local_import }, this.messages.name(p.manifest), s.mode === "local" ? { path: p.path, contentDigest: p.contentDigest } : null);
+  }
+  async finishInstallation(keepSource = false) {
+    const selected = this.state.installationComplete;
+    if (!selected || selected.busy) return;
+    this.set({ installationComplete: { ...selected, busy: true, error: "" } });
+    try {
+      const reply = await this.rpc("completeImport", { pluginId: selected.pluginId, contentDigest: selected.contentDigest, deleteSource: !keepSource && selected.deleteSource });
+      if (reply?.completed !== true || reply.pluginId !== selected.pluginId) throw new Error("Import completion was not confirmed.");
+      this.set({ installationComplete: null });
+    } catch (error) {
+      this.set({ installationComplete: { ...selected, busy: false, error: message(error) } });
+    }
   }
   setUrl(url) {
     this.invalidateImport();
@@ -1730,7 +1738,7 @@ var Manager = class {
           if (declarationChanged) job.declarationChanged = true;
         }
         const existing = reply.result.existingRegistration;
-        this.set({ preview: reply.result, ...existing ? { grants: [], trusted: false, enableAfter: reply.result.existingEnabled === true } : {}, importStatus: reply.result.changes?.restartRequired ? "This update changes plugin entry shape. Apply it with the CLI while Codlet is stopped, then restart Codlet." : job.declarationChanged ? "Published listing details differ from the reviewed ZIP. Review the actual package below." : "Review the exact source, compatibility, dependencies and permissions before confirming." });
+        this.set({ preview: reply.result, ...existing ? { grants: [], trusted: false, enableAfter: reply.result.existingEnabled === true } : {}, importStatus: reply.result.changes?.restartRequired ? "This version changes plugin entry types. Choose Replace to install it." : job.declarationChanged ? "Published listing details differ from the reviewed ZIP. Review the actual package below." : "Review the exact source, compatibility, dependencies and permissions before confirming." });
       }
     } else if (["cancelled", "failed"].includes(reply.status)) this.set({ importStatus: reply.error?.code === "github_timeout" ? githubTimeout(job.kind) : reply.error?.message || "GitHub task cancelled. No installation was submitted; temporary download files may remain." });
     else throw new Error("GitHub task returned an unknown status.");
@@ -2501,7 +2509,7 @@ function Preview({ s }) {
   const dependencies = pluginDependencies(m, s.plugins, p.dependencyCheck);
   return /* @__PURE__ */ h("div", { className: "codlet-local-preview" }, /* @__PURE__ */ h("h2", null, name(m), official && /* @__PURE__ */ h("span", { className: "market-official codlet-review-official" }, t("Official"))), /* @__PURE__ */ h(Copy, null, m.id, " \xB7 ", m.version), /* @__PURE__ */ h(PluginTags, { tags: m.tags, show: s.settings?.effective?.showPluginTags !== false }), p.metadata?.author && /* @__PURE__ */ h(Copy, null, t(`Declared author: ${p.metadata.author}`)), (dependencies.plugins.length > 0 || dependencies.missing) && /* @__PURE__ */ h("section", { className: "codlet-import-section" }, /* @__PURE__ */ h("h2", null, t("Required plugins")), /* @__PURE__ */ h("ul", { className: "codlet-dependency-plugins" }, dependencies.plugins.map(({ plugin, available }) => /* @__PURE__ */ h("li", { key: plugin.id }, /* @__PURE__ */ h("span", null, name(plugin)), /* @__PURE__ */ h("span", { className: "codlet-version" }, t(available ? "Ready" : "Not running"))))), dependencies.missing && /* @__PURE__ */ h(Copy, null, t("Some required plugins are not installed. Install the missing providers before enabling this plugin."))), s.mode === "github" && /* @__PURE__ */ h(Source, { source: p.source, metadata: p.metadata }), /* @__PURE__ */ h(Compatibility, { metadata: p.metadata, manifest: m, device: p.deviceCompatibility ?? s.deviceCompatibility, clientStatus: s.clientStatus }), p.deviceCompatibility?.status === "unknown" && /* @__PURE__ */ h("div", { className: "market-review-warning", role: "status" }, t("The author has not declared compatible systems; suitability for this device is unknown.")), p.deviceCompatibility?.status === "incompatible" && /* @__PURE__ */ h("div", { className: "market-review-warning", role: "alert" }, t("Core reports this package is incompatible with this device. Installation is unavailable.")), s.importOperation === "adopt" && s.target && /* @__PURE__ */ h(Copy, null, `${t("Installed version")}: ${s.target.version} \u2192 ${m.version}`), p.currentVersion && /* @__PURE__ */ h(React.Fragment, null, /* @__PURE__ */ h(Copy, null, t(`Version: ${p.currentVersion.manifest.version} \u2192 ${m.version}
 Repository: ${p.currentVersion.source.repositoryUrl} \u2192 ${p.source.repositoryUrl}
-Release: ${p.currentVersion.source.tag} \u2192 ${p.source.tag}`)), (p.changes?.requirementsAdded?.length > 0 || p.changes?.requirementsRemoved?.length > 0) && /* @__PURE__ */ h(Copy, null, t("Plugin dependencies changed. Review the required plugins above."))), p.existingRegistration && s.mode === "local" && /* @__PURE__ */ h(Copy, null, t("This plugin is already registered. Confirming replaces its authorization with the permissions shown below.")), /* @__PURE__ */ h("section", { className: "codlet-import-section" }, /* @__PURE__ */ h("h2", null, t("Requested permissions")), !m.permissions.length && /* @__PURE__ */ h(Copy, null, t("No permissions requested.")), /* @__PURE__ */ h(PermissionSummary, { key: p.contentDigest, permissions: m.permissions })), /* @__PURE__ */ h("div", { className: "codlet-import-enable" }, /* @__PURE__ */ h("span", null, t("Enable immediately after importing")), /* @__PURE__ */ h(C.Switch, { checked: s.enableAfter, "aria-label": t("Enable after import"), onCheckedChange: (enableAfter) => manager.set({ enableAfter }) })), s.localManagement?.clientPermissions !== true && /* @__PURE__ */ h(Copy, { error: true }, t("Update Codlet to use simplified authorization.")), /* @__PURE__ */ h(C.Checkbox, { checked: s.trusted, "aria-label": t("Agree and authorize"), label: t("I understand the permissions above, trust this plugin and agree to authorize them."), onCheckedChange: (value) => manager.consent(value) }));
+Release: ${p.currentVersion.source.tag} \u2192 ${p.source.tag}`)), (p.changes?.requirementsAdded?.length > 0 || p.changes?.requirementsRemoved?.length > 0) && /* @__PURE__ */ h(Copy, null, t("Plugin dependencies changed. Review the required plugins above."))), p.existingRegistration && /* @__PURE__ */ h("section", { className: "codlet-import-section" }, /* @__PURE__ */ h("h2", null, t("This plugin is already installed")), /* @__PURE__ */ h(Copy, null, t("Choose how to install this version")), /* @__PURE__ */ h("div", { className: "codlet-confirmation-actions" }, [["update", "Update \u2014 keep data"], ["replace", "Replace \u2014 clear data"]].map(([mode, label2]) => /* @__PURE__ */ h(C.Button, { key: mode, color: mode === "replace" ? "danger" : "primary", variant: s.installMode === mode ? "solid" : "outline", size: "md", "aria-pressed": s.installMode === mode, onClick: () => manager.set({ installMode: mode }) }, t(label2))))), /* @__PURE__ */ h("section", { className: "codlet-import-section" }, /* @__PURE__ */ h("h2", null, t("Requested permissions")), !m.permissions.length && /* @__PURE__ */ h(Copy, null, t("No permissions requested.")), /* @__PURE__ */ h(PermissionSummary, { key: p.contentDigest, permissions: m.permissions })), /* @__PURE__ */ h("div", { className: "codlet-import-enable" }, /* @__PURE__ */ h("span", null, t("Enable immediately after importing")), /* @__PURE__ */ h(C.Switch, { checked: s.enableAfter, "aria-label": t("Enable after import"), onCheckedChange: (enableAfter) => manager.set({ enableAfter }) })), s.localManagement?.clientPermissions !== true && /* @__PURE__ */ h(Copy, { error: true }, t("Update Codlet to use simplified authorization.")), s.localManagement?.installationLifecycle !== true && /* @__PURE__ */ h(Copy, { error: true }, t("Update Codlet Core to install plugins with this version of the manager.")), /* @__PURE__ */ h(C.Checkbox, { checked: s.trusted, "aria-label": t("Agree and authorize"), label: t("I understand the permissions above, trust this plugin and agree to authorize them."), onCheckedChange: (value) => manager.consent(value) }));
 }
 function ImportPage({ s }) {
   const composing = React.useRef(false), release = manager.selectedRelease(), assets = release?.assets.filter((a) => /\.zip$/i.test(a.name)) ?? [];
@@ -2537,14 +2545,20 @@ function Details({ s }) {
   return /* @__PURE__ */ h("section", { className: "codlet-page" }, /* @__PURE__ */ h(Back, null), s.detailsError && /* @__PURE__ */ h(Copy, { error: true, role: "alert" }, t(s.detailsError)), s.detailsBusy ? /* @__PURE__ */ h(Copy, { role: "status" }, t("Loading permissions...")) : p && /* @__PURE__ */ h(React.Fragment, null, /* @__PURE__ */ h("div", { className: "codlet-details-identity" }, /* @__PURE__ */ h("div", { className: "codlet-details-heading" }, /* @__PURE__ */ h("h2", null, name(p)), p.version && /* @__PURE__ */ h("span", { className: "codlet-version" }, p.version), p.source !== "bundled" && /* @__PURE__ */ h(IconAction, { icon: I.FolderOpen, label: "Open plugin folder", onClick: () => manager.openFolder() })), /* @__PURE__ */ h(Copy, null, p.id), description(p) && /* @__PURE__ */ h(Copy, null, description(p))), p.ownership === "core-managed-github" && /* @__PURE__ */ h(Source, { source: p.managedSource, metadata: p.metadata }), p.updateSource && p.ownership !== "core-managed-github" && /* @__PURE__ */ h(Copy, null, t("Installer update channel"), ": ", p.updateSource.repositoryUrl), /* @__PURE__ */ h(Compatibility, { metadata: p.metadata, device: p.deviceCompatibility ?? s.deviceCompatibility, clientStatus: s.clientStatus }), p.grants?.length > 0 && /* @__PURE__ */ h("h2", null, t("Granted permissions")), /* @__PURE__ */ h(PermissionSummary, { key: p.id, pluginId: p.id, permissions: p.grants ?? [], expandedPermission: s.detailsPermission, onRevoke: p.source !== "bundled" ? (permission) => {
     manager.set({ detailsPermission: permission });
     manager.requestRemoval(p, permission);
-  } : null }), manager.removalRequiresCli(p) ? /* @__PURE__ */ h("div", { className: "codlet-removal-notice" }, /* @__PURE__ */ h(Copy, null, t("The GUI plugin cannot uninstall itself or its dependencies")), /* @__PURE__ */ h("p", { className: "codlet-copy codlet-removal-actions" }, /* @__PURE__ */ h("span", null, t("To uninstall, use the CLI or ")), /* @__PURE__ */ h("button", { type: "button", className: "codlet-inline-link", disabled: s.createBusy || s.detailsBusy || mutationBusy(s), onClick: () => manager.uninstallWithCodex() }, t("use Codex"), /* @__PURE__ */ h(I.ArrowUpRight, { "aria-hidden": "true" })))) : p.source !== "bundled" && /* @__PURE__ */ h(C.Button, { color: "danger", variant: "soft", size: "md", "data-codlet-focus-key": `remove:${p.id}`, "aria-label": t(`Remove ${name(p)}`), onClick: () => manager.requestRemoval(p) }, t("Remove plugin")), (p.updateSource === void 0 ? p.ownership === "core-managed-github" : p.updateSource?.kind === "github") && /* @__PURE__ */ h(React.Fragment, null, /* @__PURE__ */ h(C.Button, { color: "secondary", variant: "soft", size: "md", "aria-label": t("Check GitHub versions"), onClick: () => manager.importPage("github", p) }, t("Check GitHub versions")))));
+  } : null }), p.source !== "bundled" && /* @__PURE__ */ h(React.Fragment, null, /* @__PURE__ */ h(C.Button, { color: "danger", variant: "soft", size: "md", "data-codlet-focus-key": `remove:${p.id}`, "aria-label": t(`Remove ${name(p)}`), disabled: mutationBusy(s) || s.localManagement?.installationLifecycle !== true, onClick: () => manager.requestRemoval(p) }, t("Remove plugin")), s.localManagement?.installationLifecycle !== true && /* @__PURE__ */ h(Copy, null, t("Update Codlet Core to use the current installation and uninstall features."))), (p.updateSource === void 0 ? p.ownership === "core-managed-github" : p.updateSource?.kind === "github") && /* @__PURE__ */ h(React.Fragment, null, /* @__PURE__ */ h(C.Button, { color: "secondary", variant: "soft", size: "md", "aria-label": t("Check GitHub versions"), onClick: () => manager.importPage("github", p) }, t("Check GitHub versions")))));
+}
+function InstallationComplete({ s }) {
+  const c = s.installationComplete;
+  return /* @__PURE__ */ h(C.Dialog.Root, { open: !!c, onOpenChange: (open) => {
+    if (!open && !c?.busy) void manager.finishInstallation(true);
+  } }, /* @__PURE__ */ h(C.Dialog.Portal, null, /* @__PURE__ */ h(C.Dialog.Overlay, { className: "codlet-help-overlay" }), /* @__PURE__ */ h(C.Dialog.Content, { className: "codlet-help-dialog" }, /* @__PURE__ */ h(C.Dialog.Title, null, t("Installation complete")), /* @__PURE__ */ h(C.Dialog.Description, null, c?.name), c && /* @__PURE__ */ h(React.Fragment, null, /* @__PURE__ */ h(C.Checkbox, { checked: c.deleteSource, disabled: c.busy, label: t("Delete source files"), "aria-label": t("Delete source files"), onCheckedChange: (value) => manager.set({ installationComplete: { ...c, deleteSource: value === true } }) }), /* @__PURE__ */ h(Copy, null, displayPath(c.path)), c.error && /* @__PURE__ */ h(Copy, { error: true, role: "alert" }, c.error), /* @__PURE__ */ h("div", { className: "codlet-help-actions" }, /* @__PURE__ */ h(C.Button, { color: "primary", variant: "solid", size: "md", disabled: c.busy, loading: c.busy, onClick: () => manager.finishInstallation() }, t("Done")))))));
 }
 function Confirmation({ s }) {
-  const c = s.confirmation, p = c.plugin, verb = c.kind === "remove" ? "Remove" : c.kind === "revoke" ? "Revoke" : "Disable";
+  const c = s.confirmation, p = c.plugin, verb = c.kind === "revoke" ? "Revoke" : "Disable";
   const title = c.kind === "install" ? "Apply Codlet update?" : `${verb} ${name(p)}?`;
   const dependents = [...new Set(p?.disableDependents ?? [])].filter((id) => id !== p.id).map((id) => s.plugins.find((x) => x.id === id) ?? { id });
-  const copy = c.kind === "install" ? "Compatible Core components apply in this session. Other changes are staged for the next natural start; current tasks and connections continue." : c.kind === "remove" ? "Remove this plugin\u2019s registration and disable it. Source files and plugin data are kept by default. Selecting deletion below removes the source folder and all its contents." : c.kind === "revoke" ? `Revoke ${c.permission}. This stops the package and its running dependents. To grant it again, ${p.ownership === "core-managed-github" ? "select a managed version and confirm its permissions again" : "import the local folder and confirm its permissions"}.` : p.id === manager.context.pluginId || p.disableDependents?.includes(manager.context.pluginId) ? "The Codlet GUI will close in all open windows. Re-enable the plugins from the launcher to restore it." : "These plugins will stay disabled until you enable them again.";
-  return /* @__PURE__ */ h("section", { className: "codlet-page" }, /* @__PURE__ */ h("h2", null, t(title)), /* @__PURE__ */ h(Copy, null, t(copy)), dependents.length > 0 && /* @__PURE__ */ h("section", { className: "codlet-field", "aria-labelledby": "codlet-affected-heading" }, /* @__PURE__ */ h("h2", { id: "codlet-affected-heading" }, t(c.kind === "revoke" ? "Plugins that will also stop" : "Plugins that will also be disabled")), /* @__PURE__ */ h(Copy, null, t("Includes indirect dependencies. These plugins and their files will be kept.")), /* @__PURE__ */ h("ul", { className: "codlet-affected-plugins" }, dependents.map((plugin) => /* @__PURE__ */ h("li", { key: plugin.id }, /* @__PURE__ */ h("span", { className: "codlet-plugin-name" }, name(plugin)), /* @__PURE__ */ h("span", { className: "codlet-version" }, plugin.id))))), c.kind === "remove" && /* @__PURE__ */ h(React.Fragment, null, /* @__PURE__ */ h(C.Checkbox, { checked: c.deleteSource, disabled: !manager.sourceDeletable() || c.busy, "aria-label": t("Delete source files"), label: t("Delete the plugin source folder"), onCheckedChange: (value) => manager.setDeleteSource(value) }), /* @__PURE__ */ h(Copy, null, t(c.busy ? "Checking source folder..." : manager.sourceDeletable() ? `Source folder: ${displayPath(c.source.path)}` : c.source?.status === "missing" ? "The source folder is missing or moved. Removing registration is still available." : "Source deletion is unavailable. Removing registration keeps the remaining files.")), c.source?.warning && /* @__PURE__ */ h(Copy, null, c.source.warning)), c.error && /* @__PURE__ */ h(Copy, { error: true, role: "alert" }, t(c.error)), /* @__PURE__ */ h("div", { className: "codlet-confirmation-actions" }, /* @__PURE__ */ h(C.Button, { color: "secondary", variant: "soft", size: "md", disabled: c.submitting, onClick: () => manager.cancelConfirmation(), "data-codlet-cancel": "" }, t("Cancel")), /* @__PURE__ */ h(C.Button, { color: c.kind === "install" ? "primary" : "danger", variant: "solid", size: "md", disabled: c.busy || c.submitting, loading: c.submitting, "aria-label": t(c.kind === "install" ? "Apply update" : verb), onClick: () => manager.confirm() }, t(c.kind === "install" ? "Apply update" : verb))));
+  const copy = c.kind === "install" ? "Compatible Core components apply in this session. Other changes are staged for the next natural start; current tasks and connections continue." : c.kind === "revoke" ? `Revoke ${c.permission}. This stops the package and its running dependents. To grant it again, ${p.ownership === "core-managed-github" ? "select a managed version and confirm its permissions again" : "import the local folder and confirm its permissions"}.` : p.id === manager.context.pluginId || p.disableDependents?.includes(manager.context.pluginId) ? "The Codlet GUI will close in all open windows. Re-enable the plugins from the launcher to restore it." : "These plugins will stay disabled until you enable them again.";
+  return /* @__PURE__ */ h("section", { className: "codlet-page" }, /* @__PURE__ */ h("h2", null, t(title)), /* @__PURE__ */ h(Copy, null, t(copy)), dependents.length > 0 && /* @__PURE__ */ h("section", { className: "codlet-field", "aria-labelledby": "codlet-affected-heading" }, /* @__PURE__ */ h("h2", { id: "codlet-affected-heading" }, t(c.kind === "revoke" ? "Plugins that will also stop" : "Plugins that will also be disabled")), /* @__PURE__ */ h(Copy, null, t("Includes indirect dependencies. These plugins and their files will be kept.")), /* @__PURE__ */ h("ul", { className: "codlet-affected-plugins" }, dependents.map((plugin) => /* @__PURE__ */ h("li", { key: plugin.id }, /* @__PURE__ */ h("span", { className: "codlet-plugin-name" }, name(plugin)), /* @__PURE__ */ h("span", { className: "codlet-version" }, plugin.id))))), c.error && /* @__PURE__ */ h(Copy, { error: true, role: "alert" }, t(c.error)), /* @__PURE__ */ h("div", { className: "codlet-confirmation-actions" }, /* @__PURE__ */ h(C.Button, { color: "secondary", variant: "soft", size: "md", disabled: c.submitting, onClick: () => manager.cancelConfirmation(), "data-codlet-cancel": "" }, t("Cancel")), /* @__PURE__ */ h(C.Button, { color: c.kind === "install" ? "primary" : "danger", variant: "solid", size: "md", disabled: c.busy || c.submitting, loading: c.submitting, "aria-label": t(c.kind === "install" ? "Apply update" : verb), onClick: () => manager.confirm() }, t(c.kind === "install" ? "Apply update" : verb))));
 }
 function SkillHelp({ s }) {
   const [open, setOpen] = React.useState(false);
@@ -2630,7 +2644,7 @@ function Page({ s }) {
 }
 function App() {
   const s = React.useSyncExternalStore(manager.subscribe, manager.snapshot);
-  return /* @__PURE__ */ h(React.Fragment, null, /* @__PURE__ */ h("style", null, layout_default + marketplace_default), /* @__PURE__ */ h(Page, { s }));
+  return /* @__PURE__ */ h(React.Fragment, null, /* @__PURE__ */ h("style", null, layout_default + marketplace_default), /* @__PURE__ */ h(Page, { s }), /* @__PURE__ */ h(InstallationComplete, { s }));
 }
 function releaseView() {
   React = h = C = I = ui = Settings = CodletIcon = ProjectLinks = Marketplace = MarketplaceDetails = Compatibility = PermissionSummary = null;

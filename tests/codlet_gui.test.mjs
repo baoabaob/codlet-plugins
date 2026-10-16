@@ -156,17 +156,15 @@ test('plugin tag visibility is enabled by default, persists through settings, an
 test('details show actual grants without the raw source path; folder opening passes only plugin ID',async t=>{
   const f=await fixture(t);await f.open();await f.click('Details for Local Notes');const panel=f.document.querySelector('[data-codlet-panel]');assert.match(panel.textContent,/ui.dom/);assert.doesNotMatch(panel.textContent,/C:\/Projects\/Local Notes/);assert.doesNotMatch(panel.textContent,/Allowed network origins/);await f.click('Open plugin folder');assert.deepEqual(f.calls.find(c=>c.method==='openFolder').args,{pluginId:'local.notes'});
 });
-test('remove confirmation uses official unchecked checkbox and Escape cancels only the confirmation',async t=>{
-  const f=await fixture(t);await f.open();await f.click('Details for Local Notes');await f.click('Remove Local Notes');assert.equal(f.control('Delete source files').getAttribute('aria-checked'),'false');assert.equal(f.calls.some(c=>c.method==='prepare'),false);await f.key(f.document.activeElement,'Escape');assert.equal(f.control('Delete source files'),undefined);assert.ok(f.control('Open plugin folder'));assert.ok(f.document.querySelector('[data-codlet-panel]'));
+test('remove immediately submits uninstall and returns to the plugin list',async t=>{
+  const f=await fixture(t);await f.open();await f.click('Details for Local Notes');await f.click('Remove Local Notes');assert.equal(f.control('Delete source files'),undefined);assert.equal(f.calls.filter(c=>c.method==='submit').length,1);assert.equal(f.document.querySelector('[data-codlet-plugin="local.notes"]'),null);assert.ok(f.control('Search plugins'));
 });
-test('removal lists the full Core dependent closure with localized names and keeps source deletion optional',async t=>{
+test('uninstall includes dependent retirement without a second confirmation',async t=>{
   const f=await fixture(t,'zh');
   f.overrides.set('list',async args=>{const reply=await f.demo.request(null,'list',args);reply.plugins.find(p=>p.id==='local.notes').disableDependents=['managed.notes','dev.extra','managed.notes'];reply.plugins.push({id:'dev.extra',name:'Extra panel',i18n:{zh:{name:'附加面板'}},version:'1.0.0',enabled:true,source:'local'});return reply;});
   await f.open();await f.click('Local Notes 的详情');await f.click('移除 Local Notes');
-  const affected=f.document.querySelector('.codlet-affected-plugins');assert.ok(affected);
-  assert.deepEqual([...affected.querySelectorAll('.codlet-plugin-name')].map(el=>el.textContent),['GitHub Notes','附加面板']);
-  assert.match(affected.parentElement.textContent,/间接依赖|安装记录和文件会保留/);
-  assert.equal(f.calls.some(c=>c.method==='prepare'),false);await f.click('取消');assert.equal(f.calls.some(c=>c.method==='submit'),false);
+  assert.equal(f.document.querySelector('.codlet-affected-plugins'),null);
+  assert.deepEqual(f.calls.find(c=>c.method==='prepare').args,{action:'remove',plugin_id:'local.notes',cascade:true});assert.equal(f.calls.filter(c=>c.method==='submit').length,1);
 });
 test('successful operations leave no persistent banner and leave other controls usable',async t=>{
   const f=await fixture(t);await f.open();await f.click('Enable Local Notes');assert.equal(f.control('Enable Local Notes').getAttribute('aria-checked'),'true');assert.equal(f.document.querySelector('.codlet-status.codlet-error'),null);assert.equal(f.control('Add').disabled,false);
@@ -202,11 +200,11 @@ test('completed mutation plus failed refresh shows an error and disables stale s
 test('cancel and Escape restore the confirmation trigger, with search as fallback after removal',async t=>{
   const f=await fixture(t);await f.open();await f.click('Enable Codlet GUI');await f.key(f.document.activeElement,'Escape');assert.equal(f.document.activeElement,f.control('Enable Codlet GUI'));
   await f.click('Details for Local Notes');
-  for(const label of ['Remove Local Notes','Revoke ui.dom']) {
+  for(const label of ['Revoke ui.dom']) {
     await f.click(label);await f.locale('zh');await f.locale('en');await f.click('Cancel');assert.equal(f.document.activeElement,f.control(label));
     await f.click(label);await f.key(f.document.activeElement,'Escape');assert.equal(f.document.activeElement,f.control(label));
   }
-  await f.click('Remove Local Notes');await f.click('Remove');assert.equal(f.document.activeElement,f.control('Search plugins'));assert.equal(f.control('Remove Local Notes'),undefined);
+  await f.click('Remove Local Notes');assert.equal(f.document.activeElement,f.control('Search plugins'));assert.equal(f.control('Remove Local Notes'),undefined);
 });
 test('departing the page ignores late list errors and a new entry loads current state',async t=>{
   const f=await fixture(t),late=deferred();f.overrides.set('list',()=>late.promise);await f.open();await f.leave();f.overrides.delete('list');await f.open();late.reject(Error('old error'));await tick();assert.doesNotMatch(f.document.body.textContent,/old error/);assert.equal(f.document.querySelectorAll('[data-codlet-plugin]').length,5);

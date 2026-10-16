@@ -20,6 +20,8 @@ export const PERMISSION_COPY = Object.freeze({
 
 export function createMessages(context) {
     const TRANSLATIONS = {
+        'Update Codlet Core to use the current installation and uninstall features.':'请更新 Codlet Core 后使用新版安装和卸载功能。',
+        'Installation complete':'安装完成','Done':'完成','This plugin is already installed':'已安装相同 ID 的插件','Choose how to install this version':'请选择安装方式','Update — keep data':'更新，保留数据','Replace — clear data':'替换，清除数据','Update Codlet Core to install plugins with this version of the manager.':'请更新 Codlet Core 后再安装插件。',
         'Select executable scopes with the Codlet CLI --executable option before running this feature. Broad service consent does not select a program.':'使用该功能前，请通过 Codlet CLI 的 --executable 选项明确选择可执行文件。普通服务的广泛授权不会自动选择程序。',
         'SDK and capabilities':'SDK 与能力','SDK contract declared':'已声明 SDK 契约','Declared Codlet SDK':'声明的 Codlet SDK','Package ABI':'插件包 ABI','Required capabilities (author declaration)':'所需能力（作者声明）','None declared':'未声明','Current client':'当前客户端',
         'SDK compatibility describes the API contract. Core probes capability availability in the current client; this is separate from native test evidence.':'SDK 兼容性描述 API 契约。Core 会探测当前客户端的具体能力可用性，与 Native 测试证据分别记录。',
@@ -100,7 +102,7 @@ export function createMessages(context) {
         'Plugins with update channels are up to date':'具有更新渠道的插件已是最新版本',
         'Installer update channel':'安装包声明的更新渠道',
         'Review the first update from the installer package to its GitHub channel. Existing settings will be preserved.':'首次从预装包切换到其 GitHub 渠道，请确认此次更新。原有禁用状态、权限和授权范围会保留。',
-        'This update changes plugin entry shape. Apply it with the CLI while Codlet is stopped, then restart Codlet.':'此次更新改变插件入口类型，需要停止并重启 Codlet 后应用。',
+        'This version changes plugin entry types. Choose Replace to install it.':'此版本改变了插件入口类型，请选择“替换”进行安装。',
         'Plugin update check failed.':'插件更新检查失败','Plugin update status is unavailable.':'暂时无法获取插件更新状态',
         'Some releases could not be checked or compared. Open plugin details to check their GitHub versions.':'部分发布无法自动检查或比较，可进入对应插件详情查看 GitHub 版本',
         'Automatically reloads running local plugins after files are saved.':'文件保存后自动重载运行中的本地插件。',
@@ -177,7 +179,7 @@ export function createMessages(context) {
         'Confirm managed update': '确认更新托管插件', 'Confirm managed rollback': '确认回退托管插件', 'Trust this local plugin': '信任这个本地插件',
         'Trust this GitHub source': '信任这个 GitHub 来源', 'Enable after import': '导入后启用', 'Enable immediately after importing': '导入完成后立即启用',
         'I trust this plugin’s author and this local folder.': '我信任这个插件的作者和本地文件夹。', 'Loading permissions...': '正在读取权限…',
-        'Open plugin folder': '打开插件文件夹', 'Delete source files': '同时删除源文件', 'Delete the plugin source folder': '同时删除插件源文件夹',
+        'Open plugin folder': '打开插件文件夹', 'Delete source files': '删除源文件', 'Delete the plugin source folder': '同时删除插件源文件夹',
         'Checking source folder...': '正在检查源文件夹…', 'Plugin details': '插件详情', 'Local development folder': '本地开发文件夹', 'Codlet managed GitHub package': 'Codlet 托管的 GitHub 插件包', 'Bundled plugin': '内置插件',
         'Find versions': '查找版本', 'GitHub repository or release URL': 'GitHub 仓库或发布链接',
         'GitHub ZIP asset': 'GitHub ZIP 资源包', 'Choose a release': '选择发布版本', 'Choose a ZIP asset': '选择 ZIP 资源包', 'Download and inspect ZIP': '下载并检查 ZIP',
