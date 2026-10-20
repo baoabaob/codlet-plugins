@@ -4,7 +4,10 @@ import {resolve} from 'node:path';
 
 // Shared by the development build and the generated per-plugin source snapshot.
 export async function buildPlugin(base,entry){
-  const result=await build({absWorkingDir:base,entryPoints:[entry],bundle:true,write:false,metafile:true,format:'cjs',platform:'browser',jsxFactory:'h',jsxFragment:'React.Fragment',target:'chrome130',minify:false,legalComments:'inline',define:{'process.env.NODE_ENV':'"production"'},loader:{'.css':'text','.svg':'text'}});
+  const result=await build({absWorkingDir:base,entryPoints:[entry],bundle:true,write:false,metafile:true,format:'cjs',platform:'browser',jsxFactory:'h',jsxFragment:'React.Fragment',target:'chrome130',minify:false,legalComments:'inline',define:{'process.env.NODE_ENV':'"production"'},loader:{'.css':'text','.svg':'text'},plugins:[{
+    name:'stable-text-assets',
+    setup(build){build.onLoad({filter:/\.(css|svg)$/},async args=>({contents:(await readFile(args.path,'utf8')).replace(/\r\n?/g,'\n'),loader:'text'}));},
+  }]});
   const packages=new Set();
   for(const output of Object.values(result.metafile.outputs))for(const [name,value]of Object.entries(output.inputs)){
     const match=/^(.*node_modules\/(?:@[^/]+\/)?[^/]+)\//.exec(name.replaceAll('\\','/'));
