@@ -83,6 +83,13 @@ export class Manager {
   checkingPlugins(){return this.state.pluginUpdateBusy||this.state.pluginUpdates?.phase==='checking';}
   githubPlugins(){return this.state.plugins.filter(p=>p.registered!==false&&(p.updateSource===undefined?p.ownership==='core-managed-github':p.updateSource?.kind==='github'));}
   updateCandidates(){return this.githubPlugins().filter(p=>this.pluginUpdate(p)?.status==='available');}
+  pluginUpdateErrors(){
+    if(this.checkingPlugins())return [];
+    return this.githubPlugins().flatMap(plugin=>{
+      const result=this.pluginUpdate(plugin);
+      return result?.status==='failed'&&result.error?[{id:plugin.id,name:this.messages.name(plugin),error:result.error}]:[];
+    });
+  }
   pluginSummary(){
     const plugins=this.state.plugins.filter(p=>p.registered!==false);
     const healthy=p=>p.enabled===true&&p.active===true&&p.validation?.status==='ok'&&!p.execution?.error;

@@ -104,6 +104,7 @@ function PluginList({s}) {
       </div>
     </div>
     {checkMessage&&<p className="codlet-update-status codlet-copy" role="status">{t(checkMessage)}</p>}
+    {manager.pluginUpdateErrors().map(item=><Copy error role="alert" key={item.id}>{`${item.name}: ${t(item.error)}`}</Copy>)}
     {[...new Set([s.pluginUpdateError,s.pluginUpdates?.error].filter(Boolean))].map(error=><Copy error role="alert" key={error}>{t(error)}</Copy>)}
     {s.error&&<p className="codlet-status codlet-error" role="alert">{t(s.error)}</p>}
     {s.pluginInstallError&&<Copy error role="alert">{t(s.pluginInstallError)}</Copy>}

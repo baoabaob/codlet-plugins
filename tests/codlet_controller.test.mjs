@@ -63,6 +63,15 @@ test('manual scan coalesces, blocks installation until complete, and Update all 
   f.m.set({plugins:[...f.m.state.plugins,{id:'removed',registered:false,ownership:'core-managed-github',managedVersionKey:'old'}],pluginUpdates:{...f.m.state.pluginUpdates,plugins:{...f.m.state.pluginUpdates.plugins,removed:{versionKey:'old',status:'available'}}}});
   assert.equal(f.m.updateCandidates().length,1);await f.m.updatePlugins();assert.deepEqual(f.calls.find(c=>c.method==='updatePlugins').args,{pluginIds:['managed.notes']});
 });
+test('update failures identify the plugin and disappear while retrying or after replacing its package',async t=>{
+  const f=await setup(t);f.m.setVisible(false);
+  const plugin={id:'seed.gui',name:'Codlet GUI',registered:true,updateSource:{kind:'github',versionKey:'one'}};
+  f.m.set({plugins:[plugin],pluginUpdates:{phase:'completed',checkedAt:1,error:null,plugins:{'seed.gui':{versionKey:'one',status:'failed',error:'Could not connect to GitHub.'}}}});
+  assert.deepEqual(f.m.pluginUpdateErrors(),[{id:'seed.gui',name:'Codlet GUI',error:'Could not connect to GitHub.'}]);
+  f.m.set({pluginUpdateBusy:true});assert.deepEqual(f.m.pluginUpdateErrors(),[]);
+  f.m.set({pluginUpdateBusy:false,plugins:[{...plugin,updateSource:{kind:'github',versionKey:'two'}}]});
+  assert.deepEqual(f.m.pluginUpdateErrors(),[]);
+});
 test('summary distinguishes enabled preferences from healthy execution and excludes removed registrations',async t=>{
   const f=await setup(t);f.m.set({plugins:[{id:'a',enabled:true,active:true,validation:{status:'ok'}},{id:'b',enabled:true,active:false,validation:{status:'ok'}},{id:'c',enabled:true,active:true,validation:{status:'failed'}},{id:'d',enabled:false},{id:'e',enabled:true,active:true,validation:{status:'ok'},execution:{error:'failed'}},{id:'gone',registered:false}]});
   assert.deepEqual(f.m.pluginSummary(),{total:5,healthy:1,disabled:1,attention:3});

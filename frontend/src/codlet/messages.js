@@ -207,6 +207,7 @@ export function createMessages(context) {
         'Check for plugin updates':'检查插件更新',
         'Check again to refresh plugin update status':'插件已发生变化，可重新检查更新',
         'Some plugins could not be checked. Try again or open their details.':'部分插件未能完成检查，请重试或查看插件详情',
+        'Could not establish a secure connection to GitHub. Check your proxy and system certificates, then try again.':'无法与 GitHub 建立安全连接，请检查代理和系统证书后重试。',
         'Select Codlet from the / menu in a conversation to find, install, update or create plugins, and get help with Codlet':'在对话中输入 / 并选择 Codlet，即可查找、安装、更新或创建插件，也可以直接询问 Codlet 的用法',
         'The Codlet skill is unavailable. Refresh or restart Codlet and try again.':'暂时无法获取 Codlet skill，请刷新或重启 Codlet 后重试',
         'Update':'更新',
