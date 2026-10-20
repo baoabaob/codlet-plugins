@@ -89,9 +89,11 @@ test('complete reports can only be saved by the owning plugin generation and rem
     const save=methods.get('save-report'),report={schema:1,version:'0.0.3',generation:4,phase:'complete',checks:[{id:'native.editable-draft',status:'passed'},{id:'desktop.model-operations',status:'manual'}]};
     assert.throws(()=>save({report},{caller:{pluginId:'foreign.plugin'}}),/Only the test plugin/);
     assert.throws(()=>save({report:{...report,generation:3}},caller),/this generation/);
-    assert.throws(()=>save({report:{...report,padding:'x'.repeat(65536)}},caller),/size limit/);
+    assert.throws(()=>save({report:{...report,padding:'x'.repeat(512*1024)}},caller),/size limit/);
     assert.deepEqual(save({report},caller),{saved:true});
-    assert.deepEqual(JSON.parse(fs.readFileSync(path.join(root,'functional-report.json'),'utf8')),report);
+    const stored=JSON.parse(fs.readFileSync(path.join(root,'functional-report.json'),'utf8'));
+    assert.deepEqual(stored.checks,report.checks);assert.equal(stored.coverage.counts['operation-verified'],0);
+    assert.ok(stored.coverage.total>200);
     assert.equal(methods.get('inspect')(null,caller).fixture.autorun,false);
   }finally{await host.deactivate();fs.rmSync(root,{recursive:true});}
 });
@@ -105,7 +107,7 @@ test('functional Host state carries observations and never reconstructs live mod
     await host.deactivate();methods.clear();await host.activate({...context,plugin:{...context.plugin,generation:2}});
     host.restoreState(snapshot);
     const observed=methods.get('inspect')(null,{caller:{pluginId:'compatibility.acceptance'}});
-    assert.equal(observed.report.generation,2);assert.equal(observed.report.phase,'idle');assert.equal(observed.native.request,0);
+    assert.equal(observed.report.generation,1);assert.equal(observed.report.historical,true);assert.equal(observed.report.phase,'idle');assert.equal(observed.native.request,0);
     assert.throws(()=>host.restoreState({schema:1,value:{report:{schema:1,phase:'running'}}}),/not transferable/);
   }finally{await host.deactivate();fs.rmSync(root,{recursive:true});}
 });
@@ -131,7 +133,7 @@ test('settled consumer explicitly releases only idle owned fixture traffic and k
   assert.equal(closed,1,'retirement does not replay an explicitly completed close');
 });
 
-test('full readonly consumer activates its own page before each draft and preserves Core active-page admission',async()=>{
+test('explicit interaction consumer activates its own page before each draft and preserves Core active-page admission',async()=>{
   let pageActive=false,action=null,activations=0,drafts=0,saved;
   const order=[],source=fs.readFileSync(new URL('./fixtures/runtime-compatibility/consumer/renderer.js',import.meta.url),'utf8');
   const document={body:{append(){}},createElement(){return{dataset:{},remove(){}};},querySelector(selector){
@@ -152,6 +154,7 @@ test('full readonly consumer activates its own page before each draft and preser
     }},
     services:{storage:{snapshot:async()=>({schema:1})},events:{subscribe:async()=>({subscription:'fixture'}),read:async()=>({events:[{value:{marker:'host-to-renderer'}}]}),close:async()=>{}}},
     codex:{api:1,compatibility:{waitReady:async()=>({available:true})},backend:{read:async()=>({threads:[],models:[],directories:[],providers:[]})},
+      workspace:{connect:async()=>({getSnapshot:()=>({api:1,available:true,features:{}}),dispose(){},prepare:async({features})=>({features:Object.fromEntries(features.map(feature=>[feature,{available:true}]))})})},
       navigation:{page:async()=>({path:'/fixture',dispose(){}}),async newTaskDraft(){
         if(!pageActive)throw Object.assign(Error('A new task draft requires this caller’s active page'),{code:'invalid_owner'});
         order.push('draft');drafts++;pageActive=false;return{opened:true,submitted:false};
