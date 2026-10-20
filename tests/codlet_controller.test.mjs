@@ -39,6 +39,24 @@ test('one-click updates use one Core batch without manual release or download st
   f.m.close();await f.m.open();assert.equal(f.m.installingPlugins(),true);assert.equal(count(f,'updatePlugins'),1);
   batch={...batch,running:false,items:[{...batch.items[0],phase:'updated'}]};const lists=count(f,'list');await f.m.pollVersions();assert.equal(f.m.installingPlugins(),false);assert.ok(count(f,'list')>lists);
 });
+test('signed update reviews accept file provenance without GitHub API IDs and require fresh permission consent',async t=>{
+  const f=await setup(t);f.m.setVisible(false);
+  const plugin={id:'community.notes',registered:true,ownership:'core-managed-github',updateSource:{kind:'github',versionKey:'one',operation:'update'}};
+  const preview={schema:1,kind:'codlet.managed-preview',operation:'update',ownership:'core-managed-github',path:'C:/stage',contentDigest:'a'.repeat(64),registrationDigest:'b'.repeat(64),
+    manifest:{id:plugin.id,version:'2.0.0',permissions:['ui.dom','runtime.manage']},
+    source:{repositoryUrl:'https://github.com/example/notes',tag:'v2.0.0',releaseId:0,assetId:0,assetName:'community.notes-2.0.0.zip',sha256:'c'.repeat(64),updateProof:{publicKey:'publisher',signature:'verified-by-core'}},
+    existingRegistration:{grants:['ui.dom'],brokerPolicy:{}},existingEnabled:false,changes:{restartRequired:false}};
+  f.m.set({plugins:[plugin],pluginInstall:{id:7,running:false,items:[{pluginId:plugin.id,versionKey:'one',phase:'reviewRequired'}]}});
+  f.overrides.set('pluginUpdateReview',()=>preview);
+  await f.m.reviewPluginUpdate(plugin);
+  assert.equal(f.m.state.preview,preview);
+  assert.equal(f.m.state.trusted,false);
+  assert.deepEqual(f.m.state.grants,[]);
+  assert.equal(f.m.importReady(),false);
+  assert.equal(count(f,'githubReleases'),0);
+  assert.equal(count(f,'githubPrepare'),0);
+  assert.equal(count(f,'submit'),0);
+});
 test('an uncertain update command cannot repeat until Core returns its authoritative batch',async t=>{
   const f=await setup(t),p=f.m.state.plugins.find(p=>p.id==='managed.notes');f.m.setVisible(false);
   f.overrides.set('updatePlugins',()=>{throw Error('Lost reply');});await f.m.updatePlugins([p]);await f.m.updatePlugins([p]);assert.equal(count(f,'updatePlugins'),1);assert.equal(f.m.state.pluginInstallUncertain,true);
@@ -71,6 +89,17 @@ test('update failures identify the plugin and disappear while retrying or after 
   f.m.set({pluginUpdateBusy:true});assert.deepEqual(f.m.pluginUpdateErrors(),[]);
   f.m.set({pluginUpdateBusy:false,plugins:[{...plugin,updateSource:{kind:'github',versionKey:'two'}}]});
   assert.deepEqual(f.m.pluginUpdateErrors(),[]);
+});
+test('cached update candidates retain their check time and expose refresh failures',async t=>{
+  const f=await setup(t);f.m.setVisible(false);
+  const checkedAt=Date.now()-3600000,nextCheckAt=Date.now()+60000;
+  const plugin={id:'community.notes',name:'Notes',registered:true,updateSource:{kind:'github',versionKey:'one'}};
+  f.m.set({plugins:[plugin],pluginUpdates:{phase:'completed',checkedAt:Date.now(),error:null,plugins:{
+    'community.notes':{versionKey:'one',status:'available',releaseTag:'v2.0.0',releaseUrl:'https://github.com/example/notes/releases/tag/v2.0.0',cached:true,checkedAt,nextCheckAt,error:'Plugin update manifest download timed out.'},
+  }}});
+  assert.equal(f.m.updateCandidates().length,1);
+  assert.equal(f.m.pluginCheckMessage(),'Some plugin update information could not be refreshed. Showing the last successful results.');
+  assert.deepEqual(f.m.pluginUpdateErrors(),[{id:'community.notes',name:'Notes',error:'Plugin update manifest download timed out.',checkedAt,nextCheckAt}]);
 });
 test('summary distinguishes enabled preferences from healthy execution and excludes removed registrations',async t=>{
   const f=await setup(t);f.m.set({plugins:[{id:'a',enabled:true,active:true,validation:{status:'ok'}},{id:'b',enabled:true,active:false,validation:{status:'ok'}},{id:'c',enabled:true,active:true,validation:{status:'failed'}},{id:'d',enabled:false},{id:'e',enabled:true,active:true,validation:{status:'ok'},execution:{error:'failed'}},{id:'gone',registered:false}]});

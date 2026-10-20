@@ -8,6 +8,7 @@
       "directory": "codlet",
       "entry": "src/codlet/app.jsx",
       "repository": "baoabaob/codlet-gui",
+      "updateManifestUrl": "https://raw.githubusercontent.com/baoabaob/codlet-gui/codlet-updates/codlet-updates.json",
       "description": "Official Codlet plugin for graphical plugin and runtime management",
       "topics": ["codlet-plugin", "codlet-official", "ui", "plugin-manager", "tool"],
       "dependencies": []

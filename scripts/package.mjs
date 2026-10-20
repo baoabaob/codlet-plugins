@@ -1,17 +1,24 @@
 import {readFile,writeFile,mkdir,readdir} from 'node:fs/promises';
 import {resolve,dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {createHash} from 'node:crypto';
+import {createHash,generateKeyPairSync} from 'node:crypto';
 import {deflateRawSync} from 'node:zlib';
+import {createUpdateSource,createSignedUpdate,createUpdateManifest,publicKeyFor} from '../.core-sdk/scripts/plugin-release.mjs';
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const args=process.argv.slice(2);
 let out=resolve(root,'dist');
-if(args.length){
-  if(args.length!==2||args[0]!=='--output'||!args[1]||args[1].startsWith('--'))throw Error('Usage: node scripts/package.mjs [--output DIR]');
-  out=resolve(root,args[1]);
+let signingKey=process.env.CODLET_PLUGIN_SIGNING_KEY,fixture=false;
+for(let i=0;i<args.length;i++){
+  if(args[i]==='--fixture'){fixture=true;continue;}
+  if(!['--output','--signing-key'].includes(args[i])||!args[i+1]||args[i+1].startsWith('--'))throw Error('Usage: node scripts/package.mjs [--output DIR] [--signing-key PATH] [--fixture]');
+  if(args[i]==='--output')out=resolve(root,args[++i]);else signingKey=args[++i];
 }
 const existing=await readdir(out).catch(error=>{if(error.code==='ENOENT')return [];throw error;});
 if(existing.length)throw Error('Choose a new empty package output directory; existing versions are immutable');
+if(!signingKey&&!fixture)throw Error('Set CODLET_PLUGIN_SIGNING_KEY or pass --signing-key with the publisher Ed25519 private key');
+const privateKey=signingKey?await readFile(resolve(signingKey)):generateKeyPairSync('ed25519').privateKey.export({format:'pem',type:'pkcs8'});
+const publicKey=publicKeyFor(privateKey);
+const expectedKeys=JSON.parse(await readFile(resolve(root,'publishing/update-keys.json'),'utf8'));
 await mkdir(out,{recursive:true});
 const hash=data=>createHash('sha256').update(data).digest('hex');
 function crc32(data){let value=0xffffffff;for(const byte of data){value^=byte;for(let i=0;i<8;i++)value=(value>>>1)^((value&1)?0xedb88320:0);}return(value^0xffffffff)>>>0;}
@@ -34,16 +41,18 @@ for(const plugin of config.plugins){
   const dir=plugin.directory;
   const source=resolve(root,'bundled',dir),manifestBytes=await readFile(resolve(source,'codlet.json')),manifest=JSON.parse(manifestBytes);
   if(manifest.id!==plugin.id)throw Error('Plugin manifest/catalog ID mismatch');
+  if(!fixture&&expectedKeys.plugins?.[manifest.id]!==publicKey)throw Error(`Signing key differs from the retained publisher key for ${manifest.id}`);
   if(manifest.host)throw Error('Official GUI packages must not include a Native Host implementation');
   const channels=officialSources.sources.filter(source=>source.repository===plugin.repository&&source.pluginIds?.includes(manifest.id));
   if(channels.length!==1||!Number.isSafeInteger(channels[0].repositoryId)||channels[0].repositoryId<=0||!Number.isSafeInteger(channels[0].ownerId)||channels[0].ownerId<=0)throw Error(`Missing unambiguous installer update identity for ${manifest.id}`);
-  const updateSource={kind:'github',repositoryUrl:`https://github.com/${plugin.repository}`,repositoryId:channels[0].repositoryId,ownerId:channels[0].ownerId,assetNameTemplate:`${manifest.id}-{version}.zip`};
+  const updateManifest=createUpdateSource({repository:plugin.repository,privateKey,manifestUrl:plugin.updateManifestUrl});
+  const updateSource={kind:'github',repositoryUrl:`https://github.com/${plugin.repository}`,repositoryId:channels[0].repositoryId,ownerId:channels[0].ownerId,assetNameTemplate:`${manifest.id}-{version}.zip`,updateManifest};
   const dependencies=plugin.dependencies;
   const metadataObject={schema:1,runtimeApi:1,sdk:{api:1,capabilities:manifest.requires??[]},author:'Codlet'};
   const metadata=Buffer.from(JSON.stringify(metadataObject,null,2)+'\n');
   const dependencyLinks=dependencies.map(id=>{const item=config.plugins.find(p=>p.id===id);if(!item)throw Error(`Unknown dependency ${id}`);return `[${id}](https://github.com/${item.repository})`;});
-  const readme=Buffer.from(`# ${manifest.name}\n\n${plugin.description}\n\nPlugin ID: \`${manifest.id}\` · Version: \`${manifest.version}\`\n\n## Install and update\n\nIn Codlet, choose **Add → Import plugin → GitHub**, then paste:\n\nhttps://github.com/${plugin.repository}\n\nUse the plugin ZIP from [Releases](https://github.com/${plugin.repository}/releases), not GitHub's generated source-code archive. Codlet follows this plugin's declared release channel for verified installer packages and GitHub installations. The first remote update of a preinstalled package asks you to review its adoption; local author folders are never enrolled automatically. Private repositories and draft releases are not available to the current unauthenticated importer.\n\nDependencies: ${dependencyLinks.join(', ')||'Core only'}. Codlet Core 1 supplies the standard UI/Desktop SDK; separate Adapter installation is not required.\n\nPermissions: ${manifest.permissions.map(p=>'`'+p+'`').join(', ')}\n\n## Development\n\nThis repository is generated from [codlet-plugins](https://github.com/${config.sourceRepository}). Make changes and report issues in that development repository; edits here are not automatically merged back.\n\nThe source snapshot and pinned build dependencies are included. To rebuild this plugin:\n\n\`\`\`text\nnpm ci --prefix frontend\nnode frontend/build.mjs\n\`\`\`\n\nCore's runtime SDK is supplied by Codlet. The source revision and exact files are recorded in \`.codlet-distribution.json\`. Reviewed client profiles and actual native acceptance boundaries are documented in the [development repository's known issues](https://github.com/${config.sourceRepository}/blob/main/docs/known-issues.md).\n\n## License\n\nOriginal Codlet code is licensed under [Apache-2.0](LICENSE); see [NOTICE](NOTICE). Third-party dependencies retain their own licenses and notices. Independently developed Codlet plugins may choose their own licenses.\n\n## Remove\n\nUninstall from the Codlet GUI or CLI. Uninstall removes the installed copy and clears configuration, data, cache and credentials. When installing over an existing ID, Update preserves data and Replace starts empty. These installation features require Codlet Core 1.0.0-rc.5 or later.\n`);
-  const files=[['LICENSE',license],['NOTICE',notice],['codlet.json',manifestBytes],['codlet-package.json',metadata],['README.md',readme],[manifest.renderer.entry,await readFile(resolve(source,manifest.renderer.entry))]].sort(([a],[b])=>a.localeCompare(b));
+  const readme=Buffer.from(`# ${manifest.name}\n\n${plugin.description}\n\nPlugin ID: \`${manifest.id}\` · Version: \`${manifest.version}\`\n\n## Install and update\n\nIn Codlet, choose **Add → Import plugin → GitHub**, then paste:\n\nhttps://github.com/${plugin.repository}\n\nUse the plugin ZIP from [Releases](https://github.com/${plugin.repository}/releases), not GitHub's generated source-code archive. Codlet reads this plugin's signed update manifest and verifies direct-file downloads with the publisher key recorded in the installed package. The first remote update of a preinstalled package asks you to review its adoption; local author folders are never enrolled automatically. Private repositories and draft releases are not available to the current unauthenticated importer.\n\nDependencies: ${dependencyLinks.join(', ')||'Core only'}. Codlet Core 1 supplies the standard UI/Desktop SDK; separate Adapter installation is not required.\n\nPermissions: ${manifest.permissions.map(p=>'`'+p+'`').join(', ')}\n\n## Development\n\nThis repository is generated from [codlet-plugins](https://github.com/${config.sourceRepository}). Make changes and report issues in that development repository; edits here are not automatically merged back.\n\nThe source snapshot and pinned build dependencies are included. To rebuild this plugin:\n\n\`\`\`text\nnpm ci --prefix frontend\nnode frontend/build.mjs\n\`\`\`\n\nCore's runtime SDK is supplied by Codlet. The source revision and exact files are recorded in \`.codlet-distribution.json\`. Reviewed client profiles and actual native acceptance boundaries are documented in the [development repository's known issues](https://github.com/${config.sourceRepository}/blob/main/docs/known-issues.md).\n\n## License\n\nOriginal Codlet code is licensed under [Apache-2.0](LICENSE); see [NOTICE](NOTICE). Third-party dependencies retain their own licenses and notices. Independently developed Codlet plugins may choose their own licenses.\n\n## Remove\n\nUninstall from the Codlet GUI or CLI. Uninstall removes the installed copy and clears configuration, data, cache and credentials. When installing over an existing ID, Update preserves data and Replace starts empty. These installation features require Codlet Core 1.0.0-rc.5 or later.\n`);
+  const files=[['LICENSE',license],['NOTICE',notice],['codlet.json',manifestBytes],['codlet-package.json',metadata],['codlet-update.json',Buffer.from(JSON.stringify(updateManifest,null,2)+'\n')],['README.md',readme],[manifest.renderer.entry,await readFile(resolve(source,manifest.renderer.entry))]].sort(([a],[b])=>a.localeCompare(b));
   const destination=resolve(out,'packages',manifest.id);await mkdir(destination,{recursive:true});
   for(const [path,bytes]of files){await mkdir(dirname(resolve(destination,path)),{recursive:true});await writeFile(resolve(destination,path),bytes);}
   const archive=zip(files),asset=`${manifest.id}-${manifest.version}.zip`,archiveSha256=hash(archive);await writeFile(resolve(out,asset),archive,{flag:'wx'});
@@ -51,7 +60,9 @@ for(const plugin of config.plugins){
   if(releaseManifest.length>16*1024)throw Error('codlet-release.json exceeds Core release metadata limit');
   const releaseDirectory=resolve(out,'release-assets',manifest.id);await mkdir(releaseDirectory,{recursive:true});
   await writeFile(resolve(releaseDirectory,'codlet-release.json'),releaseManifest);
+  const updates=createUpdateManifest([createSignedUpdate({manifest,repository:plugin.repository,assetName:asset,archive,privateKey})],plugin.repository);
+  await writeFile(resolve(releaseDirectory,'codlet-updates.json'),JSON.stringify(updates,null,2)+'\n',{flag:'wx'});
   packages.push({id:manifest.id,name:manifest.name,version:manifest.version,repository:`https://github.com/${plugin.repository}`,tag:`v${manifest.version}`,updateSource,dependencies,permissions:manifest.permissions,directory:`packages/${manifest.id}`,asset,sha256:archiveSha256,bytes:archive.length,files:files.map(([path,bytes])=>({path,bytes:bytes.length,sha256:hash(bytes)}))});
 }
-await writeFile(resolve(out,'catalog.json'),JSON.stringify({schema:1,kind:'codlet-official-plugin-bundle',repository:`https://github.com/${config.sourceRepository}`,installerPlugins:config.installerPlugins,packages},null,2)+'\n');
+await writeFile(resolve(out,'catalog.json'),JSON.stringify({schema:1,kind:'codlet-official-plugin-bundle',fixture,repository:`https://github.com/${config.sourceRepository}`,installerPlugins:config.installerPlugins,packages},null,2)+'\n');
 console.log(packages.map(p=>`${p.id} ${p.version}: ${p.asset} ${p.sha256}`).join('\n'));

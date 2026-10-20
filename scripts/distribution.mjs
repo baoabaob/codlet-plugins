@@ -4,6 +4,7 @@ import {createHash} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {execFileSync} from 'node:child_process';
 import {buildPlugin} from '../frontend/build-plugin.mjs';
+import {validateUpdateManifest,validateUpdateSource,verifyUpdate} from '../.core-sdk/scripts/plugin-release.mjs';
 
 export const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
 export const blobHash=bytes=>createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex');
@@ -18,6 +19,7 @@ export function validateConfig(config){
   for(const p of config.plugins){
     if(!/^[a-z0-9.-]+$/.test(p.id)||ids.has(p.id)||!/^[-\w]+\/[-\w.]+$/.test(p.repository)||repos.has(p.repository.toLowerCase())||p.repository===config.sourceRepository)throw Error('Invalid or duplicate plugin ID/repository');
     if(p.repository.split('/')[0]!==config.sourceRepository.split('/')[0])throw Error('Distribution repositories must belong to the development owner');
+    if(p.updateManifestUrl!==undefined&&p.updateManifestUrl!==`https://raw.githubusercontent.com/${p.repository}/codlet-updates/codlet-updates.json`)throw Error('This publisher uses the codlet-updates branch for a fixed static feed');
     safePath(p.directory);safePath(p.entry);
     if(!p.description||!Array.isArray(p.topics)||!p.topics.includes('codlet-plugin')||p.topics.length>20||p.topics.some(t=>!(/^[a-z0-9][a-z0-9-]{0,49}$/.test(t))))throw Error('Invalid discovery topics');
     if(!Array.isArray(p.dependencies)||p.dependencies.includes(p.id))throw Error('Invalid plugin dependencies');
@@ -35,7 +37,7 @@ export async function prepareDistribution(root,{allowDirty=false,outputDirectory
   const sourceCommit=git('rev-parse','HEAD'),dirty=!!git('status','--porcelain','--untracked-files=normal');
   if(dirty&&!allowDirty)throw Error('Commit the tested development files before preparing a synchronized distribution (use --allow-dirty for local inspection only)');
   const out=resolve(root,outputDirectory??'dist'),catalog=JSON.parse(await readFile(resolve(out,'catalog.json'),'utf8'));
-  const plan={schema:1,kind:'codlet-distribution-plan',sourceRepository:config.sourceRepository,sourceCommit,dirty,plugins:[]};
+  const plan={schema:1,kind:'codlet-distribution-plan',sourceRepository:config.sourceRepository,sourceCommit,dirty,fixture:catalog.fixture===true,plugins:[]};
   for(const plugin of config.plugins){
     const pkg=catalog.packages.find(p=>p.id===plugin.id);
     if(!pkg||pkg.repository!==`https://github.com/${plugin.repository}`||pkg.tag!==`v${pkg.version}`||!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(pkg.version))throw Error(`Invalid package catalog for ${plugin.id}`);
@@ -51,6 +53,15 @@ export async function prepareDistribution(root,{allowDirty=false,outputDirectory
     const releaseDeclaration=JSON.parse(releaseAssetBytes);
     const expectedDeclaration={schema:1,kind:'codlet-plugin-release',manifest,metadata,asset:{name:pkg.asset,bytes:archive.length,sha256:hash(archive)}};
     if(canonical(releaseDeclaration)!==canonical(expectedDeclaration))throw Error(`Release declaration differs from the actual package for ${plugin.id}`);
+    const updateSource=validateUpdateSource(JSON.parse(await readFile(resolve(packageDirectory,'codlet-update.json'),'utf8')),plugin.repository);
+    if(canonical(pkg.updateSource?.updateManifest)!==canonical(updateSource))throw Error(`Installer source differs from the packaged update source for ${plugin.id}`);
+    const updateAssetPath=safePath(`release-assets/${plugin.id}/codlet-updates.json`);
+    const updateAssetBytes=await readFile(resolve(out,updateAssetPath));
+    const updateManifest=validateUpdateManifest(JSON.parse(updateAssetBytes),plugin.repository);
+    const candidates=updateManifest.plugins.filter(entry=>entry.payload.id===manifest.id&&entry.payload.version===manifest.version);
+    if(candidates.length!==1)throw Error(`Update manifest must declare the current plugin version exactly once: ${plugin.id}`);
+    verifyUpdate(candidates[0],plugin.repository,updateSource.publicKey);
+    if(candidates[0].payload.asset.name!==pkg.asset||candidates[0].payload.asset.bytes!==archive.length||candidates[0].payload.asset.sha256!==hash(archive))throw Error(`Update manifest differs from the actual archive for ${plugin.id}`);
     safePath(manifest.renderer.entry);
     const built=await buildPlugin(resolve(root,'frontend'),plugin.entry);
     if(manifest.host)throw Error('Official GUI distributions must not include a Native Host implementation');
@@ -79,7 +90,7 @@ export async function prepareDistribution(root,{allowDirty=false,outputDirectory
     add('.codlet-distribution.json',JSON.stringify({schema:1,kind:'codlet-generated-distribution',pluginId:plugin.id,repository:plugin.repository,sourceRepository:config.sourceRepository,sourceCommit,version:pkg.version,packageSha256:pkg.sha256,contentDigest,files:payloadFiles},null,2)+'\n');
     const directory=`repositories/${plugin.repository.split('/')[1]}`;
     for(const [path,bytes]of files){const target=resolve(out,directory,path);await mkdir(dirname(target),{recursive:true});await writeFile(target,bytes);}
-    plan.plugins.push({id:plugin.id,repository:plugin.repository,description:plugin.description,topics:plugin.topics,version:pkg.version,tag:pkg.tag,directory,contentDigest,archive:{path:pkg.asset,bytes:pkg.bytes,sha256:pkg.sha256},releaseAsset:{name:'codlet-release.json',path:releaseAssetPath,bytes:releaseAssetBytes.length,sha256:hash(releaseAssetBytes)},files:inventory()});
+    plan.plugins.push({id:plugin.id,repository:plugin.repository,description:plugin.description,topics:plugin.topics,version:pkg.version,tag:pkg.tag,directory,contentDigest,archive:{path:pkg.asset,bytes:pkg.bytes,sha256:pkg.sha256},releaseAsset:{name:'codlet-release.json',path:releaseAssetPath,bytes:releaseAssetBytes.length,sha256:hash(releaseAssetBytes)},updateAsset:{name:'codlet-updates.json',path:updateAssetPath,bytes:updateAssetBytes.length,sha256:hash(updateAssetBytes)},files:inventory()});
   }
   await writeFile(resolve(out,'distribution-plan.json'),JSON.stringify(plan,null,2)+'\n');
   return plan;

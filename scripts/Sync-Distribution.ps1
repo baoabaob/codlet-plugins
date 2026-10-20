@@ -33,7 +33,7 @@ function Get-OwnedPath([string]$Root,[string]$Relative){
 function Read-Plan([string]$Path){
   $resolved=[IO.Path]::GetFullPath($Path)
   $document=[IO.File]::ReadAllText($resolved)|ConvertFrom-Json
-  if($document.schema -ne 1 -or $document.kind -ne 'codlet-distribution-plan' -or $document.sourceRepository -notmatch '^[\w-]+/[\w.-]+$' -or $document.sourceCommit -notmatch '^[a-f0-9]{40}$' -or $document.dirty){throw 'Expected a clean, committed distribution plan'}
+  if($document.schema -ne 1 -or $document.kind -ne 'codlet-distribution-plan' -or $document.sourceRepository -notmatch '^[\w-]+/[\w.-]+$' -or $document.sourceCommit -notmatch '^[a-f0-9]{40}$' -or $document.dirty -or ($document.PSObject.Properties['fixture'] -and $document.fixture)){throw 'Expected a clean, committed distribution plan with the publisher signing key'}
   $root=[IO.Path]::GetDirectoryName($resolved);$ids=@{};$repositories=@{}
   foreach($plugin in $document.plugins){
     if($plugin.id -notmatch '^[a-z0-9.-]+$' -or $plugin.repository -notmatch '^[\w-]+/[\w.-]+$' -or $ids.ContainsKey($plugin.id) -or $repositories.ContainsKey($plugin.repository) -or $plugin.repository -eq $document.sourceRepository -or $plugin.repository.Split('/')[0] -ne $document.sourceRepository.Split('/')[0]){throw 'Invalid or duplicate distribution destination'}
@@ -46,7 +46,7 @@ function Read-Plan([string]$Path){
       $bytes=[IO.File]::ReadAllBytes((Get-OwnedPath $directory $file.path))
       if($bytes.Length -ne $file.bytes -or (Get-Sha256 $bytes) -ne $file.sha256 -or (Get-GitBlob $bytes) -ne $file.gitBlob){throw "Generated file changed: $($plugin.id)/$($file.path)"}
     }
-    foreach($required in @('codlet.json','codlet-package.json','.codlet-distribution.json','README.md','frontend/build.mjs')){if(-not $paths.ContainsKey($required)){throw "Missing generated file: $required"}}
+    foreach($required in @('codlet.json','codlet-package.json','codlet-update.json','.codlet-distribution.json','README.md','frontend/build.mjs')){if(-not $paths.ContainsKey($required)){throw "Missing generated file: $required"}}
     $marker=[IO.File]::ReadAllText((Join-Path $directory '.codlet-distribution.json'))|ConvertFrom-Json
     if($marker.pluginId -ne $plugin.id -or $marker.repository -ne $plugin.repository -or $marker.sourceCommit -ne $document.sourceCommit -or $marker.sourceRepository -ne $document.sourceRepository -or $marker.contentDigest -ne $plugin.contentDigest -or $marker.packageSha256 -ne $plugin.archive.sha256){throw 'Snapshot identity mismatch'}
     $bytes=[IO.File]::ReadAllBytes((Get-OwnedPath $root $plugin.archive.path))
@@ -61,6 +61,25 @@ function Read-Plan([string]$Path){
     $packageManifest=[IO.File]::ReadAllText((Get-OwnedPath $directory 'codlet.json'))|ConvertFrom-Json
     $packageMetadata=[IO.File]::ReadAllText((Get-OwnedPath $directory 'codlet-package.json'))|ConvertFrom-Json
     Assert-ReleaseDeclaration $releaseDeclaration $packageManifest $packageMetadata $plugin
+    if($plugin.updateAsset.name -cne 'codlet-updates.json' -or $plugin.updateAsset.path -cne ('release-assets/'+$plugin.id+'/codlet-updates.json') -or
+      [long]$plugin.updateAsset.bytes -le 0 -or [long]$plugin.updateAsset.bytes -gt 256KB -or $plugin.updateAsset.sha256 -notmatch '^[a-f0-9]{64}$'){
+      throw 'Invalid signed update manifest asset record'
+    }
+    $updatePath=Get-OwnedPath $root $plugin.updateAsset.path
+    $updateBytes=[IO.File]::ReadAllBytes($updatePath)
+    if($updateBytes.Length -ne [long]$plugin.updateAsset.bytes -or (Get-Sha256 $updateBytes) -ne $plugin.updateAsset.sha256){throw "Signed update manifest changed: $($plugin.id)"}
+    $update=$script:utf8.GetString($updateBytes)|ConvertFrom-Json
+    $source=[IO.File]::ReadAllText((Get-OwnedPath $directory 'codlet-update.json'))|ConvertFrom-Json
+    $entries=@($update.plugins|Where-Object{$_.payload.id -ceq $plugin.id -and $_.payload.version -ceq $plugin.version})
+    if($update.schema -ne 1 -or $update.kind -ne 'codlet-plugin-updates' -or $entries.Count -ne 1 -or
+      $source.schema -ne 1 -or $entries[0].publicKey -cne $source.publicKey -or
+      $entries[0].payload.repositoryUrl -cne ('https://github.com/'+$plugin.repository) -or
+      $entries[0].payload.asset.name -cne [IO.Path]::GetFileName($plugin.archive.path) -or
+      [long]$entries[0].payload.asset.bytes -ne [long]$plugin.archive.bytes -or
+      $entries[0].payload.asset.sha256 -cne $plugin.archive.sha256){throw 'Signed update manifest does not match the package and publisher key'}
+    $verifier=Join-Path $PSScriptRoot '../.core-sdk/scripts/plugin-release.mjs'
+    $null=& node $verifier verify --manifest $updatePath --repository $plugin.repository
+    if($LASTEXITCODE -ne 0){throw 'Signed update manifest verification failed'}
   }
   if($ids.Count -eq 0){throw 'Empty distribution plan'}
   [pscustomobject]@{Document=$document;Root=$root}
@@ -149,6 +168,44 @@ function Find-Release([string]$Repository,[string]$Tag){
   }
   throw 'Release listing exceeded the bounded search; no release was created'
 }
+function Sync-UpdateManifest($PlanData,$Plugin,$Release,[string]$SourceCommit){
+  if($Release.draft){return $null}
+  $directory=Get-OwnedPath $PlanData.Root $Plugin.directory
+  $source=[IO.File]::ReadAllText((Get-OwnedPath $directory 'codlet-update.json'))|ConvertFrom-Json
+  $expected='https://raw.githubusercontent.com/'+$Plugin.repository+'/codlet-updates/codlet-updates.json'
+  if($source.manifestUrl -ne $expected){return $null}
+  $api='/repos/'+$Plugin.repository
+  $reference=Invoke-GitHub GET ($api+'/git/ref/heads/codlet-updates') -Missing
+  if(-not $reference){
+    $null=Invoke-GitHub POST ($api+'/git/refs') @{ref='refs/heads/codlet-updates';sha=$SourceCommit}
+  }
+  $previous=Invoke-GitHub GET ($api+'/contents/codlet-updates.json?ref=codlet-updates') -Missing
+  $temporary=Get-OwnedPath $PlanData.Root ('.channel-metadata/'+$Plugin.id)
+  [IO.Directory]::CreateDirectory($temporary)|Out-Null
+  $incoming=Get-OwnedPath $PlanData.Root $Plugin.updateAsset.path
+  $output=Get-OwnedPath $temporary 'next.json'
+  $arguments=@((Join-Path $PSScriptRoot '../.core-sdk/scripts/plugin-release.mjs'),'merge','--incoming',$incoming,'--repository',$Plugin.repository,'--output',$output)
+  $previousBytes=$null
+  if($previous){
+    if($previous.type -ne 'file' -or $previous.encoding -ne 'base64' -or [long]$previous.size -gt 256KB -or $previous.sha -notmatch '^[a-f0-9]{40}$'){throw 'Existing update channel is not a bounded JSON file'}
+    $previousBytes=[Convert]::FromBase64String($previous.content)
+    if($previousBytes.Length -ne [long]$previous.size){throw 'Existing update channel size changed'}
+    $previousPath=Get-OwnedPath $temporary 'previous.json'
+    [IO.File]::WriteAllBytes($previousPath,$previousBytes)
+    $arguments+=@('--previous',$previousPath)
+  }
+  $null=& node @arguments
+  if($LASTEXITCODE -ne 0){throw 'Existing update channel could not be merged and verified'}
+  $next=[IO.File]::ReadAllBytes($output)
+  $nextSha=Get-Sha256 $next
+  if($null -ne $previousBytes -and (Get-Sha256 $previousBytes) -eq $nextSha){
+    return [pscustomobject]@{url=$expected;sha256=$nextSha;changed=$false}
+  }
+  $body=@{message=('Publish '+$Plugin.id+' '+$Plugin.version+' update manifest');branch='codlet-updates';content=[Convert]::ToBase64String($next)}
+  if($previous){$body.sha=$previous.sha}
+  $written=Invoke-GitHub PUT ($api+'/contents/codlet-updates.json') $body
+  [pscustomobject]@{url=$expected;sha256=$nextSha;changed=$true;commit=$written.commit.sha}
+}
 function Sync-Plugin($PlanData,$Plugin,[switch]$Publish,[switch]$AllowPublic){
   $repository=$Plugin.repository;$api='/repos/'+$repository
   $repo=Invoke-GitHub GET $api -Missing
@@ -160,6 +217,7 @@ function Sync-Plugin($PlanData,$Plugin,[switch]$Publish,[switch]$AllowPublic){
   if($repo.archived -or $repo.fork -or (-not $repo.private -and -not $AllowPublic)){throw "Refusing archived, forked or unapproved public destination: $repository"}
   $branch=[string]$repo.default_branch
   if(-not $branch){$branch='main'}
+  if($branch -eq 'codlet-updates'){throw 'The update channel branch must be separate from the default source branch'}
   $branchPath='/git/ref/heads/'+[Uri]::EscapeDataString($branch)
   $head=Invoke-GitHub GET ($api+$branchPath) -Missing
   if(-not $head){
@@ -209,7 +267,8 @@ function Sync-Plugin($PlanData,$Plugin,[switch]$Publish,[switch]$AllowPublic){
   $assetName=[IO.Path]::GetFileName($Plugin.archive.path)
   foreach($expected in @(
     @{name=$assetName;bytes=[long]$Plugin.archive.bytes;sha256=$Plugin.archive.sha256},
-    @{name='codlet-release.json';bytes=[long]$Plugin.releaseAsset.bytes;sha256=$Plugin.releaseAsset.sha256}
+    @{name='codlet-release.json';bytes=[long]$Plugin.releaseAsset.bytes;sha256=$Plugin.releaseAsset.sha256},
+    @{name='codlet-updates.json';bytes=[long]$Plugin.updateAsset.bytes;sha256=$Plugin.updateAsset.sha256}
   )){
     $matches=@($assets|Where-Object{$_.name -ceq $expected.name})
     if($matches.Count -gt 1){throw "Ambiguous release asset: $($expected.name)"}
@@ -218,8 +277,10 @@ function Sync-Plugin($PlanData,$Plugin,[switch]$Publish,[switch]$AllowPublic){
   }
   $asset=Sync-ReleaseAsset $PlanData $Plugin $release $assets $assetName $Plugin.archive.path ([long]$Plugin.archive.bytes) $Plugin.archive.sha256 'application/zip'
   $releaseAsset=Sync-ReleaseAsset $PlanData $Plugin $release $assets 'codlet-release.json' $Plugin.releaseAsset.path ([long]$Plugin.releaseAsset.bytes) $Plugin.releaseAsset.sha256 'application/json; charset=utf-8'
+  $updateAsset=Sync-ReleaseAsset $PlanData $Plugin $release $assets 'codlet-updates.json' $Plugin.updateAsset.path ([long]$Plugin.updateAsset.bytes) $Plugin.updateAsset.sha256 'application/json; charset=utf-8'
   if($Publish -and $release.draft){$release=Invoke-GitHub PATCH ($api+'/releases/'+$release.id) @{draft=$false}}
-  [pscustomobject]@{id=$Plugin.id;repository=('https://github.com/'+$repository);private=$repo.private;version=$Plugin.version;tag=$Plugin.tag;commit=$headSha;releaseId=$release.id;releaseUrl=$release.html_url;draft=$release.draft;assetId=$asset.id;assetName=$asset.name;assetUrl=$asset.browser_download_url;sha256=$Plugin.archive.sha256;bytes=$asset.size;releaseAssetId=$releaseAsset.id;releaseAssetName=$releaseAsset.name;releaseAssetUrl=$releaseAsset.browser_download_url;releaseAssetSha256=$Plugin.releaseAsset.sha256;releaseAssetBytes=$releaseAsset.size}
+  $updateChannel=Sync-UpdateManifest $PlanData $Plugin $release $headSha
+  [pscustomobject]@{id=$Plugin.id;repository=('https://github.com/'+$repository);private=$repo.private;version=$Plugin.version;tag=$Plugin.tag;commit=$headSha;releaseId=$release.id;releaseUrl=$release.html_url;draft=$release.draft;assetId=$asset.id;assetName=$asset.name;assetUrl=$asset.browser_download_url;sha256=$Plugin.archive.sha256;bytes=$asset.size;releaseAssetId=$releaseAsset.id;releaseAssetName=$releaseAsset.name;releaseAssetUrl=$releaseAsset.browser_download_url;releaseAssetSha256=$Plugin.releaseAsset.sha256;releaseAssetBytes=$releaseAsset.size;updateAssetId=$updateAsset.id;updateAssetName=$updateAsset.name;updateAssetUrl=$updateAsset.browser_download_url;updateAssetSha256=$Plugin.updateAsset.sha256;updateAssetBytes=$updateAsset.size;updateChannel=$updateChannel}
 }
 
 if($MyInvocation.InvocationName -ne '.'){
@@ -227,7 +288,7 @@ if($MyInvocation.InvocationName -ne '.'){
     $data=Read-Plan $Plan
     if(-not $Apply){
       if($Publish){throw '-Publish also requires -Apply'}
-      $data.Document.plugins|Select-Object id,repository,tag,@{Name='action';Expression={'sync private repository and verified draft ZIP'}}|ConvertTo-Json -Depth 5
+      $data.Document.plugins|Select-Object id,repository,tag,@{Name='action';Expression={'sync generated repository and verified draft release assets'}}|ConvertTo-Json -Depth 5
     }else{
       Initialize-GitHubCredential
       $receipts=@()

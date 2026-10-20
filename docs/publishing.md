@@ -2,7 +2,7 @@
 
 `codlet-plugins` 是普通官方插件的开发入口。Core v1 统一维护 Codex 实现、Native profiles 和 SDK，消费者通过 `context.codex` 使用。`plugins.json` 只列出 `codlet-gui`；构建、打包和分发准备器不再包含 Adapter/Native Host 分支。两个旧 Adapter 分发仓库保留历史标签和 Release，当前源码与回归归 Core 维护。GUI 的独立分发仓库保存自己的 topics、版本标签和 Release ZIP。
 
-当前 `1.0.0-rc.1` 是本地候选，构建或测试不等于公开发布。本轮不推送、不创建 Release；真正发布仍执行下方审核、所有权和摘要检查。
+发布输入必须是已测试的源码提交、实际安装包和使用固定发布密钥签名的更新清单。
 
 ## 日常流程
 
@@ -10,8 +10,9 @@
 
 ```powershell
 npm ci --prefix frontend
+node scripts/prepare-core-sdk.mjs ABSOLUTE_CORE_CHECKOUT
 node frontend/build.mjs
-node scripts/package.mjs
+node scripts/package.mjs --signing-key ABSOLUTE_PRIVATE_KEY_PATH
 # 运行与修改相关的插件测试并提交；准备器会拒绝未提交的源文件
 node scripts/distribution.mjs
 powershell -NoProfile -File scripts/Sync-Distribution.ps1
@@ -19,7 +20,7 @@ powershell -NoProfile -File scripts/Sync-Distribution.ps1
 
 `dist/` 必须是本次发布专用的空打包目录，打包器拒绝覆盖已有内容。保留旧版本制品和发布回执；本地检查可用 `node scripts/package.mjs --output ABSOLUTE_FRESH_OUTPUT`。CLI 分发准备器默认读取 `dist/`；其程序接口 `prepareDistribution(root,{outputDirectory})` 可检查另一输出目录。最后一行仅检查文件、输出同步计划，不联网。`node scripts/distribution.mjs --allow-dirty` 可用于本地检查，但这样的计划不能同步到 GitHub。
 
-确认计划后，同步到已公开的官方分发仓库，生成草稿 Release 并上传经过校验的插件 ZIP 与 `codlet-release.json`：
+确认计划后，同步到已公开的分发仓库，生成草稿 Release 并上传经过校验的插件 ZIP、`codlet-release.json` 和 `codlet-updates.json`：
 
 ```powershell
 powershell -NoProfile -File scripts/Sync-Distribution.ps1 -Apply -AllowPublic
@@ -27,11 +28,36 @@ powershell -NoProfile -File scripts/Sync-Distribution.ps1 -Apply -AllowPublic
 
 脚本使用 Git Credential Manager 中现有的 GitHub 凭据，或 `CODLET_DISTRIBUTION_TOKEN` / `GH_TOKEN`。凭据只存在于内存，不写进文件、计划、Git 配置或日志；网络继承系统代理。需要创建仓库、设置 topics 和写入内容的权限。组织名不属于当前账户时，请先创建组织内私有空仓库，脚本不会代替用户修改组织权限。
 
-`dist/release-lock.json` 保存同步回执，含每个插件的仓库、版本、源提交、Release ID、ZIP 与声明资产的 asset ID、文件名、SHA-256、大小及 private/draft 状态。重新执行会复用已完成的步骤和未变化的版本，不重复发版。
+`dist/release-lock.json` 保存同步回执，含每个插件的仓库、版本、源提交、Release ID、ZIP、声明和更新清单的 asset ID、文件名、SHA-256、大小及 private/draft 状态。重新执行会复用已完成的步骤和未变化的版本，不重复发版。
+
+## 签名更新清单
+
+所有插件遵循 Core 的[更新清单契约](https://github.com/baoabaob/codlet/blob/main/docs/spec/plugin-updates.md)。
+`scripts/prepare-core-sdk.mjs` 同时准备通用发布工具，打包器调用该工具生成签名。
+ZIP 内的 `codlet-update.json` 记录固定清单地址和 Ed25519 公钥；Release 中的
+`codlet-updates.json` 记录插件 ID、版本、下载直链、实际大小、SHA-256 和签名。
+客户端根据已安装公钥验证清单并下载文件。
+
+首次发布时用 Core 的 `scripts/plugin-release.mjs keygen` 生成私钥，存放在源码、
+包目录和 `dist/` 之外，将对应公钥记入 `publishing/update-keys.json`。
+后续版本沿用同一私钥，使用 `--signing-key` 或 `CODLET_PLUGIN_SIGNING_KEY` 指定。
+打包器拒绝与已记录公钥不符的私钥；准备器和同步器再次验证清单、签名及实际 ZIP。
+
+`--fixture` 仅用于自动化测试，可以在内存中生成临时密钥；产物和计划带有 fixture
+标记，发布同步器与 Core 安装包构建器会拒绝它们。
+
+`plugins.json.updateManifestUrl` 使用 `codlet-updates` 分支上的固定 raw 文件地址。
+同步器在全部资产上传并确认 Release 已发布后，合并该频道中的签名条目，保留每个
+插件的最新正式版和预览版。草稿不会推进频道；相同内容不会重复提交，并发修改由
+文件 SHA 条件检查拒绝。默认源码分支和频道分支分开，版本化 Release 资产保持不变。
+这让预览版本也能被检查到，不依赖会跳过预览版的 GitHub `latest` 路由。
 
 ## Release 声明资产
 
-每个独立 Release 同时包含恰好一个 `${plugin.id}-${plugin.version}.zip` 和一个 `codlet-release.json`。声明资产是轻量的发布方元数据，**不是签名或安全认证**；Core 安装时仍重新检查 ZIP 内的 manifest、实际文件和摘要。下载统计只对应插件 ZIP，不把声明 JSON 计作插件包下载。
+每个独立 Release 同时包含恰好一个 `${plugin.id}-${plugin.version}.zip`、一个
+`codlet-release.json` 和一个 `codlet-updates.json`。`codlet-release.json` 提供市场
+展示元数据，签名验证由 `codlet-updates.json` 承担。Core 安装时仍检查 ZIP 内的
+manifest、实际文件、摘要、权限和依赖。下载统计只对应插件 ZIP。
 
 `codlet-release.json` 的 schema 为 `{schema:1,kind:"codlet-plugin-release",manifest,metadata,asset}`。`manifest` 是 ZIP 中完整的 `codlet.json` 对象，`metadata` 是 ZIP 中完整的 `codlet-package.json` 对象；`asset` 精确记录 ZIP 文件名、字节数和 64 位小写 SHA-256。
 

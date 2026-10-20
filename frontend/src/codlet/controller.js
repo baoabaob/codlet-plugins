@@ -87,7 +87,10 @@ export class Manager {
     if(this.checkingPlugins())return [];
     return this.githubPlugins().flatMap(plugin=>{
       const result=this.pluginUpdate(plugin);
-      return result?.status==='failed'&&result.error?[{id:plugin.id,name:this.messages.name(plugin),error:result.error}]:[];
+      return result?.error?[{id:plugin.id,name:this.messages.name(plugin),error:result.error,
+        ...(Number.isSafeInteger(result.checkedAt)&&result.checkedAt>0?{checkedAt:result.checkedAt}:{}),
+        ...(Number.isSafeInteger(result.nextCheckAt)&&result.nextCheckAt>Date.now()?{nextCheckAt:result.nextCheckAt}:{}),
+      }]:[];
     });
   }
   pluginSummary(){
@@ -103,6 +106,7 @@ export class Manager {
     if(status.phase==='failed')return 'Plugin update check failed.';
     if(!this.githubPlugins().length)return 'No plugins with an update channel to check.';
     if(this.githubPlugins().some(p=>!this.pluginUpdate(p)))return 'Check again to refresh plugin update status';
+    if(this.githubPlugins().some(p=>this.pluginUpdate(p)?.cached&&this.pluginUpdate(p)?.error))return 'Some plugin update information could not be refreshed. Showing the last successful results.';
     if(this.githubPlugins().some(p=>!['available','upToDate'].includes(this.pluginUpdate(p)?.status)))return 'Some plugins could not be checked. Try again or open their details.';
     return this.updateCandidates().length?'':'Plugins with update channels are up to date';
   }

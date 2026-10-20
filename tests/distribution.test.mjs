@@ -6,6 +6,7 @@ import {fileURLToPath} from 'node:url';
 import {execFileSync} from 'node:child_process';
 import {tmpdir} from 'node:os';
 import {validateConfig,safePath,hash,blobHash,prepareDistribution} from '../scripts/distribution.mjs';
+import {validateUpdateManifest,verifyUpdate} from '../.core-sdk/scripts/plugin-release.mjs';
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const config=JSON.parse(await readFile(resolve(root,'plugins.json'),'utf8'));
 test('distribution destinations and discovery metadata are unique and cannot point at the development repository',()=>{
@@ -27,7 +28,7 @@ test('each source snapshot contains its own installable bundle and build closure
     const createdPath=resolve(outputDirectory),createdRelative=relative(temporaryRoot,createdPath);
     assert.ok(createdRelative&&!createdRelative.startsWith('..')&&!isAbsolute(createdRelative)&&!createdRelative.includes(sep));
     assert.ok(basename(createdPath).startsWith('codlet-distribution-test-'));
-    execFileSync(process.execPath,[resolve(root,'scripts/package.mjs'),'--output',outputDirectory],{cwd:root,encoding:'utf8',windowsHide:true});
+    execFileSync(process.execPath,[resolve(root,'scripts/package.mjs'),'--output',outputDirectory,'--fixture'],{cwd:root,encoding:'utf8',windowsHide:true});
     const catalog=JSON.parse(await readFile(resolve(outputDirectory,'catalog.json'),'utf8'));
     assert.deepEqual(catalog.packages.map(pkg=>pkg.id),['codlet-gui']);
     assert.deepEqual(catalog.installerPlugins,['codlet-gui']);
@@ -35,8 +36,10 @@ test('each source snapshot contains its own installable bundle and build closure
     assert.throws(()=>execFileSync(process.execPath,[resolve(root,'scripts/package.mjs'),'--output',outputDirectory],{cwd:root,encoding:'utf8',windowsHide:true,stdio:'pipe'}),/existing versions are immutable/);
     assert.deepEqual(await readFile(resolve(outputDirectory,catalog.packages[0].asset)),originalArchive);
     const identities=JSON.parse(await readFile(resolve(root,'compatibility/official-sources.json'),'utf8'));
-    for(const pkg of catalog.packages){const identity=identities.sources.find(s=>s.pluginIds.includes(pkg.id));assert.deepEqual(pkg.updateSource,{kind:'github',repositoryUrl:`https://github.com/${identity.repository}`,repositoryId:identity.repositoryId,ownerId:identity.ownerId,assetNameTemplate:`${pkg.id}-{version}.zip`});}
+    assert.equal(catalog.fixture,true);
+    for(const pkg of catalog.packages){const identity=identities.sources.find(s=>s.pluginIds.includes(pkg.id));const updateManifest=JSON.parse(await readFile(resolve(outputDirectory,pkg.directory,'codlet-update.json'),'utf8'));assert.deepEqual(pkg.updateSource,{kind:'github',repositoryUrl:`https://github.com/${identity.repository}`,repositoryId:identity.repositoryId,ownerId:identity.ownerId,assetNameTemplate:`${pkg.id}-{version}.zip`,updateManifest});}
     const plan=await prepareDistribution(root,{allowDirty:true,outputDirectory});
+    assert.equal(plan.fixture,true);
     for(const plugin of plan.plugins){
       const folder=resolve(outputDirectory,plugin.directory),paths=plugin.files.map(f=>f.path);
       for(const file of plugin.files){const bytes=await readFile(resolve(folder,file.path));assert.equal(hash(bytes),file.sha256);assert.equal(blobHash(bytes),file.gitBlob);}
@@ -47,6 +50,7 @@ test('each source snapshot contains its own installable bundle and build closure
       assert.equal(metadata.platforms,undefined);
       assert.equal(metadata.adapters,undefined);
       assert.equal(paths.includes('codlet-release.json'),false);
+      assert.ok(paths.includes('codlet-update.json'));
       assert.equal(manifest.host,undefined);
       assert.equal(paths.some(path=>path.startsWith('host/')||path.includes('build-host')),false);
       for(const required of ['frontend/build-plugin.mjs','frontend/build.mjs','frontend/package-lock.json','.codlet-distribution.json'])assert.ok(paths.includes(required));
@@ -64,6 +68,13 @@ test('each source snapshot contains its own installable bundle and build closure
       const declaration=JSON.parse(declarationBytes);
       assert.deepEqual(declaration,{schema:1,kind:'codlet-plugin-release',manifest,metadata,asset:{name:basename(plugin.archive.path),bytes:archive.length,sha256:hash(archive)}});
       assert.ok(declarationBytes.length<=16*1024);
+      assert.equal(plugin.updateAsset.name,'codlet-updates.json');
+      const updateBytes=await readFile(resolve(outputDirectory,plugin.updateAsset.path));
+      assert.equal(updateBytes.length,plugin.updateAsset.bytes);assert.equal(hash(updateBytes),plugin.updateAsset.sha256);
+      const feed=validateUpdateManifest(JSON.parse(updateBytes),plugin.repository);
+      const updateSource=JSON.parse(await readFile(resolve(folder,'codlet-update.json'),'utf8'));
+      verifyUpdate(feed.plugins[0],plugin.repository,updateSource.publicKey);
+      assert.equal(feed.plugins[0].payload.asset.sha256,hash(archive));
       const packageReadme=await readFile(resolve(folder,'README.md'),'utf8');
       assert.ok(packageReadme.includes('known issues'));assert.equal(packageReadme.includes('Windows x64 Preview is tested'),false);
     }
@@ -75,6 +86,6 @@ test('each source snapshot contains its own installable bundle and build closure
   }finally{
     const cleanupPath=resolve(outputDirectory),cleanupRelative=relative(temporaryRoot,cleanupPath);
     if(!cleanupRelative||cleanupRelative.startsWith('..')||isAbsolute(cleanupRelative)||cleanupRelative.includes(sep)||!basename(cleanupPath).startsWith('codlet-distribution-test-'))throw Error(`Refusing to clean test output outside its temporary directory: ${cleanupPath}`);
-    await rm(cleanupPath,{recursive:true,force:true});
+    await rm(cleanupPath,{recursive:true});
   }
 });

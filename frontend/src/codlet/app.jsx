@@ -27,7 +27,7 @@ function ReleaseTrigger({label}){return <><span className="codlet-sr-only">{t('G
 function AssetTrigger({label}){return <><span className="codlet-sr-only">{t('GitHub ZIP asset')}: </span>{label}</>;}
 function Source({source,metadata}) {
   if(!source)return null;
-  return <><Copy>{t(`Repository: ${source.repositoryUrl}\nRelease/tag: ${source.tag}\nAsset: ${source.assetName}\nSHA-256: ${source.sha256}\nGitHub digest: ${source.upstreamDigestVerified?'matched':'not available for verification'}`)}</Copy>
+  return <><Copy>{t(`Repository: ${source.repositoryUrl}\nRelease/tag: ${source.tag}\nAsset: ${source.assetName}\nSHA-256: ${source.sha256}\n${source.updateProof?'Publisher signature: verified':`GitHub digest: ${source.upstreamDigestVerified?'matched':'not available for verification'}`}`)}</Copy>
     </>;
 }
 function TagHash(){return <svg className="codlet-tag-hash" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true" focusable="false"><path d="M6.3 2.7L4.7 13.3 M11.3 2.7L9.7 13.3 M2.7 5.5H13.3 M2.7 10.5H13.3"/></svg>;}
@@ -104,7 +104,11 @@ function PluginList({s}) {
       </div>
     </div>
     {checkMessage&&<p className="codlet-update-status codlet-copy" role="status">{t(checkMessage)}</p>}
-    {manager.pluginUpdateErrors().map(item=><Copy error role="alert" key={item.id}>{`${item.name}: ${t(item.error)}`}</Copy>)}
+    {manager.pluginUpdateErrors().map(item=><Copy error role="alert" key={item.id}>{[
+      `${item.name}: ${t(item.error)}`,
+      item.checkedAt?t(`Last successful check: ${new Date(item.checkedAt).toLocaleString(s.locale)}`):'',
+      item.nextCheckAt?t(`Next check after: ${new Date(item.nextCheckAt).toLocaleString(s.locale)}`):'',
+    ].filter(Boolean).join(' · ')}</Copy>)}
     {[...new Set([s.pluginUpdateError,s.pluginUpdates?.error].filter(Boolean))].map(error=><Copy error role="alert" key={error}>{t(error)}</Copy>)}
     {s.error&&<p className="codlet-status codlet-error" role="alert">{t(s.error)}</p>}
     {s.pluginInstallError&&<Copy error role="alert">{t(s.pluginInstallError)}</Copy>}
