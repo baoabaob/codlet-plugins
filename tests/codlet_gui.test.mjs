@@ -121,7 +121,7 @@ test('normal versions have no extra header info; branding precedes in-page navig
 test('version navigation waits for delayed settings layout before scrolling to the actual section',async t=>{
   const f=await fixture(t),loading=deferred(),scrolls=[];f.demo.state.phase='available';f.overrides.set('getSettings',()=>loading.promise);
   f.window.HTMLElement.prototype.scrollIntoView=function(options){scrolls.push({target:this,options,rows:f.document.querySelectorAll('.codlet-setting-row').length});};
-  await f.open();const warning=f.document.querySelector('.codlet-warning-icon').closest('button');warning.focus();warning.click();await tick();
+  await f.open();await f.click('Codlet 0.2.0 is available.');await f.click('Version information');
   assert.equal(scrolls.length,0);assert.equal(f.document.querySelector('.codlet-version-highlight'),null);
   loading.resolve(await f.demo.request(null,'getSettings',null));await tick();await tick();
   assert.equal(scrolls.length,1);assert.equal(scrolls[0].target,f.document.getElementById('codlet-version-section'));assert.equal(scrolls[0].rows,6);assert.equal(scrolls[0].options.block,'start');

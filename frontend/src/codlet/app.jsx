@@ -3,6 +3,7 @@ import { descriptionText } from './messages.js';
 import { displayPath } from './paths.js';
 import { versionWarnings } from './versions.js';
 import { createSettingsView } from './settings.jsx';
+import { createUpdatesView } from './updates.jsx';
 import layout from './layout.css';
 import { createCodletIcon } from '../brand.js';
 import { createCodletIcons } from '../icons.js';
@@ -13,7 +14,7 @@ import { tagCatalog, tagAtCaret, suggestTags, insertTag } from './tag-search.js'
 import { isOfficialPlugin } from './marketplace-model.js';
 import { pluginDependencies } from './permissions.js';
 import { createPermissionSummary } from './permissions-view.jsx';
-let React,h,C,I,ui,manager,Settings,CodletIcon,ProjectLinks,Marketplace,MarketplaceDetails,Compatibility,PermissionSummary,epoch=0;
+let React,h,C,I,ui,manager,Settings,UpdateNotice,CombinedUpdateDialog,CodletIcon,ProjectLinks,Marketplace,MarketplaceDetails,Compatibility,PermissionSummary,epoch=0;
 const t = value => manager.messages.t(value);
 const name = plugin => manager.messages.name(plugin);
 const description = plugin => manager.messages.description(plugin);
@@ -276,8 +277,7 @@ function Page({s}){
       target?.focus({preventScroll:true});
     }
   });
-  React.useEffect(()=>{const changed=()=>manager.setVisible(document.visibilityState!=='hidden');changed();document.addEventListener('visibilitychange',changed);return()=>document.removeEventListener('visibilitychange',changed);},[]);
-  const settings=s.page==='settings',notices=versionWarnings(s);
+  const settings=s.page==='settings',notices=versionWarnings(s).filter(notice=>notice!=='A Codlet update is available.');
   const navigation=<div className="codlet-top-toolbar"><nav className="codlet-top-navigation" aria-label={t('Codlet pages')}>{[['plugins','Plugin management'],['settings','Settings']].map(([page,label])=><C.Button key={page} color="secondary" variant={(settings?'settings':'plugins')===page?'soft':'ghost'} size="sm" aria-label={t(label)} aria-current={(settings?'settings':'plugins')===page?'page':undefined} disabled={!!s.confirmation} onClick={()=>page==='settings'?manager.settingsPage():manager.pluginsPage()}>{t(label)}</C.Button>)}</nav></div>;
   const actions=['plugins','market'].includes(s.page)&&!s.confirmation&&<div className="codlet-toolbar-actions"><IconAction icon={I.Regenerate} label={s.page==='market'?'Refresh marketplace':'Refresh plugins'} disabled={s.page==='market'?s.market.loading:s.loading&&!manager.pending} loading={s.page==='market'?s.market.loading:s.loading} onClick={()=>s.page==='market'?manager.marketSearch(true):manager.refresh()}/>
       {(s.localManagement?.available||s.githubAvailable)&&<C.Menu><C.Menu.Trigger><C.Button color="primary" variant="solid" size="sm" aria-label={t('Add')} disabled={mutationBusy(s)||s.loading||s.listStale}>{t('Add')}<I.ChevronDown/></C.Button></C.Menu.Trigger>
@@ -291,7 +291,7 @@ function Page({s}){
     data-codlet-panel="codlet" data-codlet-view={s.confirmation?'confirmation':s.page} aria-label={t(s.confirmation?'Confirm action':settings?'Settings':'Codlet')}>
     <div className="codlet-scroll" onScroll={event=>manager.rememberScroll(s.page,event.currentTarget.scrollTop)}>
       <header className="codlet-heading codlet-width"><div className="codlet-heading-inner">
-        <div className="codlet-brand">{!settings&&<CodletIcon size={32}/>}<h1 data-codlet-page-heading="" tabIndex={-1}>{settings?t('Settings'):'Codlet'}</h1>{!settings&&<><span className="codlet-version">{s.runtimeVersion}</span>{s.page==='plugins'&&<SkillHelp s={s}/>} {notices.length>0&&<IconAction icon={I.ExclamationMarkCircle} iconClassName="codlet-warning-icon" label={notices.join('\n')+'\n'+t('View version information in settings')} onClick={()=>manager.settingsPage(true)} disabled={!!s.confirmation}/>}</>}</div>
+        <div className="codlet-brand">{!settings&&<CodletIcon size={32}/>}<h1 data-codlet-page-heading="" tabIndex={-1}>{settings?t('Settings'):'Codlet'}</h1>{!settings&&<><span className="codlet-version">{s.runtimeVersion}</span>{s.page==='plugins'&&<SkillHelp s={s}/>}<UpdateNotice s={s}/>{notices.length>0&&<IconAction icon={I.ExclamationMarkCircle} iconClassName="codlet-warning-icon" label={notices.join('\n')+'\n'+t('View version information in settings')} onClick={()=>manager.settingsPage(true)} disabled={!!s.confirmation}/>}</>}</div>
         <p className="codlet-subtitle">{descriptionText(t(settings?'Manage Codlet preferences and version updates.':'Create or manage Codlet plugins'))}</p>
       </div>{actions}{settings&&!s.confirmation&&<ProjectLinks/>}</header>
       <div className="codlet-navigation-row codlet-width">{navigation}</div>
@@ -301,9 +301,9 @@ function Page({s}){
 }
 function App(){
   const s=React.useSyncExternalStore(manager.subscribe,manager.snapshot);
-  return <><style>{layout+marketplaceStyle}</style><Page s={s}/><InstallationComplete s={s}/></>;
+  return <><style>{layout+marketplaceStyle}</style><Page s={s}/><InstallationComplete s={s}/><CombinedUpdateDialog s={s}/></>;
 }
-function releaseView(){React=h=C=I=ui=Settings=CodletIcon=ProjectLinks=Marketplace=MarketplaceDetails=Compatibility=PermissionSummary=null;}
+function releaseView(){React=h=C=I=ui=Settings=UpdateNotice=CombinedUpdateDialog=CodletIcon=ProjectLinks=Marketplace=MarketplaceDetails=Compatibility=PermissionSummary=null;}
 export function deactivate(){epoch++;try{ui?.dispose();}finally{manager?.dispose();manager=null;releaseView();}}
 export function saveState(){return manager?.saveViewState()??{schema:1,value:{open:false,page:'plugins'}};}
 export async function restoreState(snapshot){if(!manager)throw Error('Codlet GUI is not active');const wasOpen=manager.restoreViewState(snapshot);if(wasOpen)await manager.open(document.visibilityState!=='hidden');}
@@ -314,12 +314,14 @@ export async function activate(context){
       manager=new Manager(context);
       const owned=manager;
       const options={label:'Codlet',icon:'Codlet',toolbar:false,render:({ui:activeUI})=>{
-        ui=activeUI??ui;({React,components:C,icons:I}=ui);h=React.createElement;I=createCodletIcons(React,I);
+        ui=activeUI??ui;({React,components:C,icons:I}=ui);h=React.createElement;I={...createCodletIcons(React,I),NativeDownload:I.Download};
         Settings=createSettingsView({React,C,I,manager,t,Copy,mutationBusy});CodletIcon=createCodletIcon(React);ProjectLinks=createProjectLinks({React,C,I,t});
+        ({UpdateNotice,CombinedUpdateDialog}=createUpdatesView({React,C,I,manager,t,Copy,mutationBusy}));
         PermissionSummary=createPermissionSummary({React,C,I,t});
         ({Marketplace,MarketplaceDetails,Compatibility}=createMarketplaceView({React,C,I,manager,t,Copy,Back,PluginTags}));
         return <App/>;
       },onActivate:()=>owned.open(document.visibilityState!=='hidden'),onDeactivate:()=>{owned.close();if(context.ui.page)releaseView();}};
-      await context.codex.navigation.page(options);
+      const page=await context.codex.navigation.page(options);
+      if(current===epoch&&page.path)owned.trackUpdates(page,document);
     }catch(error){if(current===epoch){try{ui?.dispose();}finally{manager?.dispose();manager=null;releaseView();}context.reportDiagnostic?.({code:'gui_ui_unavailable',message:String(error?.message??error)});}}
 }

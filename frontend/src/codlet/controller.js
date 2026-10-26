@@ -1,7 +1,7 @@
 import { createMessages, PERMISSION_COPY } from './messages.js';
 import { skillPrompt } from './creation.js';
 import {marketAssets,marketMatches,marketSort,marketItemKey,officialRepository,declaredPackageFor,coreProvidedRepository} from './marketplace-model.js';
-import { validUpdate, validOfficialUpdate, validPluginUpdates, validPluginInstall, busyUpdatePhases, validateSettings } from './versions.js';
+import { validUpdate, validOfficialUpdate, validPluginUpdates, validPluginInstall, busyUpdatePhases, validateSettings, hasCodletUpdate } from './versions.js';
 const capability = { name: 'codlet.runtime.manage', api: 1, scope: 'target' };
 const digest = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
 const message = error => String(error?.message ?? error);
@@ -55,7 +55,7 @@ export class Manager {
     return restored.open;
   }
   rememberScroll(page,top){if(viewPages.has(page)&&!Object.hasOwn(this.pendingScroll,page))this.scrollOffsets[page]=scrollValue(top);}
-  set(patch) { if (!this.alive) return; this.state = {...this.state,...patch}; this.state.error=[this.state.operationError,this.state.listError].filter(Boolean).join('\n'); for (const fn of this.listeners) fn(); }
+  set(patch) { if (!this.alive) return; this.state = {...this.state,...patch}; this.state.error=[this.state.operationError,this.state.listError].filter(Boolean).join('\n'); this.updateBadge?.(); for (const fn of this.listeners) fn(); }
   rpc(method, params = null) { return this.context.rpc.request(capability, method, params); }
   createPlugin(){return this.openSkillTask('create');}
   quickStart(){return this.openSkillTask('help');}
@@ -128,7 +128,15 @@ export class Manager {
     finally{if(this.current('page',sequence,'import'))this.set({importBusy:false});}
   }
   async open(visible=true) { if (this.state.open) return; this.visible=visible;this.set({open:true});return Promise.all([this.pending?.id?this.checkMutation():this.refresh(),this.pollVersions(),this.loadSettings(false,true)]); }
-  setVisible(visible){if(this.visible===visible)return;this.visible=visible;this.clearTimer('version');this.sequence.version++;this.set({versionLoading:false});if(visible&&this.state.open)void this.pollVersions();}
+  trackUpdates(page,document){
+    this.versionTracking=true;let last;
+    this.updateBadge=()=>{const label=hasCodletUpdate(this.state.update)?this.messages.t(`Codlet ${this.state.update.candidate.version} is available.`):null;if(label!==last){try{page.setBadge?.(label);last=label;}catch{this.updateBadge=null;}}};
+    const changed=()=>this.setVisible(document.visibilityState!=='hidden');
+    document.addEventListener('visibilitychange',changed);this.unsubscribeVisibility=()=>document.removeEventListener('visibilitychange',changed);
+    changed();this.updateBadge();void this.pollVersions();
+  }
+  versionCurrent(sequence){return this.alive&&(this.state.open||this.versionTracking)&&this.visible&&this.sequence.version===sequence;}
+  setVisible(visible){if(this.visible===visible)return;this.visible=visible;this.clearTimer('version');this.sequence.version++;this.set({versionLoading:false});if(visible&&(this.state.open||this.versionTracking))void this.pollVersions();}
   close() {
     if (this.pending && !this.pending.submitted) this.pending.cancelled = true;
     this.set({open:false, page:'plugins', confirmation:null,combinedConfirmation:null});
@@ -136,10 +144,11 @@ export class Manager {
     this.sequence.list++; this.sequence.update++; this.sequence.removal++;this.sequence.version++;this.sequence.settings++;
     this.cancelMarketJob();this.sequence.market++;
     this.invalidateImport();
+    if(this.versionTracking)void this.pollVersions();
   }
   dispose() {
     if (!this.alive) return;
-    this.close(); this.alive=false; this.unsubscribeLocale?.(); this.listeners.clear();
+    this.versionTracking=false;this.updateBadge=null;this.unsubscribeVisibility?.();this.close(); this.alive=false; this.unsubscribeLocale?.(); this.listeners.clear();
   }
   async refresh() {
     if (!this.alive || !this.state.open) return;
@@ -547,16 +556,16 @@ export class Manager {
   }
   canConfigure(){return this.alive&&this.state.open&&!this.pending&&!this.state.confirmation&&!this.state.combinedConfirmation&&!this.combiningUpdates();}
   combiningUpdates(){return ['downloading','preparing','installing'].includes(this.state.officialUpdate?.combinedPhase);}
-  canCombineUpdates(){const s=this.state,o=s.officialUpdate;return !!(o?.available&&o.restartPreserved&&o.isUpdateReady&&o.phase==='ready'&&s.update?.installAvailable&&['available','downloaded'].includes(s.update.phase)&&!s.updateBusy&&!s.updateUncertain&&!this.combiningUpdates());}
-  requestCombinedInstall(){if(this.canConfigure()&&this.canCombineUpdates()&&!this.updateCommand)this.set({combinedConfirmation:{identity:updateIdentity(this.state.update),error:''}});}
+  canCombineUpdates(){const s=this.state,o=s.officialUpdate;return !!(o?.available&&o.restartPreserved&&o.isUpdateReady&&o.phase==='ready'&&o.target?.id&&o.target.version&&o.compatibleCandidateId===s.update?.candidate?.id&&s.update?.installAvailable&&['available','downloaded'].includes(s.update.phase)&&!s.updateBusy&&!s.updateUncertain&&!this.combiningUpdates());}
+  requestCombinedInstall(){if(this.canConfigure()&&this.canCombineUpdates()&&!this.updateCommand)this.set({combinedConfirmation:{identity:updateIdentity(this.state.update),targetId:this.state.officialUpdate.target.id,targetVersion:this.state.officialUpdate.target.version,coreVersion:this.state.update.candidate.version,error:''}});}
   cancelCombinedInstall(){if(!this.state.updateBusy)this.set({combinedConfirmation:null});}
   async confirmCombinedInstall(){
     const selected=this.state.combinedConfirmation;
     if(!selected||this.state.updateBusy||this.updateCommand)return;
-    if(selected.identity!==updateIdentity(this.state.update)||!this.canCombineUpdates()){this.set({combinedConfirmation:{...selected,error:'The update changed. Cancel and review it again before installing.'}});return;}
+    if(selected.identity!==updateIdentity(this.state.update)||selected.targetId!==this.state.officialUpdate?.target?.id||!this.canCombineUpdates()){this.set({combinedConfirmation:{...selected,error:'The update changed. Cancel and review it again before installing.'}});return;}
     const operation={method:'installCombinedUpdate',inFlight:true};this.updateCommand=operation;
     const sequence=++this.sequence.update;this.sequence.version++;this.clearTimer('version');this.set({updateBusy:true,updateError:''});
-    try{const reply=await this.rpc('installCombinedUpdate',{candidateId:this.state.update.candidate.id});operation.inFlight=false;if(!this.current('update',sequence))return;if(!validOfficialUpdate(reply))throw new Error('Update status is unavailable.');this.updateCommand=null;this.set({officialUpdate:reply,combinedConfirmation:null,updateUncertain:false});}
+    try{const reply=await this.rpc('installCombinedUpdate',{candidateId:this.state.update.candidate.id,targetId:selected.targetId});operation.inFlight=false;if(!this.current('update',sequence))return;if(!validOfficialUpdate(reply))throw new Error('Update status is unavailable.');this.updateCommand=null;this.set({officialUpdate:reply,combinedConfirmation:null,updateUncertain:false});}
     catch(error){operation.inFlight=false;if(this.current('update',sequence))this.set({combinedConfirmation:null,updateError:message(error),updateUncertain:true});}
     finally{if(this.current('update',sequence)){this.set({updateBusy:false});if(this.visible)this.after('version',1000,()=>this.pollVersions());}}
   }
@@ -589,21 +598,21 @@ export class Manager {
   }
   requestInstall(){if(!this.canConfigure() || this.updateCommand || this.state.updateBusy || this.state.update?.phase!=='downloaded' || !this.state.update.installAvailable)return;this.set({confirmation:{kind:'install',busy:false,error:'',previousPage:this.state.page,updateIdentity:updateIdentity(this.state.update)}});}
   async pollVersions(){
-    if(!this.alive||!this.state.open||!this.visible)return;
+    if(!this.alive||(!this.state.open&&!this.versionTracking)||!this.visible)return;
     this.clearTimer('version');
     if(this.updateCommand?.inFlight){this.after('version',1000,()=>this.pollVersions());return;}
     const sequence=++this.sequence.version;this.set({versionLoading:true});
     try{
       const reply=await this.rpc('versionStatus');
-      if(!this.current('version',sequence)||!this.visible)return;
+      if(!this.versionCurrent(sequence))return;
       if(typeof reply?.runtimeVersion!=='string'||!['unknown','matched','unmatched'].includes(reply.clientStatus?.status)||(reply.runtimeUpdate!==null&&!validUpdate(reply.runtimeUpdate))||(reply.pluginUpdates!=null&&!validPluginUpdates(reply.pluginUpdates))||(reply.pluginInstall!=null&&!validPluginInstall(reply.pluginInstall)))throw new Error('Version information is unavailable.');
       if(reply.officialUpdate!=null&&!validOfficialUpdate(reply.officialUpdate))throw new Error('Version information is unavailable.');
       this.updateCommand=null;
       const settled=this.state.pluginInstall?.running&&!reply.pluginInstall?.running;
       this.set({runtimeVersion:reply.runtimeVersion,clientStatus:reply.clientStatus,update:reply.runtimeUpdate,officialUpdate:reply.officialUpdate??null,pluginUpdates:reply.pluginUpdates??null,pluginInstall:reply.pluginInstall??null,...(!this.state.pluginInstallBusy?{pluginInstallUncertain:false}:{}),versionError:reply.runtimeUpdateError?.message??'',updateUncertain:false});
       if(settled)void this.refresh();
-    }catch(error){if(this.current('version',sequence)&&this.visible)this.set({versionError:message(error)});}
-    finally{if(this.current('version',sequence)&&this.visible){this.set({versionLoading:false});this.after('version',this.combiningUpdates()||this.installingPlugins()||this.updateCommand||this.state.pluginUpdates?.phase==='checking'||busyUpdatePhases.includes(this.state.update?.phase)?1000:5000,()=>this.pollVersions());}}
+    }catch(error){if(this.versionCurrent(sequence))this.set({versionError:message(error)});}
+    finally{if(this.versionCurrent(sequence)){this.set({versionLoading:false});this.after('version',this.combiningUpdates()||this.installingPlugins()||this.updateCommand||this.state.pluginUpdates?.phase==='checking'||busyUpdatePhases.includes(this.state.update?.phase)?1000:5000,()=>this.pollVersions());}}
   }
   async loadUpdate(method='runtimeUpdateStatus'){
     if(method==='runtimeUpdateStatus')return this.pollVersions();

@@ -20,6 +20,8 @@ export const PERMISSION_COPY = Object.freeze({
 
 export function createMessages(context) {
     const TRANSLATIONS = {
+        'An official client update is available and this Codlet release supports it. Update both together?':'检测到官方客户端可更新且 Codlet 已适配，是否一起更新？',
+        'Warn before updating the official client':'更新官方客户端前提示','Confirm before updating the official client separately from Codlet.':'单独更新官方客户端时，提示确认后再更新。',
         'Update Codlet Core to use the current installation and uninstall features.':'请更新 Codlet Core 后使用新版安装和卸载功能。',
         'Installation complete':'安装完成','Done':'完成','This plugin is already installed':'已安装相同 ID 的插件','Choose how to install this version':'请选择安装方式','Update — keep data':'更新，保留数据','Replace — clear data':'替换，清除数据','Update Codlet Core to install plugins with this version of the manager.':'请更新 Codlet Core 后再安装插件。',
         'Select executable scopes with the Codlet CLI --executable option before running this feature. Broad service consent does not select a program.':'使用该功能前，请通过 Codlet CLI 的 --executable 选项明确选择可执行文件。普通服务的广泛授权不会自动选择程序。',

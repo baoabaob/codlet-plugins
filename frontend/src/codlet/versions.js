@@ -10,12 +10,13 @@ export function updateStatusText(update){
   return ({development:'This development build has no configured update source.',idle:'Codlet updates have not been checked yet.',checking:'Checking for updates...',upToDate:'Codlet is up to date.',available:`Codlet ${update?.candidate?.version||''} is available.`,downloading:update?.totalBytes?`Downloading update: ${Math.min(100,Math.round(update.downloadedBytes/update.totalBytes*100))}%`:'Downloading update...',downloaded:`Codlet ${update?.candidate?.version||''} is ready to apply.`,installRequested:'Applying the update. Read the confirmed activation status below.',deferred:'Update takes effect on next start.',failed:`Update failed.\n${update?.error?.message||''}`})[update?.phase]??'Version information is unavailable.';
 }
 export const validOfficialUpdate=value=>value&&typeof value.available==='boolean'&&typeof value.restartPreserved==='boolean'&&typeof value.isUpdateReady==='boolean'&&['idle','checking','downloading','ready','installing'].includes(value.phase)&&['idle','downloading','preparing','installing','failed'].includes(value.combinedPhase)&&(value.error===null||typeof value.error==='string');
+export const hasCodletUpdate=update=>!!(update?.configured&&update.candidate?.id&&update.candidate.version&&['available','checking','downloading','downloaded','installRequested','failed'].includes(update.phase));
 export const validPluginUpdates=value=>['idle','checking','completed','failed'].includes(value?.phase)&&(value.checkedAt===null||Number.isSafeInteger(value.checkedAt))&&value.plugins&&typeof value.plugins==='object'&&!Array.isArray(value.plugins)&&Object.values(value.plugins).every(item=>item&&typeof item.versionKey==='string'&&['unknown','upToDate','available','failed'].includes(item.status)&&(item.status!=='available'||typeof item.releaseTag==='string'&&typeof item.releaseUrl==='string'));
 export function versionWarnings(state){
   const notices=[],update=state.update,client=state.clientStatus;
   // The Core retains a confirmed candidate during rechecks and failed
   // downloads. Those transitions do not make the installed version current.
-  if(update?.configured&&update.candidate?.version&&['available','checking','downloading','downloaded','installRequested','failed'].includes(update.phase))notices.push('A Codlet update is available.');
+  if(hasCodletUpdate(update))notices.push('A Codlet update is available.');
   if(update?.phase==='deferred')notices.push('Update takes effect on next start.');
   if(client?.matchesRunningClient===false)notices.push('This running client version has not been verified with Codlet.');
   return notices;
@@ -24,6 +25,7 @@ const interval=value=>Number.isSafeInteger(value)&&value>=300&&value<=86400;
 export function validateSettings(reply){
   const v=reply?.values,e=reply?.effective,d=reply?.defaults,a=reply?.availability;
   if(reply?.schema!==1||!Number.isSafeInteger(reply.revision)||reply.revision<0||typeof v?.automaticUpdateChecks!=='boolean'||typeof v.checkPluginUpdatesOnStartup!=='boolean'||typeof v.showPluginTags!=='boolean'||
+    (v.warnBeforeOfficialUpdate!==undefined&&(typeof v.warnBeforeOfficialUpdate!=='boolean'||e?.warnBeforeOfficialUpdate!==v.warnBeforeOfficialUpdate))||
     !(v.updateCheckIntervalSeconds===null||interval(v.updateCheckIntervalSeconds))||!(v.localSourceAutoReload===null||typeof v.localSourceAutoReload==='boolean')||
     !interval(d?.updateCheckIntervalSeconds)||typeof d.localSourceAutoReload!=='boolean'||typeof a?.updateChecks!=='boolean'||typeof a.pluginUpdateChecks!=='boolean'||typeof a.localSourceWatch!=='boolean'||e?.checkPluginUpdatesOnStartup!==v.checkPluginUpdatesOnStartup||
     e?.automaticUpdateChecks!==v.automaticUpdateChecks||e.showPluginTags!==v.showPluginTags||e.updateCheckIntervalSeconds!==(v.updateCheckIntervalSeconds??d.updateCheckIntervalSeconds)||e.localSourceAutoReload!==(v.localSourceAutoReload??d.localSourceAutoReload))throw new Error('Settings are unavailable or incomplete.');

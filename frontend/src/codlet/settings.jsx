@@ -1,12 +1,11 @@
 // Components use the owner's React instance and public SDK controls.
-import {descriptionText} from './messages.js';
 import {updateStatusText,activationComponentLabels} from './versions.js';
 export function createSettingsView({React,C,I,manager,t,Copy,mutationBusy}){
   const h=React.createElement;
   function Row({label,description,children}){return <div className="codlet-setting-row"><div className="codlet-setting-copy"><div className="codlet-setting-label">{t(label)}</div><Copy>{t(description)}</Copy></div><div className="codlet-setting-control">{children}</div></div>;}
   return function Settings({s,highlight=false}){
     const config=s.settings,r=s.update,phase=r?.phase,client=s.clientStatus,o=s.officialUpdate;
-    const combinedBusy=manager.combiningUpdates(),showCombined=combinedBusy||o?.available&&o.restartPreserved&&r?.installAvailable&&['available','downloaded'].includes(phase)&&(o.isUpdateReady||o.phase==='downloading');
+    const combinedBusy=manager.combiningUpdates(),showCombined=combinedBusy||manager.canCombineUpdates();
     const disabled=s.settingsBusy||s.settingsUncertain||mutationBusy(s),updatesDisabled=s.updateBusy||s.updateUncertain||mutationBusy(s)||combinedBusy;
     const updateRunning=['checking','downloading','installRequested'].includes(phase),summary=manager.pluginSummary();
     const activation=r?.activation,components=values=>values.map(value=>t(activationComponentLabels[value]??value)).join(', ')||t('None');
@@ -23,6 +22,7 @@ export function createSettingsView({React,C,I,manager,t,Copy,mutationBusy}){
           <Row label="Show plugin tags" description="Show literal labels after plugin versions in the management list.">
             <C.Switch aria-label={t('Show plugin tags')} checked={config.effective.showPluginTags} disabled={disabled} onCheckedChange={value=>manager.saveSettings({showPluginTags:value})}/>
           </Row>
+          {typeof config.values.warnBeforeOfficialUpdate==='boolean'&&<Row label="Warn before updating the official client" description="Confirm before updating the official client separately from Codlet."><C.Switch aria-label={t('Warn before updating the official client')} checked={config.values.warnBeforeOfficialUpdate} disabled={disabled} onCheckedChange={value=>manager.saveSettings({warnBeforeOfficialUpdate:value})}/></Row>}
           <Row label="Reload local plugins when files change" description="Automatically reloads running local plugins after files are saved.">
             <C.Switch aria-label={t('Reload local plugins when files change')} checked={config.effective.localSourceAutoReload} disabled={disabled||!config.availability.localSourceWatch} onCheckedChange={value=>manager.saveSettings({localSourceAutoReload:value})}/>
           </Row>
@@ -52,24 +52,14 @@ export function createSettingsView({React,C,I,manager,t,Copy,mutationBusy}){
           {activation.nextStartReason&&<Copy>{activation.nextStartReason}</Copy>}{activation.persistencePending&&<Copy role="status">{t('The active update has not finished saving to disk. Its next-start persistence is unconfirmed.')}</Copy>}</>}
         {[...new Set([s.versionError,s.updateError].filter(Boolean))].map(error=><Copy key={error} error role="alert">{t(error)}</Copy>)}
         {r?.candidate?.releaseUrl&&<C.TextLink href={r.candidate.releaseUrl} target="_blank" rel="noopener noreferrer">{t('Release details')}</C.TextLink>}
-        <C.Dialog.Root open={!!s.combinedConfirmation} onOpenChange={open=>{if(!open)manager.cancelCombinedInstall();}}>
         <div className="codlet-actions">
           {phase==='available'&&<C.Button color="primary" size="md" disabled={updatesDisabled} onClick={()=>manager.loadUpdate('downloadRuntimeUpdate')}><I.Download/>{t('Download update')}</C.Button>}
           {phase==='downloaded'&&(r.installAvailable?<C.Button color="primary" size="md" data-codlet-focus-key="install:page" disabled={updatesDisabled} onClick={()=>manager.requestInstall()}><I.Download/>{t('Apply update')}</C.Button>:<Copy>{t(`Automatic installation is unavailable for this launch.\n${r.unavailableReason||''}`)}</Copy>)}
-          {showCombined&&<C.Dialog.Trigger asChild><C.Button color="secondary" variant="soft" size="md" className="codlet-combined-update" disabled={updatesDisabled||!manager.canCombineUpdates()} loading={combinedBusy} onClick={()=>manager.requestCombinedInstall()}><I.ArrowRotateCw/>{t(combinedBusy?'Updating together...':'Update both')}</C.Button></C.Dialog.Trigger>}
+          {showCombined&&<C.Button color="secondary" variant="soft" size="md" className="codlet-combined-update" disabled={updatesDisabled||!manager.canCombineUpdates()} loading={combinedBusy} onClick={()=>manager.requestCombinedInstall()}><I.ArrowRotateCw/>{t(combinedBusy?'Updating together...':'Update both')}</C.Button>}
         </div>
         {showCombined&&!combinedBusy&&o.phase==='downloading'&&<Copy role="status">{t('Waiting for the client update to finish downloading')}</Copy>}
         {combinedBusy&&<Copy role="status">{t(o.combinedPhase==='downloading'?'Preparing the Codlet update...':o.combinedPhase==='preparing'?'Verifying both updates...':'Installing the client update, then restarting through Codlet...')}</Copy>}
         {o?.combinedPhase==='failed'&&o.error&&<Copy error role="alert">{t(o.error)}</Copy>}
-          <C.Dialog.Portal><C.Dialog.Overlay className="codlet-help-overlay"/><C.Dialog.Content className="codlet-help-dialog codlet-combined-dialog">
-            <div className="codlet-help-heading"><C.Dialog.Title>{t('Update Codlet and the client together')}</C.Dialog.Title></div>
-            <C.Dialog.Description>{descriptionText(t('The current client will restart and running local tasks will be interrupted.'))}</C.Dialog.Description>
-            <dl className="codlet-version-details"><dt>Codlet</dt><dd>{r?.currentVersion} → {r?.candidate?.version}</dd><dt>{t('Client')}</dt><dd>{t('Update prepared by the official client')}</dd></dl>
-            <Copy>{t('After updating, launch through Codlet with your plugins and settings preserved')}</Copy>
-            {s.combinedConfirmation?.error&&<Copy error role="alert">{t(s.combinedConfirmation.error)}</Copy>}
-            <div className="codlet-confirmation-actions"><C.Button color="secondary" variant="soft" disabled={s.updateBusy} onClick={()=>manager.cancelCombinedInstall()}>{t('Cancel')}</C.Button><C.Button color="primary" disabled={s.updateBusy} loading={s.updateBusy} onClick={()=>manager.confirmCombinedInstall()}>{t('Update and restart')}</C.Button></div>
-          </C.Dialog.Content></C.Dialog.Portal>
-        </C.Dialog.Root>
       </section>
       <footer className="codlet-credits">Powered by Codex &amp; cccake</footer>
     </div>;
