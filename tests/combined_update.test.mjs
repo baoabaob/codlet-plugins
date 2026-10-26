@@ -41,3 +41,12 @@ test('a changed Native target invalidates consent and a closed page keeps its ba
   const document=new EventTarget();document.visibilityState='visible';manager.trackUpdates({setBadge:value=>badges.push(value)},document);manager.close();await manager.pollVersions();assert.match(badges.at(-1),/0\.2\.0/);
   demo.state.phase='upToDate';await manager.pollVersions();assert.equal(badges.at(-1),null);manager.dispose();const count=calls.length;document.dispatchEvent(new Event('visibilitychange'));assert.equal(calls.length,count);
 });
+test('closing a combined install retains its uncertain command while releasing the view spinner',async t=>{
+  const demo=createPreviewRuntime(),pending=deferred(),calls=[];demo.state.phase='available';
+  const manager=new Manager({pluginId:'codlet-gui',i18n:{locale:'en'},rpc:{request:async(cap,method,args)=>{calls.push(method);if(method==='installCombinedUpdate')return pending.promise;const reply=await demo.request(cap,method,args);return method==='versionStatus'?{...reply,officialUpdate:ready}:reply;}}});
+  t.after(()=>manager.dispose());await manager.open();manager.requestCombinedInstall();const installing=manager.confirmCombinedInstall();
+  manager.close();await manager.open(false);pending.reject(Error('Lost result'));await installing;
+  assert.equal(manager.state.updateBusy,false);assert.equal(manager.state.updateUncertain,true);assert.ok(manager.updateCommand);
+  manager.requestCombinedInstall();await manager.confirmCombinedInstall();assert.equal(calls.filter(method=>method==='installCombinedUpdate').length,1);
+  manager.setVisible(true);await manager.pollVersions();assert.equal(manager.updateCommand,null);assert.equal(manager.state.updateUncertain,false);
+});

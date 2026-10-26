@@ -11,11 +11,17 @@ const allowed = new Set([
   '/scripts/preview-runtime.mjs', '/scripts/preview-fixtures.mjs', '/scripts/preview-context.mjs', '/frontend/src/icons.js',
   '/bundled/codlet/dist/renderer.js', '/bundled/codlet/codlet.json',
 ]);
-const server = http.createServer((request, response) => {
-  const pathname = new URL(request.url, 'http://127.0.0.1').pathname;
+const server = http.createServer(async (request, response) => {
+  let pathname;
+  try { pathname = new URL(request.url, 'http://127.0.0.1').pathname; }
+  catch { response.writeHead(400); response.end(); return; }
   if (!['GET', 'HEAD'].includes(request.method) || !allowed.has(pathname)) { response.writeHead(404); response.end(); return; }
   const file = pathname.startsWith('/bundled/runtime/') ? path.join(sdk, pathname) : path.join(root, pathname);
+  let handle;
+  try { handle = await fs.promises.open(file, 'r'); }
+  catch { response.writeHead(404); response.end('Preview asset unavailable; prepare the Core SDK snapshot and GUI bundle.'); return; }
   response.writeHead(200, { 'Content-Type': pathname.endsWith('.html') ? 'text/html; charset=utf-8' : pathname.endsWith('.json') ? 'application/json; charset=utf-8' : 'text/javascript; charset=utf-8', 'Cache-Control': 'no-store' });
-  if (request.method === 'HEAD') response.end(); else fs.createReadStream(file).pipe(response);
+  if (request.method === 'HEAD') { await handle.close(); response.end(); }
+  else { const stream = handle.createReadStream(); stream.on('error', () => response.destroy()); response.on('close', () => stream.destroy()); stream.pipe(response); }
 });
 server.listen(0, '127.0.0.1', () => console.log('http://127.0.0.1:' + server.address().port + '/scripts/preview-codlet-gui.html'));

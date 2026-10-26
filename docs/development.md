@@ -11,10 +11,10 @@ npm ci --prefix frontend
 node frontend/build.mjs
 node scripts/prepare-core-sdk.mjs ABSOLUTE_CORE_CHECKOUT
 node --test tests/*.test.mjs
-node scripts/package.mjs --output ABSOLUTE_FRESH_OUTPUT
+node scripts/package.mjs --output ABSOLUTE_FRESH_OUTPUT --fixture
 ```
 
-`prepare-core-sdk.mjs` copies Core UI, page and i18n bundles and records the Core commit in ignored `.core-sdk/`. An optional second absolute argument chooses a different fresh output; set `CODLET_CORE_SDK_ROOT` to that path for tests, preview and profiling. This snapshot does not register plugins or use a personal installation. Build/package alone does not require it.
+`prepare-core-sdk.mjs` copies Core UI, page and i18n bundles plus the shared signing tool and records the Core commit in ignored `.core-sdk/`. An optional second absolute argument chooses a different snapshot output; set `CODLET_CORE_SDK_ROOT` to that path for UI tests, preview and profiling. Packaging and distribution checks use the default `.core-sdk/` snapshot. GUI builds do not require a snapshot. The command above creates a local fixture package; publication requires the retained publisher signing key as described in [publishing](publishing.md).
 
 `frontend/build.mjs` builds the GUI from `plugins.json`. Generated `bundled/` files and third-party notices remain checked in. There is no Adapter or Host build branch in this repository. The distribution test packages sources into a temporary output and needs Git metadata; it does not read or replace historical `dist/`.
 

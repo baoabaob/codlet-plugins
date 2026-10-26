@@ -1134,6 +1134,8 @@ var Manager = class {
   }
   async updatePlugins(plugins = null) {
     if (!this.available() || this.checkingPlugins() || !(plugins ?? this.updateCandidates()).length) return;
+    this.sequence.version++;
+    this.clearTimer("version");
     this.set({ pluginInstallBusy: true, pluginInstallError: "" });
     try {
       const reply = await this.rpc("updatePlugins", { pluginIds: (plugins ?? this.updateCandidates()).map((p) => p.id) });
@@ -1144,7 +1146,7 @@ var Manager = class {
       this.set({ pluginInstallError: message(error), pluginInstallUncertain: true });
     } finally {
       this.set({ pluginInstallBusy: false });
-      if (this.state.open && this.visible) void this.pollVersions();
+      if ((this.state.open || this.versionTracking) && this.visible) void this.pollVersions();
     }
   }
   async reviewPluginUpdate(plugin) {
@@ -1205,7 +1207,7 @@ var Manager = class {
   }
   close() {
     if (this.pending && !this.pending.submitted) this.pending.cancelled = true;
-    this.set({ open: false, page: "plugins", confirmation: null, combinedConfirmation: null });
+    this.set({ open: false, page: "plugins", confirmation: null, combinedConfirmation: null, ...!this.settingsWrite ? { settingsBusy: false, settingsReady: false } : {} });
     for (const name2 of [...this.timers.keys()]) this.clearTimer(name2);
     this.sequence.list++;
     this.sequence.update++;
@@ -1268,6 +1270,8 @@ var Manager = class {
   }
   async checkPluginUpdates() {
     if (!this.available() || !this.state.githubAvailable || this.checkingPlugins() || !this.githubPlugins().length) return;
+    this.sequence.version++;
+    this.clearTimer("version");
     this.set({ pluginUpdateBusy: true, pluginUpdateError: "" });
     try {
       const reply = await this.rpc("checkPluginUpdates");
@@ -1278,7 +1282,7 @@ var Manager = class {
     } finally {
       if (this.alive) {
         this.set({ pluginUpdateBusy: false });
-        if (this.state.open && this.visible) void this.pollVersions();
+        if ((this.state.open || this.versionTracking) && this.visible) void this.pollVersions();
       }
     }
   }
@@ -1897,10 +1901,7 @@ Check the same task again, or cancel. No new download or installation is started
       operation.inFlight = false;
       if (this.current("update", sequence)) this.set({ combinedConfirmation: null, updateError: message(error), updateUncertain: true });
     } finally {
-      if (this.current("update", sequence)) {
-        this.set({ updateBusy: false });
-        if (this.visible) this.after("version", 1e3, () => this.pollVersions());
-      }
+      this.finishUpdateCommand(operation, sequence);
     }
   }
   settingsPage(jump = false) {
@@ -1963,9 +1964,9 @@ Check the same task again, or cancel. No new download or installation is started
           if (!this.state.settingsUncertain && Object.entries(values).every(([key2, value]) => this.state.settings?.values[key2] === value)) this.set({ settingsError: "" });
         }
         void this.pollVersions();
-      } else if (this.alive && this.state.open && this.state.page === "settings") {
-        this.set({ settingsBusy: false });
-        await this.loadSettings();
+      } else if (this.alive) {
+        this.set({ settingsBusy: false, settingsReady: false, settingsUncertain: true });
+        if (this.state.open && this.state.page === "settings") await this.loadSettings();
       }
     }
   }
@@ -1976,7 +1977,7 @@ Check the same task again, or cancel. No new download or installation is started
   async pollVersions() {
     if (!this.alive || !this.state.open && !this.versionTracking || !this.visible) return;
     this.clearTimer("version");
-    if (this.updateCommand?.inFlight) {
+    if (this.updateCommand?.inFlight || this.state.pluginInstallBusy || this.state.pluginUpdateBusy) {
       this.after("version", 1e3, () => this.pollVersions());
       return;
     }
@@ -2021,11 +2022,13 @@ Check the same task again, or cancel. No new download or installation is started
       operation.inFlight = false;
       if (this.current("update", sequence)) this.set({ updateError: message(error), updateUncertain: true });
     } finally {
-      if (this.current("update", sequence)) {
-        this.set({ updateBusy: false });
-        if (this.visible) this.after("version", 1e3, () => this.pollVersions());
-      }
+      this.finishUpdateCommand(operation, sequence);
     }
+  }
+  finishUpdateCommand(operation, sequence) {
+    if (!this.alive || this.updateCommand !== operation && !this.current("update", sequence)) return;
+    this.set({ updateBusy: false, ...this.updateCommand === operation ? { updateUncertain: true } : {} });
+    if ((this.state.open || this.versionTracking) && this.visible) this.after("version", 1e3, () => this.pollVersions());
   }
 };
 

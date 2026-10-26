@@ -1,6 +1,6 @@
 # Codlet official plugins
 
-Source for ordinary first-party Codlet plugins and the complete functional acceptance consumer. [Codlet Core](https://github.com/baoabaob/codlet) owns the UI/Desktop implementations, Native profiles and `context.codex` SDK. The **1.0.0-rc.1** candidate remains local and unpublished.
+Source for ordinary first-party Codlet plugins and the complete functional acceptance consumer. [Codlet Core](https://github.com/baoabaob/codlet) owns the UI/Desktop implementations, Native profiles and `context.codex` SDK. The current GUI source version is **1.0.0-rc.6**, included in [Core rc.19 validation](https://github.com/baoabaob/codlet/blob/main/docs/releases/1.0.0-rc.19/validation.md).
 
 | Package ID | Distribution repository | Dependency |
 | --- | --- | --- |
@@ -8,22 +8,21 @@ Source for ordinary first-party Codlet plugins and the complete functional accep
 
 Develop the GUI here. The separate GUI repository is a reproducible distribution output. The former Adapter sources, Native tools and duplicated types have been removed from this working tree; their maintained copies and [historical records](https://github.com/baoabaob/codlet/blob/main/docs/history/adapters/README.md) are in Core. Old Adapter tags and Release downloads remain unchanged. No separate Adapter installation is required for Core v1.
 
-Build and package with Node 24 and the locked npm dependencies:
+Build with Node 24 and the locked npm dependencies:
 
 ```text
 npm ci --prefix frontend
 node frontend/build.mjs
-node scripts/package.mjs --output .artifacts/gui-v1
 ```
 
-For SDK-dependent tests, first build the matching Core checkout, then prepare an explicit snapshot:
+For SDK-dependent tests and packaging, first build the matching Core checkout, then prepare an explicit snapshot:
 
 ```text
 node scripts/prepare-core-sdk.mjs ABSOLUTE_CORE_CHECKOUT
 node --test tests/*.test.mjs
 ```
 
-The snapshot contains Core UI, page and i18n bundles in ignored `.core-sdk/`. An optional second absolute argument selects another fresh snapshot directory; set `CODLET_CORE_SDK_ROOT` to use it in tests and previews. GUI build/package does not need a sibling Core checkout.
+The snapshot contains Core UI, page and i18n bundles plus the shared signing tool in ignored `.core-sdk/`. An optional second absolute argument selects another snapshot directory; set `CODLET_CORE_SDK_ROOT` to use it in tests and previews. Packaging uses the default `.core-sdk/` snapshot and the retained publisher signing key; see [publishing](docs/publishing.md). For a local test package, run `node scripts/package.mjs --output .artifacts/gui-v1 --fixture`. Fixture packages are excluded from publication and installer presets. GUI builds do not require a Core checkout.
 
 The selected fresh package output contains the GUI ZIP and a catalog with hashes. Existing output is never overwritten. Core installers offer only the optional GUI. The [complete functional test consumer](tests/fixtures/runtime-compatibility/consumer/README.md) has a separate packaging command and is never an installer default.
 

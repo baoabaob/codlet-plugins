@@ -16,7 +16,7 @@ Create/help/review actions open an editable native task draft containing the Cor
 
 Imports display the prepared package identity, plugin-level dependencies and system compatibility. Requirements resolve against the current plugin list and collapse by provider; Core and self-provided capabilities are omitted. Missing providers remain explicitly unresolved instead of guessing plugin names from interface prefixes. Removal also uses Core's complete plugin-dependent closure.
 
-Permissions are grouped into five expandable categories. One unchecked consent checkbox
+Permissions appear in expandable categories, with direct system/Native access separated. One unchecked consent checkbox
 grants the displayed declarations and confirms trust in that exact package; source changes
 reset it. Enable-after-import is a separate switch. The GUI submits
 `brokerPolicy: {clientPermissions:true}` and has no manual scope fields. It feature-detects
@@ -32,7 +32,7 @@ Settings use revision checks so another window's changes are not silently overwr
 
 Use Core UI API 2's React instance, official components and owner-scoped portals. Custom React components, DOM refs, CSS and complete JavaScript remain supported. The native toolbar, menu/dialog portals, IME-aware tag completion, focus restoration, reduced motion, theme and zh/en messages are part of the existing behavior.
 
-The Adapter owns host-version-specific navigation. The GUI places its branding and
+Core owns host-version-specific navigation. The GUI places its branding and
 description first, with 36 pixels of top spacing and refresh/Add at the upper right,
 followed by page tabs and search in the same centered column; it does not request a separate native toolbar.
 Content reserves scrollbar space symmetrically to maintain alignment. Tag icons use
@@ -43,7 +43,7 @@ and changing the host theme/accent does not require reopening the GUI.
 
 When `context.ui.page` exists, navigation registration remains light until the page is opened; departure disposes the page UI owner. The fallback to `context.ui.create().page()` preserves compatibility with earlier API 2 runtimes. Do not remove it without deliberately changing the supported SDK contract.
 
-Page closure stops GUI timers and invalidates pending view replies. Deactivation also disposes manager listeners and UI ownership. This releases plugin resources but does not guarantee Chromium isolated-world destruction; see [known issues](../known-issues.md).
+Page closure stops view timers and invalidates pending view replies. Submitted operations retain their receipt or update identity and reconcile authoritative status until settled, including while the page is closed. Deactivation also disposes manager listeners and UI ownership. This releases plugin resources but does not guarantee Chromium isolated-world destruction; see [known issues](../known-issues.md).
 
 ## Validation
 

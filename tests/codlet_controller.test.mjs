@@ -320,3 +320,50 @@ test('pending settings saves cannot be repeated after leaving and returning',asy
   await f.m.saveSettings({localSourceAutoReload:true});assert.equal(count(f,'saveSettings'),1);
   reply.resolve(await f.demo.request(null,'saveSettings',f.calls.find(c=>c.method==='saveSettings').args));await save;await Promise.resolve();assert.equal(f.m.state.settings.effective.localSourceAutoReload,true);
 });
+test('closing a settings read allows a fresh read and ignores its retired reply',async t=>{
+  const f=await setup(t),late=deferred(),old=await f.demo.request(null,'getSettings');
+  f.overrides.set('getSettings',()=>late.promise);const reading=f.m.settingsPage();
+  f.m.close();f.demo.state.settingsRevision++;f.overrides.delete('getSettings');
+  await f.m.open();await f.m.settingsPage();const fresh=f.m.state.settings;
+  assert.equal(f.m.state.settingsBusy,false);assert.equal(fresh.revision,old.revision+1);
+  late.resolve(old);await reading;
+  assert.equal(f.m.state.settings,fresh);assert.equal(f.m.state.settingsBusy,false);
+});
+test('settings writes settling away from settings release their owner and refresh on the next visit',async t=>{
+  for(const close of [false,true]){
+    const f=await setup(t),late=deferred();await f.m.settingsPage();
+    f.overrides.set('saveSettings',()=>late.promise);const saving=f.m.saveSettings({localSourceAutoReload:true});
+    if(close)f.m.close();else await f.m.pluginsPage();
+    const args=f.calls.find(call=>call.method==='saveSettings').args;
+    await f.demo.request(null,'saveSettings',args);late.reject(Error('Lost saved-settings reply'));await saving;
+    assert.equal(f.m.state.settingsBusy,false);assert.equal(f.m.state.settingsUncertain,true);assert.equal(f.m.settingsWrite,null);
+    if(close)await f.m.open();await f.m.settingsPage();
+    assert.equal(f.m.state.settingsBusy,false);assert.equal(f.m.state.settingsUncertain,false);assert.equal(f.m.state.settings.values.localSourceAutoReload,true);
+    assert.equal(count(f,'saveSettings'),1);
+  }
+});
+test('closing an in-flight Core install preserves its owner until status settles without replay',async t=>{
+  const f=await setup(t),late=deferred();f.demo.state.phase='downloaded';await f.m.pollVersions();
+  f.overrides.set('installRuntimeUpdate',()=>late.promise);const installing=f.m.loadUpdate('installRuntimeUpdate');
+  f.m.close();await f.m.open(false);assert.equal(f.m.state.updateBusy,true);
+  late.reject(Error('Lost install receipt'));await installing;
+  assert.equal(f.m.state.updateBusy,false);assert.equal(f.m.state.updateUncertain,true);assert.ok(f.m.updateCommand);
+  await f.m.loadUpdate('installRuntimeUpdate');assert.equal(count(f,'installRuntimeUpdate'),1);
+  f.demo.state.phase='deferred';f.overrides.set('versionStatus',async()=>({...await f.demo.request(null,'versionStatus'),runtimeUpdate:{...f.m.state.update,phase:'deferred',activation:{mode:'nextStart',version:'0.2.0',components:['core-runtime'],retainedComponents:[],persistencePending:false}}}));
+  f.m.setVisible(true);await f.m.pollVersions();assert.equal(f.m.state.update.phase,'deferred');assert.equal(f.m.updateCommand,null);assert.equal(f.m.state.updateUncertain,false);
+  await f.m.loadUpdate('installRuntimeUpdate');assert.equal(count(f,'installRuntimeUpdate'),1);
+});
+test('plugin commands retire older version reads and defer new reads until the command returns',async t=>{
+  for(const method of ['updatePlugins','checkPluginUpdates']){
+    const f=await setup(t),late=deferred(),command=deferred(),old=await f.demo.request(null,'versionStatus');
+    f.overrides.set('versionStatus',()=>late.promise);const reading=f.m.pollVersions();
+    f.overrides.set(method,()=>command.promise);
+    const running=method==='updatePlugins'?f.m.updatePlugins([f.m.state.plugins.find(p=>p.id==='managed.notes')]):f.m.checkPluginUpdates();
+    const reads=count(f,'versionStatus');await f.m.pollVersions();assert.equal(count(f,'versionStatus'),reads);
+    f.m.setVisible(false);
+    const result=method==='updatePlugins'?{id:7,running:true,items:[{pluginId:'managed.notes',versionKey:'one',phase:'installing'}]}:{phase:'checking',checkedAt:null,plugins:{}};
+    command.resolve(result);await running;late.resolve(old);await reading;
+    assert.equal(method==='updatePlugins'?f.m.state.pluginInstall:f.m.state.pluginUpdates,result);
+    assert.equal(count(f,method),1);
+  }
+});

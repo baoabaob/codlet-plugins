@@ -113,10 +113,11 @@ export class Manager {
   installState(plugin){const item=this.state.pluginInstall?.items.find(item=>item.pluginId===plugin.id);if(!item)return null;if(item.phase==='updated')return item.version===plugin.version?item:null;return !this.state.pluginInstall.running&&item.versionKey!==(plugin.updateSource?.versionKey??plugin.managedVersionKey)?null:item;}
   async updatePlugins(plugins=null){
     if(!this.available()||this.checkingPlugins()||!(plugins??this.updateCandidates()).length)return;
+    this.sequence.version++;this.clearTimer('version');
     this.set({pluginInstallBusy:true,pluginInstallError:''});
     try{const reply=await this.rpc('updatePlugins',{pluginIds:(plugins??this.updateCandidates()).map(p=>p.id)});if(!validPluginInstall(reply))throw Error('Plugin update status is unavailable.');this.set({pluginInstall:reply,pluginInstallUncertain:false});if(!reply.running)void this.refresh();}
     catch(error){this.set({pluginInstallError:message(error),pluginInstallUncertain:true});}
-    finally{this.set({pluginInstallBusy:false});if(this.state.open&&this.visible)void this.pollVersions();}
+    finally{this.set({pluginInstallBusy:false});if((this.state.open||this.versionTracking)&&this.visible)void this.pollVersions();}
   }
   async reviewPluginUpdate(plugin){
     if(!this.available())return;
@@ -139,7 +140,7 @@ export class Manager {
   setVisible(visible){if(this.visible===visible)return;this.visible=visible;this.clearTimer('version');this.sequence.version++;this.set({versionLoading:false});if(visible&&(this.state.open||this.versionTracking))void this.pollVersions();}
   close() {
     if (this.pending && !this.pending.submitted) this.pending.cancelled = true;
-    this.set({open:false, page:'plugins', confirmation:null,combinedConfirmation:null});
+    this.set({open:false, page:'plugins', confirmation:null,combinedConfirmation:null,...(!this.settingsWrite?{settingsBusy:false,settingsReady:false}:{})});
     for (const name of [...this.timers.keys()]) this.clearTimer(name);
     this.sequence.list++; this.sequence.update++; this.sequence.removal++;this.sequence.version++;this.sequence.settings++;
     this.cancelMarketJob();this.sequence.market++;
@@ -177,10 +178,11 @@ export class Manager {
   pluginUpdate(plugin){const result=this.state.pluginUpdates?.plugins[plugin.id];return result?.versionKey===(plugin.updateSource?.versionKey??plugin.managedVersionKey)?result:null;}
   async checkPluginUpdates(){
     if(!this.available()||!this.state.githubAvailable||this.checkingPlugins()||!this.githubPlugins().length)return;
+    this.sequence.version++;this.clearTimer('version');
     this.set({pluginUpdateBusy:true,pluginUpdateError:''});
     try{const reply=await this.rpc('checkPluginUpdates');if(!validPluginUpdates(reply))throw new Error('Plugin update status is unavailable.');if(this.alive)this.set({pluginUpdates:reply});}
     catch(error){if(this.alive)this.set({pluginUpdateError:message(error)});}
-    finally{if(this.alive){this.set({pluginUpdateBusy:false});if(this.state.open&&this.visible)void this.pollVersions();}}
+    finally{if(this.alive){this.set({pluginUpdateBusy:false});if((this.state.open||this.versionTracking)&&this.visible)void this.pollVersions();}}
   }
   setQuery(query) { this.set({query}); }
   marketSet(patch){this.set({market:{...this.state.market,...patch}});}
@@ -567,7 +569,7 @@ export class Manager {
     const sequence=++this.sequence.update;this.sequence.version++;this.clearTimer('version');this.set({updateBusy:true,updateError:''});
     try{const reply=await this.rpc('installCombinedUpdate',{candidateId:this.state.update.candidate.id,targetId:selected.targetId});operation.inFlight=false;if(!this.current('update',sequence))return;if(!validOfficialUpdate(reply))throw new Error('Update status is unavailable.');this.updateCommand=null;this.set({officialUpdate:reply,combinedConfirmation:null,updateUncertain:false});}
     catch(error){operation.inFlight=false;if(this.current('update',sequence))this.set({combinedConfirmation:null,updateError:message(error),updateUncertain:true});}
-    finally{if(this.current('update',sequence)){this.set({updateBusy:false});if(this.visible)this.after('version',1000,()=>this.pollVersions());}}
+    finally{this.finishUpdateCommand(operation,sequence);}
   }
   settingsPage(jump=false){if(!this.alive||!this.state.open||this.state.confirmation)return;this.cancelMarketJob();this.sequence.market++;this.invalidateImport();this.marketSet({reviewReturn:false});this.set({page:'settings',settingsReady:false,versionJump:this.state.versionJump+(jump?1:0)});return Promise.all([this.loadSettings(),this.refresh()]);}
   pluginsPage(){if(!this.alive||!this.state.open||this.state.confirmation)return;this.cancelMarketJob();this.sequence.market++;this.invalidateImport();this.marketSet({reviewReturn:false});this.sequence.settings++;this.set({page:'plugins',settingsBusy:false});return this.refresh();}
@@ -593,14 +595,17 @@ export class Manager {
         this.set({settingsBusy:false});
         if(uncertain){await this.loadSettings(true);if(!this.state.settingsUncertain&&Object.entries(values).every(([key,value])=>this.state.settings?.values[key]===value))this.set({settingsError:''});}
         void this.pollVersions();
-      }else if(this.alive&&this.state.open&&this.state.page==='settings'){this.set({settingsBusy:false});await this.loadSettings();}
+      }else if(this.alive){
+        this.set({settingsBusy:false,settingsReady:false,settingsUncertain:true});
+        if(this.state.open&&this.state.page==='settings')await this.loadSettings();
+      }
     }
   }
   requestInstall(){if(!this.canConfigure() || this.updateCommand || this.state.updateBusy || this.state.update?.phase!=='downloaded' || !this.state.update.installAvailable)return;this.set({confirmation:{kind:'install',busy:false,error:'',previousPage:this.state.page,updateIdentity:updateIdentity(this.state.update)}});}
   async pollVersions(){
     if(!this.alive||(!this.state.open&&!this.versionTracking)||!this.visible)return;
     this.clearTimer('version');
-    if(this.updateCommand?.inFlight){this.after('version',1000,()=>this.pollVersions());return;}
+    if(this.updateCommand?.inFlight||this.state.pluginInstallBusy||this.state.pluginUpdateBusy){this.after('version',1000,()=>this.pollVersions());return;}
     const sequence=++this.sequence.version;this.set({versionLoading:true});
     try{
       const reply=await this.rpc('versionStatus');
@@ -628,11 +633,13 @@ export class Manager {
       if(!validUpdate(reply))throw new Error('Update status is unavailable.');
       this.updateCommand=null;this.set({update:reply,updateUncertain:false});
     }catch(error){operation.inFlight=false;if(this.current('update',sequence))this.set({updateError:message(error),updateUncertain:true});}
-    finally{
-      if(this.current('update',sequence)){
-        this.set({updateBusy:false});
-        if(this.visible)this.after('version',1000,()=>this.pollVersions());
-      }
-    }
+    finally{this.finishUpdateCommand(operation,sequence);}
+  }
+  finishUpdateCommand(operation,sequence){
+    if(!this.alive||this.updateCommand!==operation&&!this.current('update',sequence))return;
+    // The view can retire while the command still owns an unresolved result.
+    // Clear its spinner, but retain the owner until an authoritative status read.
+    this.set({updateBusy:false,...(this.updateCommand===operation?{updateUncertain:true}:{})});
+    if((this.state.open||this.versionTracking)&&this.visible)this.after('version',1000,()=>this.pollVersions());
   }
 }

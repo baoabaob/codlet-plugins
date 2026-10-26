@@ -1,8 +1,8 @@
 # Known issues and acceptance boundaries
 
-## Core v1 candidate
+## Current Core integration
 
-The GUI and complete functional consumer use Core's `context.codex` SDK and explicit state hooks. The **1.0.0-rc.1** candidate is local and unpublished. Exact package identities and isolated Windows Native evidence are recorded in [Core validation](https://github.com/baoabaob/codlet/blob/main/docs/releases/1.0.0-rc.1/validation.md).
+The GUI and complete functional consumer use Core's `context.codex` SDK and explicit state hooks. Current Windows integration is recorded in [Core rc.19 validation](https://github.com/baoabaob/codlet/blob/main/docs/releases/1.0.0-rc.19/validation.md). The [first v1 candidate record](https://github.com/baoabaob/codlet/blob/main/docs/releases/1.0.0-rc.1/validation.md) retains its original package identities and isolated Windows Native evidence.
 
 SDK declarations, runtime availability and verified platform behavior are different claims. Native DOM/main-world access and raw Node remain trusted-code boundaries. Whole-Core restoration transfers settled JSON; an active functional test rejects checkpointing so its effects are not replayed.
 
