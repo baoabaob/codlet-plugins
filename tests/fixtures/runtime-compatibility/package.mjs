@@ -7,7 +7,7 @@ const out=process.argv[2];if(!out||!path.isAbsolute(out))throw Error('Supply an 
 if(fs.existsSync(out)&&fs.readdirSync(out).length)throw Error('Choose a fresh package output directory; existing versions are immutable');
 const root=path.resolve(import.meta.dirname,'../../..'),source=path.join(import.meta.dirname,'consumer');
 const manifest=JSON.parse(fs.readFileSync(path.join(source,'codlet.json'),'utf8'));
-const files=['README.md','codlet.json','codlet-package.json','renderer.js','host.cjs'].map(name=>[name,fs.readFileSync(path.join(source,name))]);
+const files=['README.md','codlet.json','codlet-package.json','renderer.js','host.cjs','coverage.cjs','coverage-catalog.json'].map(name=>[name,fs.readFileSync(path.join(source,name))]);
 for(const name of ['LICENSE','NOTICE'])files.push([name,fs.readFileSync(path.join(root,name))]);files.sort(([a],[b])=>a.localeCompare(b));
 const crc32=data=>{let value=0xffffffff;for(const byte of data){value^=byte;for(let i=0;i<8;i++)value=(value>>>1)^((value&1)?0xedb88320:0);}return(value^0xffffffff)>>>0;};
 const body=[],central=[];let offset=0;

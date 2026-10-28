@@ -1,36 +1,67 @@
-# Codlet 功能测试 1.0.0-rc.1
+# Codlet 功能测试 1.0.0-rc.2
 
-在原来的 `compatibility.acceptance` 0.0.1 上扩展；沿用界面、工具栏、输入框按钮和未发送草稿的检查。
+导入完整插件目录或发行 ZIP，启用后从侧栏打开“功能测试”。
+需要 Core 的 Codex SDK API 1；覆盖目录由当前 Core rc.20 的公开类型生成。
+缺少接口或身份时，报告保留具体原因，不把它算作当前构建已验证。
 
-## 使用
+## 检查方式
 
-需要 Core v1 的 Codex SDK API 1；Core 内置语义能力，不再另装 Desktop/UI Adapter。本地插件直接使用包含 `codlet.json`、`host.cjs` 和 `renderer.js` 的完整文件夹，通过 Codlet 的本地目录导入注册并启用，无需编译或 ZIP。左侧“功能测试”打开报告页，点击“运行功能测试”；可重复运行和导出 JSON 报告。
+**只读检查**读取 Core 管理、资源、诊断、Native 来源和 Desktop 状态，
+并准备工作区导航、正文、输入框、快捷键、动作和独立视口接口。
+它不导航、不读取草稿、不挂载正文或输入框，也不提交模型请求。
+报告会写入本插件目录。
+Core 尚在初始化时保留未观察状态；真实接口错误按原错误记录。
 
-v1 候选保留完整功能检查，调用改为语义 SDK，并增加显式状态生命周期。错误和不确定回执不重试。统计分别显示通过、失败和未执行，模型检查的 `manual` 不进入已执行总数。每次运行结束，完整报告保存到插件目录的 `functional-report.json`，后台明细另存为 `host-report.json`；Host 激活时也会写自己的空闲报告。
+**运行交互测试**还会打开未发送草稿，检查页面工具栏和输入框按钮，
+使用临时存储、文件、凭据、回环 HTTP/WebSocket 服务及一个回显子进程。
+相应 broker 授权需要允许这些资源；回显进程需要显式选择 Host 的
+`process.execPath`。缺少授权会显示具体错误。
 
-文件、网络等标准服务测试需要相应类别授权，可用 `brokerPolicy.clientPermissions: true`。回显子进程另需精确 `executables` 选择：必须选该 Host 实际 `process.execPath`，广泛客户端授权不会自动选择程序；cwd/env 范围也不继承。采用精细授权时，文件目录与回环来源可显式列出。缺少授权的检查显示具体错误，不能把启动成功当作通过。
+普通安装不自动运行。模型检查要求独立验收目录的 `owner.txt` 精确等于
+`codlet-desktop-acceptance\n`，且 `fixture.json` 设置 `autorun:true` 和
+HTTP `127.0.0.1` 服务。模型检查不能用于真实会话。
 
-此测试夹具有自己的原始 Node HTTP/WebSocket 服务，所以明确使用 `host.mode:"node"` 与 `host.raw`；它也声明直接 Native DOM 断言和主世界访问。Core 强制执行 raw Host/main-world 准入与选定进程 broker 检查。`ui.nativeDom` 是作者声明/审核，isolated world 仍共享 DOM；full Node 可以直接绕过文件/网络 broker。这些例外不能借 Core 自己的权限自动授权，也不是恶意代码沙箱。
+## 报告
 
-运行会打开一条未发送的测试草稿，临时启动回环 HTTP/WebSocket 服务和一个回显子进程，写入并删除插件自己的测试文件、存储项及临时合成凭据。普通安装不自动运行，也不提交模型消息。模型测试仅由独立验收驱动在标记过的测试目录和 `127.0.0.1` 服务中启用。
+覆盖清单来自 Core 的公开服务、Desktop、管理和 Workspace 类型契约，
+以及草稿、附件、输入法、权限、分屏生命周期等明确场景。每项分别记录
+`source`、`simulated`、`interface`、`read`、`operation` 五层证据。
+没有执行的能力保留为 `not-verified`；界面显示操作验证、读取、接口、
+不可用和未验证的数量。管理读取成功不会替 Native 流量来源通过验收。
+每次显式运行有独立 run ID。当前证据必须与本插件版本、generation、
+Core 二进制哈希及 Core 认证的调用方 target/document epoch 一致。
+Native 项还要求同一文档的构建身份与已引用静态模块哈希；缺失、矛盾
+或来自旧文档的身份保留为未绑定证据。Core 自身的读取不依赖 Native 身份。
 
-只读挂载时将 `fixture.json.autorun` 设为 false，或不提供此文件；不要点击运行，不调用 `Symbol.for('codlet.functional.acceptance')` 的 `run`/`prepareFixture`，也不提供测试 thread。当前没有禁用所有本地写入的总开关，Host 激活仍写自己的 `host-report.json`。模型检查同时要求受控根 `owner.txt` 精确等于 `codlet-desktop-acceptance\n`、`autorun:true` 和 HTTP `127.0.0.1` 地址。
+当前插件自身只生成运行中的接口、读取和操作证据；源码分析与模拟测试
+使用独立报告。接口匹配不能证明分屏完整生命周期、附件或物理输入法可用。
+Native 流量源的挂接状态与真实模型流量改写也分别记录。
 
-`saveState`/`restoreState` 只保留已经结束的检查与计数；正在运行的测试拒绝快照。重载不会序列化闭包、DOM、活跃服务、请求或模型动作，也不自动重放它们。恢复阶段 `context.restoringState` 会阻止 autorun。正常旧插件没有 hooks 时仍可普通重载，但不能因此声称支持整套 Core 在线状态迁移。
+完整报告保存为 `functional-report.json`，Host 明细保存为
+`host-report.json`。报告包含 Core 版本、可读取的 Core 二进制 SHA-256、
+插件文件 SHA-256、Native 构建身份和当前文档暴露的相关脚本 SHA-256。
+静态模块仅取自当前文档的同源显式引用，按实际有限集合读取；文件数、
+大小和窗口尺寸不作为兼容判断。报告中的身份采集范围不代表扫描了整个安装包。
+缺失身份明确标注。旧报告恢复后保留原来的身份并标为历史记录；
+重新运行才产生当前证据。
 
-## 覆盖范围
+`saveState`/`restoreState` 只转移结束后的观察记录。正在运行的检查拒绝
+状态转移，重载不重放服务、进程、模型请求或用户操作。
+历史观察身份与当前承载它的 owner 分开保存。只读检查与交互检查互斥，
+旧 owner 退休后的异步回包不能改写新一代报告。
 
-| 范围 | 实际检查 |
-| --- | --- |
-| Renderer / Host | 跨端 RPC、存储、跨端事件和生命周期释放 |
-| 原生界面 | 侧栏页面、工具栏、UI 控件、输入框按钮点击与移除、未发送草稿 |
-| Desktop 读取 | 兼容状态、任务、模型、技能、提供方和审批请求查询 |
-| Core 服务 | 存储事务与冲突、事件重放、任务进度/幂等/取消、原子文件读写/版本冲突/监听、进程流与输入回执 |
-| 网络和凭据 | 回环 fetch、直连配置、系统凭据元数据及限定来源的派发、删除 |
-| 流量 | 显式通道的 HTTP/SSE/WebSocket、插件自己的 HTTP/WebSocket 请求/响应改写、原生来源状态 |
-| 独立模型验收 | 新任务打开、配置读取、模型回合、消息事件和历史、提交前改写、原生模型请求/响应改写、追加输入、中断 |
-| 管理和清理 | 只读管理快照、资源/诊断、外部驱动验证重载/禁用/启用与清理 |
+## 开发
 
-报告中的 `manual` 表示当前环境没有执行该项，不计为通过。真实登录刷新、外部提供方、系统对话框、剪贴板、通知、全局快捷键及安装器升级不在自动检查中。插件不会自动批准任何审批请求。
+源码在开发仓库 `tests/fixtures/runtime-compatibility`。用 Core 仓库的
+`scripts/generate-compatibility-coverage.mjs <consumer/coverage-catalog.json>`
+刷新清单；生成器将公开类型文件的 SHA-256 一并写入。
+安装实例的类型指纹与目录不同时显示目录过时或不可核对；这不等同于
+Native 不兼容。Core 原始方法名与高层 SDK 包装分别核对，例如
+`processes.start()` 对应公开操作表中的 `processes.spawn`。
+模拟回归见 `tests/functional_fixture.test.mjs` 与
+`tests/functional_coverage.test.mjs`。运行结果按具体构建记录，跨平台、
+真实登录刷新、外部模型提供方和安装器升级均有独立待验证项。
+这些模拟回归不提供新的 Native 运行、物理按键或跨平台验收结论。
 
-源码与独立验收说明见开发仓库 `tests/fixtures/runtime-compatibility`。历史 0.0.3 的 Windows Native 记录不替代本次 v1 验收；当前自动化测试也不证明其它平台、真实登录或真实模型会话已通过。包中的作者平台声明、SDK 契约与实际验收记录应分别核对。
+测试夹具使用 `host.raw` Node Host、主世界及 Native DOM 访问，需审核这些
+权限。Core 的 broker 授权不能把原始 Node Host 变成恶意代码沙箱。

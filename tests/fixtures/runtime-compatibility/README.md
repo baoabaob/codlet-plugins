@@ -1,11 +1,11 @@
-# Functional acceptance consumer 1.0.0-rc.1
+# Functional acceptance consumer 1.0.0-rc.2
 
 Extends the complete 0.0.3 consumer and retains its functional checks. The v1
 candidate uses Core's `context.codex` semantic SDK and requires no installed
 UI/Desktop Adapter. It retains direct Native DOM assertions/main-world callbacks
 and explicitly chooses Node/`host.raw` for owned fixture servers. The installable
 directory is `consumer/`; no source build is needed for directory import. Its
-report page, explicit run button and JSON export remain. See its README for
+report page, separate read-only/interaction actions and JSON export remain. See its README for
 effects and manual boundaries. Ordinary installation never auto-submits a model
 turn. Its fixture ZIP can be reproduced with:
 
@@ -74,12 +74,26 @@ interceptor, because live plugin traffic makes online activation defer to next s
 ## Read-only mount and evidence
 
 Keep `fixture.json.autorun` false (or omit the file) for an inspection-only mount.
-Do not click Run, invoke the `Symbol.for('codlet.functional.acceptance')` object's
-`run`/`prepareFixture`, or supply a fixture thread. Host activation still writes
-its own `host-report.json`; there is no total read-only switch. A full manual run
+Use **Read-only checks** or the mounted object's `readonly()` action to inspect
+Core/Native status and prepare workspace interfaces. It never opens a draft,
+mounts a transcript/composer or submits model work. It does write observation
+reports. Do not invoke `run`/`prepareFixture` or supply a fixture thread for this
+mode. Host activation still writes its own `host-report.json`; this is not a
+filesystem read-only mode. A full manual run
 also opens an unsent draft and mutates only the documented synthetic test resources.
 Model operations require an exact owned-root `owner.txt`, `autorun:true`, and an
 HTTP `127.0.0.1` base URL. `context.restoringState` suppresses autorun during restore.
+
+The coverage catalog is generated from Core rc.20 public declarations. Each row
+keeps interface, read and operation observations separate; missing operations
+remain unverified. Current counts require a bound run/plugin generation/Core
+binary identity and an authenticated caller target/document epoch. Native rows
+also require the same Native document/build and referenced static-source hashes.
+Missing identity leaves evidence unbound. Core reads can still be verified when
+Native identity is unavailable. Restored observations retain their original
+identity and remain historical; a new carrier cannot promote them into current
+verification. A catalog/type fingerprint mismatch is reported independently of
+Native availability. See the consumer guide for regeneration and report fields.
 
 The historical 0.0.3 Windows `26.930.2377.0` / frontend `26.930.21537` / build `12776` / backend
 `0.159.0-alpha.12.1` fixture passed both protocols with Desktop Adapter 0.2.7 and

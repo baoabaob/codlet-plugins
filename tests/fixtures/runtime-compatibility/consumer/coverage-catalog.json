@@ -1,0 +1,1436 @@
+{
+  "schema": 1,
+  "kind": "codlet-compatibility-coverage",
+  "coreVersion": "1.0.0-rc.20",
+  "scope": "Published Core service, Codex operation, runtime management and workspace handle contracts, plus explicit Native lifecycle scenarios",
+  "files": [
+    {
+      "path": "types/core-services.d.ts",
+      "sha256": "d3f8615994055485ffd0609045d12927d33f49592a4b9df255d356d75df57051"
+    },
+    {
+      "path": "types/plugin-storage.d.ts",
+      "sha256": "4528d9776b51648df40b4d0b280b176ee833a0e134bc522711f25a756401b423"
+    },
+    {
+      "path": "types/core-resources.d.ts",
+      "sha256": "892b8079b018db9e10cad232a0c61081b510a8a1b128f18b6d1318528d140149"
+    },
+    {
+      "path": "types/codex-desktop.d.ts",
+      "sha256": "e582570d3978cf426f22c47ccf6d911df0ac23d29bba805c9241fcd3fa2001ed"
+    },
+    {
+      "path": "types/runtime-manage.d.ts",
+      "sha256": "6e029f83eba6e59a016de1350cde93e55b526435c9875701f86303c63edf24ca"
+    },
+    {
+      "path": "types/codex-workspace.d.ts",
+      "sha256": "4d5f735d92fa8fa5bd53b6630f0b9d9c941d210cf3eb950ec0ada8af687676a4"
+    },
+    {
+      "path": "types/codex.d.ts",
+      "sha256": "0f2ea8bf8d7df976475de9ab1dad7e610542c60c159ac086bbd0aef701f994e8"
+    }
+  ],
+  "levels": [
+    "source",
+    "simulated",
+    "interface",
+    "read",
+    "operation"
+  ],
+  "defaultStatus": "not-verified",
+  "entries": [
+    {
+      "id": "codex.compatibility.probe",
+      "group": "codex.compatibility"
+    },
+    {
+      "id": "codex.compatibility.waitReady",
+      "group": "codex.compatibility"
+    },
+    {
+      "id": "codex.composer.registerAction",
+      "group": "codex.composer"
+    },
+    {
+      "id": "codex.composerAction.dispose",
+      "group": "codex.composerAction",
+      "declaration": "CodexComposerActionHandle",
+      "source": "types/codex.d.ts",
+      "line": 21
+    },
+    {
+      "id": "codex.composerAction.status",
+      "group": "codex.composerAction",
+      "declaration": "CodexComposerActionHandle",
+      "source": "types/codex.d.ts",
+      "line": 18
+    },
+    {
+      "id": "codex.composerAction.unregister",
+      "group": "codex.composerAction",
+      "declaration": "CodexComposerActionHandle",
+      "source": "types/codex.d.ts",
+      "line": 19
+    },
+    {
+      "id": "codex.configuration.list",
+      "group": "codex.configuration"
+    },
+    {
+      "id": "codex.configuration.register",
+      "group": "codex.configuration"
+    },
+    {
+      "id": "codex.events.onEvent",
+      "group": "codex.events"
+    },
+    {
+      "id": "codex.events.read",
+      "group": "codex.events"
+    },
+    {
+      "id": "codex.navigation.newTaskDraft",
+      "group": "codex.navigation"
+    },
+    {
+      "id": "codex.navigation.page",
+      "group": "codex.navigation"
+    },
+    {
+      "id": "codex.permissions.register",
+      "group": "codex.permissions"
+    },
+    {
+      "id": "codex.read.approvals.list",
+      "group": "codex.read",
+      "declaration": "ReadMethods",
+      "source": "types/codex-desktop.d.ts",
+      "line": 95
+    },
+    {
+      "id": "codex.read.items.list",
+      "group": "codex.read",
+      "declaration": "ReadMethods",
+      "source": "types/codex-desktop.d.ts",
+      "line": 91
+    },
+    {
+      "id": "codex.read.models.list",
+      "group": "codex.read",
+      "declaration": "ReadMethods",
+      "source": "types/codex-desktop.d.ts",
+      "line": 92
+    },
+    {
+      "id": "codex.read.permissions.get",
+      "group": "codex.read",
+      "declaration": "ReadMethods",
+      "source": "types/codex-desktop.d.ts",
+      "line": 82
+    },
+    {
+      "id": "codex.read.providers.list",
+      "group": "codex.read",
+      "declaration": "ReadMethods",
+      "source": "types/codex-desktop.d.ts",
+      "line": 94
+    },
+    {
+      "id": "codex.read.selection.get",
+      "group": "codex.read",
+      "declaration": "ReadMethods",
+      "source": "types/codex-desktop.d.ts",
+      "line": 84
+    },
+    {
+      "id": "codex.read.skills.list",
+      "group": "codex.read",
+      "declaration": "ReadMethods",
+      "source": "types/codex-desktop.d.ts",
+      "line": 93
+    },
+    {
+      "id": "codex.read.threads.configuration",
+      "group": "codex.read",
+      "declaration": "ReadMethods",
+      "source": "types/codex-desktop.d.ts",
+      "line": 89
+    },
+    {
+      "id": "codex.read.threads.get",
+      "group": "codex.read",
+      "declaration": "ReadMethods",
+      "source": "types/codex-desktop.d.ts",
+      "line": 87
+    },
+    {
+      "id": "codex.read.threads.list",
+      "group": "codex.read",
+      "declaration": "ReadMethods",
+      "source": "types/codex-desktop.d.ts",
+      "line": 85
+    },
+    {
+      "id": "codex.read.threads.loaded",
+      "group": "codex.read",
+      "declaration": "ReadMethods",
+      "source": "types/codex-desktop.d.ts",
+      "line": 83
+    },
+    {
+      "id": "codex.read.turns.list",
+      "group": "codex.read",
+      "declaration": "ReadMethods",
+      "source": "types/codex-desktop.d.ts",
+      "line": 90
+    },
+    {
+      "id": "codex.submissions.list",
+      "group": "codex.submissions"
+    },
+    {
+      "id": "codex.submissions.register",
+      "group": "codex.submissions"
+    },
+    {
+      "id": "codex.workspace.connect",
+      "group": "codex.workspace"
+    },
+    {
+      "id": "codex.write.approvals.respond",
+      "group": "codex.write",
+      "declaration": "WriteMethods",
+      "source": "types/codex-desktop.d.ts",
+      "line": 117
+    },
+    {
+      "id": "codex.write.configurations.list",
+      "group": "codex.write",
+      "declaration": "WriteMethods",
+      "source": "types/codex-desktop.d.ts",
+      "line": 102
+    },
+    {
+      "id": "codex.write.getApi",
+      "group": "codex.write",
+      "declaration": "WriteMethods",
+      "source": "types/codex-desktop.d.ts",
+      "line": 101
+    },
+    {
+      "id": "codex.write.permissions.update",
+      "group": "codex.write",
+      "declaration": "WriteMethods",
+      "source": "types/codex-desktop.d.ts",
+      "line": 99
+    },
+    {
+      "id": "codex.write.threads.open",
+      "group": "codex.write",
+      "declaration": "WriteMethods",
+      "source": "types/codex-desktop.d.ts",
+      "line": 106
+    },
+    {
+      "id": "codex.write.threads.reconfigure",
+      "group": "codex.write",
+      "declaration": "WriteMethods",
+      "source": "types/codex-desktop.d.ts",
+      "line": 111
+    },
+    {
+      "id": "codex.write.turns.interrupt",
+      "group": "codex.write",
+      "declaration": "WriteMethods",
+      "source": "types/codex-desktop.d.ts",
+      "line": 116
+    },
+    {
+      "id": "codex.write.turns.start",
+      "group": "codex.write",
+      "declaration": "WriteMethods",
+      "source": "types/codex-desktop.d.ts",
+      "line": 113
+    },
+    {
+      "id": "codex.write.turns.steer",
+      "group": "codex.write",
+      "declaration": "WriteMethods",
+      "source": "types/codex-desktop.d.ts",
+      "line": 114
+    },
+    {
+      "id": "core.credentials.list",
+      "group": "core",
+      "declaration": "PluginCoreServiceMethods",
+      "source": "types/plugin-storage.d.ts",
+      "line": 131
+    },
+    {
+      "id": "core.credentials.metadata",
+      "group": "core",
+      "declaration": "PluginCoreServiceMethods",
+      "source": "types/plugin-storage.d.ts",
+      "line": 132
+    },
+    {
+      "id": "core.credentials.put",
+      "group": "core",
+      "declaration": "PluginCoreServiceMethods",
+      "source": "types/plugin-storage.d.ts",
+      "line": 136
+    },
+    {
+      "id": "core.credentials.remove",
+      "group": "core",
+      "declaration": "PluginCoreServiceMethods",
+      "source": "types/plugin-storage.d.ts",
+      "line": 137
+    },
+    {
+      "id": "core.desktop.clipboardRead",
+      "group": "core",
+      "declaration": "CoreServiceMethods",
+      "source": "types/core-services.d.ts",
+      "line": 100
+    },
+    {
+      "id": "core.desktop.clipboardWrite",
+      "group": "core",
+      "declaration": "CoreServiceMethods",
+      "source": "types/core-services.d.ts",
+      "line": 101
+    },
+    {
+      "id": "core.desktop.dismissNotification",
+      "group": "core",
+      "declaration": "CoreServiceMethods",
+      "source": "types/core-services.d.ts",
+      "line": 98
+    },
+    {
+      "id": "core.desktop.notificationEvents",
+      "group": "core",
+      "declaration": "CoreServiceMethods",
+      "source": "types/core-services.d.ts",
+      "line": 99
+    },
+    {
+      "id": "core.desktop.notify",
+      "group": "core",
+      "declaration": "CoreServiceMethods",
+      "source": "types/core-services.d.ts",
+      "line": 97
+    },
+    {
+      "id": "core.desktop.registerShortcut",
+      "group": "core",
+      "declaration": "CoreServiceMethods",
+      "source": "types/core-services.d.ts",
+      "line": 102
+    },
+    {
+      "id": "core.desktop.shortcutEvents",
+      "group": "core",
+      "declaration": "CoreServiceMethods",
+      "source": "types/core-services.d.ts",
+      "line": 104
+    },
+    {
+      "id": "core.desktop.unregisterShortcut",
+      "group": "core",
+      "declaration": "CoreServiceMethods",
+      "source": "types/core-services.d.ts",
+      "line": 103
+    },
+    {
+      "id": "core.diagnostics.read",
+      "group": "core",
+      "declaration": "CoreServiceMethods",
+      "source": "types/core-services.d.ts",
+      "line": 87
+    },
+    {
+      "id": "core.events.ack",
+      "group": "core",
+      "declaration": "CoreResourceMethods",
+      "source": "types/core-resources.d.ts",
+      "line": 64
+    },
+    {
+      "id": "core.events.close",
+      "group": "core",
+      "declaration": "CoreResourceMethods",
+      "source": "types/core-resources.d.ts",
+      "line": 65
+    },
+    {
+      "id": "core.events.createTopic",
+      "group": "core",
+      "declaration": "CoreResourceMethods",
+      "source": "types/core-resources.d.ts",
+      "line": 58
+    },
+    {
+      "id": "core.events.publish",
+      "group": "core",
+      "declaration": "CoreResourceMethods",
+      "source": "types/core-resources.d.ts",
+      "line": 59
+    },
+    {
+      "id": "core.events.read",
+      "group": "core",
+      "declaration": "CoreResourceMethods",
+      "source": "types/core-resources.d.ts",
+      "line": 63
+    },
+    {
+      "id": "core.events.subscribe",
+      "group": "core",
+      "declaration": "CoreResourceMethods",
+      "source": "types/core-resources.d.ts",
+      "line": 61
+    },
+    {
+      "id": "core.files.cancelDialog",
+      "group": "core",
+      "declaration": "CoreFileMethods",
+      "source": "types/core-services.d.ts",
+      "line": 39
+    },
+    {
+      "id": "core.files.changes",
+      "group": "core",
+      "declaration": "CoreFileMethods",
+      "source": "types/core-services.d.ts",
+      "line": 48
+    },
+    {
+      "id": "core.files.dialogStatus",
+      "group": "core",
+      "declaration": "CoreFileMethods",
+      "source": "types/core-services.d.ts",
+      "line": 38
+    },
+    {
+      "id": "core.files.mkdir",
+      "group": "core",
+      "declaration": "CoreFileMethods",
+      "source": "types/core-services.d.ts",
+      "line": 45
+    },
+    {
+      "id": "core.files.openDialog",
+      "group": "core",
+      "declaration": "CoreFileMethods",
+      "source": "types/core-services.d.ts",
+      "line": 36
+    },
+    {
+      "id": "core.files.read",
+      "group": "core",
+      "declaration": "CoreFileMethods",
+      "source": "types/core-services.d.ts",
+      "line": 41
+    },
+    {
+      "id": "core.files.readDir",
+      "group": "core",
+      "declaration": "CoreFileMethods",
+      "source": "types/core-services.d.ts",
+      "line": 43
+    },
+    {
+      "id": "core.files.release",
+      "group": "core",
+      "declaration": "CoreFileMethods",
+      "source": "types/core-services.d.ts",
+      "line": 40
+    },
+    {
+      "id": "core.files.remove",
+      "group": "core",
+      "declaration": "CoreFileMethods",
+      "source": "types/core-services.d.ts",
+      "line": 46
+    },
+    {
+      "id": "core.files.saveDialog",
+      "group": "core",
+      "declaration": "CoreFileMethods",
+      "source": "types/core-services.d.ts",
+      "line": 37
+    },
+    {
+      "id": "core.files.stat",
+      "group": "core",
+      "declaration": "CoreFileMethods",
+      "source": "types/core-services.d.ts",
+      "line": 42
+    },
+    {
+      "id": "core.files.unwatch",
+      "group": "core",
+      "declaration": "CoreFileMethods",
+      "source": "types/core-services.d.ts",
+      "line": 49
+    },
+    {
+      "id": "core.files.watch",
+      "group": "core",
+      "declaration": "CoreFileMethods",
+      "source": "types/core-services.d.ts",
+      "line": 47
+    },
+    {
+      "id": "core.files.writeAtomic",
+      "group": "core",
+      "declaration": "CoreFileMethods",
+      "source": "types/core-services.d.ts",
+      "line": 44
+    },
+    {
+      "id": "core.network.closeProfile",
+      "group": "core",
+      "declaration": "CoreServiceMethods",
+      "source": "types/core-services.d.ts",
+      "line": 94
+    },
+    {
+      "id": "core.network.createProfile",
+      "group": "core",
+      "declaration": "CoreServiceMethods",
+      "source": "types/core-services.d.ts",
+      "line": 92
+    },
+    {
+      "id": "core.network.fetch",
+      "group": "core",
+      "declaration": "CoreServiceMethods",
+      "source": "types/core-services.d.ts",
+      "line": 96
+    },
+    {
+      "id": "core.network.profiles",
+      "group": "core",
+      "declaration": "CoreServiceMethods",
+      "source": "types/core-services.d.ts",
+      "line": 91
+    },
+    {
+      "id": "core.network.resolve",
+      "group": "core",
+      "declaration": "CoreServiceMethods",
+      "source": "types/core-services.d.ts",
+      "line": 93
+    },
+    {
+      "id": "core.network.status",
+      "group": "core",
+      "declaration": "CoreServiceMethods",
+      "source": "types/core-services.d.ts",
+      "line": 95
+    },
+    {
+      "id": "core.processes.close",
+      "group": "core",
+      "declaration": "CoreResourceMethods",
+      "source": "types/core-resources.d.ts",
+      "line": 88
+    },
+    {
+      "id": "core.processes.endInput",
+      "group": "core",
+      "declaration": "CoreResourceMethods",
+      "source": "types/core-resources.d.ts",
+      "line": 85
+    },
+    {
+      "id": "core.processes.read",
+      "group": "core",
+      "declaration": "CoreResourceMethods",
+      "source": "types/core-resources.d.ts",
+      "line": 80
+    },
+    {
+      "id": "core.processes.spawn",
+      "group": "core",
+      "declaration": "CoreResourceMethods",
+      "source": "types/core-resources.d.ts",
+      "line": 78
+    },
+    {
+      "id": "core.processes.status",
+      "group": "core",
+      "declaration": "CoreResourceMethods",
+      "source": "types/core-resources.d.ts",
+      "line": 79
+    },
+    {
+      "id": "core.processes.terminate",
+      "group": "core",
+      "declaration": "CoreResourceMethods",
+      "source": "types/core-resources.d.ts",
+      "line": 86
+    },
+    {
+      "id": "core.processes.wait",
+      "group": "core",
+      "declaration": "CoreResourceMethods",
+      "source": "types/core-resources.d.ts",
+      "line": 87
+    },
+    {
+      "id": "core.processes.write",
+      "group": "core",
+      "declaration": "CoreResourceMethods",
+      "source": "types/core-resources.d.ts",
+      "line": 84
+    },
+    {
+      "id": "core.resources.list",
+      "group": "core",
+      "declaration": "CoreServiceMethods",
+      "source": "types/core-services.d.ts",
+      "line": 77
+    },
+    {
+      "id": "core.storage.changes",
+      "group": "core",
+      "declaration": "PluginCoreServiceMethods",
+      "source": "types/plugin-storage.d.ts",
+      "line": 128
+    },
+    {
+      "id": "core.storage.clearCache",
+      "group": "core",
+      "declaration": "PluginCoreServiceMethods",
+      "source": "types/plugin-storage.d.ts",
+      "line": 130
+    },
+    {
+      "id": "core.storage.directories",
+      "group": "core",
+      "declaration": "PluginCoreServiceMethods",
+      "source": "types/plugin-storage.d.ts",
+      "line": 129
+    },
+    {
+      "id": "core.storage.get",
+      "group": "core",
+      "declaration": "PluginCoreServiceMethods",
+      "source": "types/plugin-storage.d.ts",
+      "line": 126
+    },
+    {
+      "id": "core.storage.snapshot",
+      "group": "core",
+      "declaration": "PluginCoreServiceMethods",
+      "source": "types/plugin-storage.d.ts",
+      "line": 125
+    },
+    {
+      "id": "core.storage.transaction",
+      "group": "core",
+      "declaration": "PluginCoreServiceMethods",
+      "source": "types/plugin-storage.d.ts",
+      "line": 127
+    },
+    {
+      "id": "core.tasks.cancel",
+      "group": "core",
+      "declaration": "CoreResourceMethods",
+      "source": "types/core-resources.d.ts",
+      "line": 75
+    },
+    {
+      "id": "core.tasks.claim",
+      "group": "core",
+      "declaration": "CoreResourceMethods",
+      "source": "types/core-resources.d.ts",
+      "line": 69
+    },
+    {
+      "id": "core.tasks.finish",
+      "group": "core",
+      "declaration": "CoreResourceMethods",
+      "source": "types/core-resources.d.ts",
+      "line": 72
+    },
+    {
+      "id": "core.tasks.get",
+      "group": "core",
+      "declaration": "CoreResourceMethods",
+      "source": "types/core-resources.d.ts",
+      "line": 73
+    },
+    {
+      "id": "core.tasks.list",
+      "group": "core",
+      "declaration": "CoreResourceMethods",
+      "source": "types/core-resources.d.ts",
+      "line": 76
+    },
+    {
+      "id": "core.tasks.progress",
+      "group": "core",
+      "declaration": "CoreResourceMethods",
+      "source": "types/core-resources.d.ts",
+      "line": 70
+    },
+    {
+      "id": "core.tasks.register",
+      "group": "core",
+      "declaration": "CoreResourceMethods",
+      "source": "types/core-resources.d.ts",
+      "line": 66
+    },
+    {
+      "id": "core.tasks.result",
+      "group": "core",
+      "declaration": "CoreResourceMethods",
+      "source": "types/core-resources.d.ts",
+      "line": 74
+    },
+    {
+      "id": "core.tasks.start",
+      "group": "core",
+      "declaration": "CoreResourceMethods",
+      "source": "types/core-resources.d.ts",
+      "line": 68
+    },
+    {
+      "id": "core.tasks.unregister",
+      "group": "core",
+      "declaration": "CoreResourceMethods",
+      "source": "types/core-resources.d.ts",
+      "line": 77
+    },
+    {
+      "id": "host.fs.readText",
+      "group": "host.fs"
+    },
+    {
+      "id": "host.system.info",
+      "group": "host.system"
+    },
+    {
+      "id": "installer.upgrade",
+      "group": "installer"
+    },
+    {
+      "id": "management.cancelGitHubJob",
+      "group": "management",
+      "declaration": "RuntimeManageMethods",
+      "source": "types/runtime-manage.d.ts",
+      "line": 363
+    },
+    {
+      "id": "management.checkClientCompatibility",
+      "group": "management",
+      "declaration": "RuntimeManageMethods",
+      "source": "types/runtime-manage.d.ts",
+      "line": 333
+    },
+    {
+      "id": "management.checkPluginUpdates",
+      "group": "management",
+      "declaration": "RuntimeManageMethods",
+      "source": "types/runtime-manage.d.ts",
+      "line": 350
+    },
+    {
+      "id": "management.checkRuntimeUpdate",
+      "group": "management",
+      "declaration": "RuntimeManageMethods",
+      "source": "types/runtime-manage.d.ts",
+      "line": 348
+    },
+    {
+      "id": "management.chooseLocalFolder",
+      "group": "management",
+      "declaration": "RuntimeManageMethods",
+      "source": "types/runtime-manage.d.ts",
+      "line": 346
+    },
+    {
+      "id": "management.completeImport",
+      "group": "management",
+      "declaration": "RuntimeManageMethods",
+      "source": "types/runtime-manage.d.ts",
+      "line": 341
+    },
+    {
+      "id": "management.downloadRuntimeUpdate",
+      "group": "management",
+      "declaration": "RuntimeManageMethods",
+      "source": "types/runtime-manage.d.ts",
+      "line": 354
+    },
+    {
+      "id": "management.folderSelection",
+      "group": "management",
+      "declaration": "RuntimeManageMethods",
+      "source": "types/runtime-manage.d.ts",
+      "line": 358
+    },
+    {
+      "id": "management.getSettings",
+      "group": "management",
+      "declaration": "RuntimeManageMethods",
+      "source": "types/runtime-manage.d.ts",
+      "line": 334
+    },
+    {
+      "id": "management.githubDiscover",
+      "group": "management",
+      "declaration": "RuntimeManageMethods",
+      "source": "types/runtime-manage.d.ts",
+      "line": 360
+    },
+    {
+      "id": "management.githubJob",
+      "group": "management",
+      "declaration": "RuntimeManageMethods",
+      "source": "types/runtime-manage.d.ts",
+      "line": 362
+    },
+    {
+      "id": "management.githubPrepare",
+      "group": "management",
+      "declaration": "RuntimeManageMethods",
+      "source": "types/runtime-manage.d.ts",
+      "line": 361
+    },
+    {
+      "id": "management.githubReleases",
+      "group": "management",
+      "declaration": "RuntimeManageMethods",
+      "source": "types/runtime-manage.d.ts",
+      "line": 359
+    },
+    {
+      "id": "management.installCombinedUpdate",
+      "group": "management",
+      "declaration": "RuntimeManageMethods",
+      "source": "types/runtime-manage.d.ts",
+      "line": 357
+    },
+    {
+      "id": "management.installRuntimeUpdate",
+      "group": "management",
+      "declaration": "RuntimeManageMethods",
+      "source": "types/runtime-manage.d.ts",
+      "line": 355
+    },
+    {
+      "id": "management.list",
+      "group": "management",
+      "declaration": "RuntimeManageMethods",
+      "source": "types/runtime-manage.d.ts",
+      "line": 330
+    },
+    {
+      "id": "management.managedHistory",
+      "group": "management",
+      "declaration": "RuntimeManageMethods",
+      "source": "types/runtime-manage.d.ts",
+      "line": 365
+    },
+    {
+      "id": "management.openFolder",
+      "group": "management",
+      "declaration": "RuntimeManageMethods",
+      "source": "types/runtime-manage.d.ts",
+      "line": 344
+    },
+    {
+      "id": "management.openRuntimeFolder",
+      "group": "management",
+      "declaration": "RuntimeManageMethods",
+      "source": "types/runtime-manage.d.ts",
+      "line": 345
+    },
+    {
+      "id": "management.operation",
+      "group": "management",
+      "declaration": "RuntimeManageMethods",
+      "source": "types/runtime-manage.d.ts",
+      "line": 339
+    },
+    {
+      "id": "management.permissions",
+      "group": "management",
+      "declaration": "RuntimeManageMethods",
+      "source": "types/runtime-manage.d.ts",
+      "line": 342
+    },
+    {
+      "id": "management.pluginUpdateReview",
+      "group": "management",
+      "declaration": "RuntimeManageMethods",
+      "source": "types/runtime-manage.d.ts",
+      "line": 353
+    },
+    {
+      "id": "management.prepare",
+      "group": "management",
+      "declaration": "RuntimeManageMethods",
+      "source": "types/runtime-manage.d.ts",
+      "line": 337
+    },
+    {
+      "id": "management.previewLocal",
+      "group": "management",
+      "declaration": "RuntimeManageMethods",
+      "source": "types/runtime-manage.d.ts",
+      "line": 340
+    },
+    {
+      "id": "management.previewRollback",
+      "group": "management",
+      "declaration": "RuntimeManageMethods",
+      "source": "types/runtime-manage.d.ts",
+      "line": 367
+    },
+    {
+      "id": "management.runtimeUpdateStatus",
+      "group": "management",
+      "declaration": "RuntimeManageMethods",
+      "source": "types/runtime-manage.d.ts",
+      "line": 347
+    },
+    {
+      "id": "management.saveSettings",
+      "group": "management",
+      "declaration": "RuntimeManageMethods",
+      "source": "types/runtime-manage.d.ts",
+      "line": 336
+    },
+    {
+      "id": "management.sourceRemovalPreview",
+      "group": "management",
+      "declaration": "RuntimeManageMethods",
+      "source": "types/runtime-manage.d.ts",
+      "line": 343
+    },
+    {
+      "id": "management.submit",
+      "group": "management",
+      "declaration": "RuntimeManageMethods",
+      "source": "types/runtime-manage.d.ts",
+      "line": 338
+    },
+    {
+      "id": "management.updatePlugins",
+      "group": "management",
+      "declaration": "RuntimeManageMethods",
+      "source": "types/runtime-manage.d.ts",
+      "line": 352
+    },
+    {
+      "id": "management.versionStatus",
+      "group": "management",
+      "declaration": "RuntimeManageMethods",
+      "source": "types/runtime-manage.d.ts",
+      "line": 331
+    },
+    {
+      "id": "native.authentication-refresh",
+      "group": "native"
+    },
+    {
+      "id": "native.external-provider",
+      "group": "native"
+    },
+    {
+      "id": "native.linux",
+      "group": "native"
+    },
+    {
+      "id": "native.macos",
+      "group": "native"
+    },
+    {
+      "id": "native.online-update-continuity",
+      "group": "native"
+    },
+    {
+      "id": "native.startup",
+      "group": "native"
+    },
+    {
+      "id": "native.traffic.desktop-main-http",
+      "group": "native.traffic"
+    },
+    {
+      "id": "native.traffic.model-transform",
+      "group": "native.traffic"
+    },
+    {
+      "id": "native.traffic.owned-backend-provider",
+      "group": "native.traffic"
+    },
+    {
+      "id": "native.workspace.action-interface",
+      "group": "native.workspace"
+    },
+    {
+      "id": "native.workspace.composer-interface",
+      "group": "native.workspace"
+    },
+    {
+      "id": "native.workspace.drafts-and-attachments",
+      "group": "native.workspace"
+    },
+    {
+      "id": "native.workspace.full-lifecycle",
+      "group": "native.workspace"
+    },
+    {
+      "id": "native.workspace.input-ownership",
+      "group": "native.workspace"
+    },
+    {
+      "id": "native.workspace.navigation-interface",
+      "group": "native.workspace"
+    },
+    {
+      "id": "native.workspace.permission-binding",
+      "group": "native.workspace"
+    },
+    {
+      "id": "native.workspace.physical-ime",
+      "group": "native.workspace"
+    },
+    {
+      "id": "native.workspace.shortcut-dispatch",
+      "group": "native.workspace"
+    },
+    {
+      "id": "native.workspace.shortcuts-interface",
+      "group": "native.workspace"
+    },
+    {
+      "id": "native.workspace.surface",
+      "group": "native.workspace"
+    },
+    {
+      "id": "native.workspace.transcript-interface",
+      "group": "native.workspace"
+    },
+    {
+      "id": "native.workspace.viewport-interface",
+      "group": "native.workspace"
+    },
+    {
+      "id": "native.workspace.viewport-restoration",
+      "group": "native.workspace"
+    },
+    {
+      "id": "plugin.disable-enable",
+      "group": "plugin"
+    },
+    {
+      "id": "plugin.reload",
+      "group": "plugin"
+    },
+    {
+      "id": "plugin.resource-cleanup",
+      "group": "plugin"
+    },
+    {
+      "id": "rpc.provide",
+      "group": "rpc"
+    },
+    {
+      "id": "rpc.request",
+      "group": "rpc"
+    },
+    {
+      "id": "traffic.inspect",
+      "group": "traffic"
+    },
+    {
+      "id": "traffic.openChannel",
+      "group": "traffic"
+    },
+    {
+      "id": "traffic.openSource",
+      "group": "traffic"
+    },
+    {
+      "id": "traffic.registerInterceptor",
+      "group": "traffic"
+    },
+    {
+      "id": "ui.create",
+      "group": "ui"
+    },
+    {
+      "id": "ui.page-controls",
+      "group": "ui"
+    },
+    {
+      "id": "workspace.acquireComposerControl",
+      "group": "workspace",
+      "declaration": "WorkspaceSession",
+      "source": "types/codex-workspace.d.ts",
+      "line": 96
+    },
+    {
+      "id": "workspace.acquireSelectionPresentation",
+      "group": "workspace",
+      "declaration": "WorkspaceSession",
+      "source": "types/codex-workspace.d.ts",
+      "line": 95
+    },
+    {
+      "id": "workspace.acquireSurface",
+      "group": "workspace",
+      "declaration": "WorkspaceSession",
+      "source": "types/codex-workspace.d.ts",
+      "line": 85
+    },
+    {
+      "id": "workspace.action.dispose",
+      "group": "workspace.action",
+      "declaration": "NativeActionHandle",
+      "source": "types/codex-workspace.d.ts",
+      "line": 59
+    },
+    {
+      "id": "workspace.action.update",
+      "group": "workspace.action",
+      "declaration": "NativeActionHandle",
+      "source": "types/codex-workspace.d.ts",
+      "line": 59
+    },
+    {
+      "id": "workspace.captureLocation",
+      "group": "workspace",
+      "declaration": "WorkspaceSession",
+      "source": "types/codex-workspace.d.ts",
+      "line": 94
+    },
+    {
+      "id": "workspace.composer.activate",
+      "group": "workspace.composer",
+      "declaration": "ComposerHandle",
+      "source": "types/codex-workspace.d.ts",
+      "line": 35
+    },
+    {
+      "id": "workspace.composer.bind",
+      "group": "workspace.composer",
+      "declaration": "ComposerHandle",
+      "source": "types/codex-workspace.d.ts",
+      "line": 40
+    },
+    {
+      "id": "workspace.composer.close",
+      "group": "workspace.composer",
+      "declaration": "ComposerHandle",
+      "source": "types/codex-workspace.d.ts",
+      "line": 41
+    },
+    {
+      "id": "workspace.composer.deactivate",
+      "group": "workspace.composer",
+      "declaration": "ComposerHandle",
+      "source": "types/codex-workspace.d.ts",
+      "line": 37
+    },
+    {
+      "id": "workspace.composer.dispose",
+      "group": "workspace.composer",
+      "declaration": "ComposerHandle",
+      "source": "types/codex-workspace.d.ts",
+      "line": 38
+    },
+    {
+      "id": "workspace.composer.focus",
+      "group": "workspace.composer",
+      "declaration": "ComposerHandle",
+      "source": "types/codex-workspace.d.ts",
+      "line": 38
+    },
+    {
+      "id": "workspace.createNavigation",
+      "group": "workspace",
+      "declaration": "WorkspaceSession",
+      "source": "types/codex-workspace.d.ts",
+      "line": 91
+    },
+    {
+      "id": "workspace.createSlot",
+      "group": "workspace",
+      "declaration": "WorkspaceSession",
+      "source": "types/codex-workspace.d.ts",
+      "line": 84
+    },
+    {
+      "id": "workspace.createViewport",
+      "group": "workspace",
+      "declaration": "WorkspaceSession",
+      "source": "types/codex-workspace.d.ts",
+      "line": 98
+    },
+    {
+      "id": "workspace.dispose",
+      "group": "workspace",
+      "declaration": "WorkspaceSession",
+      "source": "types/codex-workspace.d.ts",
+      "line": 89
+    },
+    {
+      "id": "workspace.getSnapshot",
+      "group": "workspace",
+      "declaration": "WorkspaceSession",
+      "source": "types/codex-workspace.d.ts",
+      "line": 78
+    },
+    {
+      "id": "workspace.getSurface",
+      "group": "workspace",
+      "declaration": "WorkspaceSession",
+      "source": "types/codex-workspace.d.ts",
+      "line": 79
+    },
+    {
+      "id": "workspace.hasBlockingOverlay",
+      "group": "workspace",
+      "declaration": "WorkspaceSession",
+      "source": "types/codex-workspace.d.ts",
+      "line": 83
+    },
+    {
+      "id": "workspace.location.dispose",
+      "group": "workspace.location",
+      "declaration": "WorkspaceLocationHandle",
+      "source": "types/codex-workspace.d.ts",
+      "line": 107
+    },
+    {
+      "id": "workspace.location.exportState",
+      "group": "workspace.location",
+      "declaration": "WorkspaceLocationHandle",
+      "source": "types/codex-workspace.d.ts",
+      "line": 104
+    },
+    {
+      "id": "workspace.location.restore",
+      "group": "workspace.location",
+      "declaration": "WorkspaceLocationHandle",
+      "source": "types/codex-workspace.d.ts",
+      "line": 105
+    },
+    {
+      "id": "workspace.mountComposer",
+      "group": "workspace",
+      "declaration": "WorkspaceSession",
+      "source": "types/codex-workspace.d.ts",
+      "line": 88
+    },
+    {
+      "id": "workspace.mountTranscript",
+      "group": "workspace",
+      "declaration": "WorkspaceSession",
+      "source": "types/codex-workspace.d.ts",
+      "line": 87
+    },
+    {
+      "id": "workspace.navigation.dispose",
+      "group": "workspace.navigation",
+      "declaration": "NavigationSession",
+      "source": "types/codex-workspace.d.ts",
+      "line": 70
+    },
+    {
+      "id": "workspace.navigation.focus",
+      "group": "workspace.navigation",
+      "declaration": "NavigationSession",
+      "source": "types/codex-workspace.d.ts",
+      "line": 69
+    },
+    {
+      "id": "workspace.navigation.open",
+      "group": "workspace.navigation",
+      "declaration": "NavigationSession",
+      "source": "types/codex-workspace.d.ts",
+      "line": 67
+    },
+    {
+      "id": "workspace.permissions.dispose",
+      "group": "workspace.permissions",
+      "declaration": "ComposerControlHandle",
+      "source": "types/codex-workspace.d.ts",
+      "line": 110
+    },
+    {
+      "id": "workspace.permissions.updateBinding",
+      "group": "workspace.permissions",
+      "declaration": "ComposerControlHandle",
+      "source": "types/codex-workspace.d.ts",
+      "line": 110
+    },
+    {
+      "id": "workspace.prepare",
+      "group": "workspace",
+      "declaration": "WorkspaceSession",
+      "source": "types/codex-workspace.d.ts",
+      "line": 93
+    },
+    {
+      "id": "workspace.registerAction",
+      "group": "workspace",
+      "declaration": "WorkspaceSession",
+      "source": "types/codex-workspace.d.ts",
+      "line": 90
+    },
+    {
+      "id": "workspace.registerShortcut",
+      "group": "workspace",
+      "declaration": "WorkspaceSession",
+      "source": "types/codex-workspace.d.ts",
+      "line": 89
+    },
+    {
+      "id": "workspace.resolveThreadInteraction",
+      "group": "workspace",
+      "declaration": "WorkspaceSession",
+      "source": "types/codex-workspace.d.ts",
+      "line": 81
+    },
+    {
+      "id": "workspace.resolveThreadReference",
+      "group": "workspace",
+      "declaration": "WorkspaceSession",
+      "source": "types/codex-workspace.d.ts",
+      "line": 79
+    },
+    {
+      "id": "workspace.selection.dispose",
+      "group": "workspace.selection",
+      "declaration": "SelectionPresentationHandle",
+      "source": "types/codex-workspace.d.ts",
+      "line": 109
+    },
+    {
+      "id": "workspace.selection.update",
+      "group": "workspace.selection",
+      "declaration": "SelectionPresentationHandle",
+      "source": "types/codex-workspace.d.ts",
+      "line": 109
+    },
+    {
+      "id": "workspace.shortcut.dispose",
+      "group": "workspace.shortcut",
+      "declaration": "ShortcutHandle",
+      "source": "types/codex-workspace.d.ts",
+      "line": 54
+    },
+    {
+      "id": "workspace.shortcut.getSnapshot",
+      "group": "workspace.shortcut",
+      "declaration": "ShortcutHandle",
+      "source": "types/codex-workspace.d.ts",
+      "line": 54
+    },
+    {
+      "id": "workspace.shortcut.update",
+      "group": "workspace.shortcut",
+      "declaration": "ShortcutHandle",
+      "source": "types/codex-workspace.d.ts",
+      "line": 54
+    },
+    {
+      "id": "workspace.subscribe",
+      "group": "workspace",
+      "declaration": "WorkspaceSession",
+      "source": "types/codex-workspace.d.ts",
+      "line": 78
+    },
+    {
+      "id": "workspace.transcript.dispose",
+      "group": "workspace.transcript",
+      "declaration": "TranscriptHandle",
+      "source": "types/codex-workspace.d.ts",
+      "line": 22
+    },
+    {
+      "id": "workspace.transcript.getScrollPosition",
+      "group": "workspace.transcript",
+      "declaration": "TranscriptHandle",
+      "source": "types/codex-workspace.d.ts",
+      "line": 23
+    },
+    {
+      "id": "workspace.transcript.scrollToLatest",
+      "group": "workspace.transcript",
+      "declaration": "TranscriptHandle",
+      "source": "types/codex-workspace.d.ts",
+      "line": 25
+    },
+    {
+      "id": "workspace.transcript.setScrollPosition",
+      "group": "workspace.transcript",
+      "declaration": "TranscriptHandle",
+      "source": "types/codex-workspace.d.ts",
+      "line": 23
+    },
+    {
+      "id": "workspace.transcript.update",
+      "group": "workspace.transcript",
+      "declaration": "TranscriptHandle",
+      "source": "types/codex-workspace.d.ts",
+      "line": 22
+    },
+    {
+      "id": "workspace.viewport.bind",
+      "group": "workspace.viewport",
+      "declaration": "IndependentViewportHandle",
+      "source": "types/codex-workspace.d.ts",
+      "line": 119
+    },
+    {
+      "id": "workspace.viewport.close",
+      "group": "workspace.viewport",
+      "declaration": "IndependentViewportHandle",
+      "source": "types/codex-workspace.d.ts",
+      "line": 122
+    },
+    {
+      "id": "workspace.viewport.dispose",
+      "group": "workspace.viewport",
+      "declaration": "IndependentViewportHandle",
+      "source": "types/codex-workspace.d.ts",
+      "line": 122
+    },
+    {
+      "id": "workspace.viewport.getSnapshot",
+      "group": "workspace.viewport",
+      "declaration": "IndependentViewportHandle",
+      "source": "types/codex-workspace.d.ts",
+      "line": 115
+    },
+    {
+      "id": "workspace.viewport.subscribe",
+      "group": "workspace.viewport",
+      "declaration": "IndependentViewportHandle",
+      "source": "types/codex-workspace.d.ts",
+      "line": 117
+    },
+    {
+      "id": "workspace.viewport.update",
+      "group": "workspace.viewport",
+      "declaration": "IndependentViewportHandle",
+      "source": "types/codex-workspace.d.ts",
+      "line": 120
+    }
+  ]
+}

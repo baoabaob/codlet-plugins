@@ -13,11 +13,12 @@
       {"name":"codex.backend.events","api":1,"scope":"target"},
       {"name":"codex.ui.preSubmit","api":1,"scope":"target"},
       {"name":"codex.ui.navigation.page","api":1,"scope":"target"},
-      {"name":"codex.ui.composer.action","api":1,"scope":"target"}
+      {"name":"codex.ui.composer.action","api":1,"scope":"target"},
+      {"name":"codex.ui.workspace","api":1,"scope":"target"}
     ]
   },
   "verification": [
-    {"kind":"automated","status":"passed","evidence":"tests/functional_fixture.test.mjs; fixture state, activation order, SDK admission and explicit restore checks. Native results are recorded separately."}
+    {"kind":"automated","status":"passed","evidence":"tests/functional_fixture.test.mjs and tests/functional_coverage.test.mjs exercise simulated fixture behavior. Per-build Native observations and their file identities are captured in functional-report.json."}
   ],
   "author": "Codlet"
 }

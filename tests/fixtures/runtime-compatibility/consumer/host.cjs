@@ -1,11 +1,12 @@
 'use strict';
 const fs=require('node:fs'),path=require('node:path'),http=require('node:http'),crypto=require('node:crypto');
 const {AsyncResource}=require('node:async_hooks');
+const coverage=require('./coverage.cjs');
 const capability={name:'compatibility.acceptance.host',api:1,scope:'runtime'};
 let state;
 const assert=(condition,message)=>{if(!condition)throw Error(message);};
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
-async function wait(check,timeout=8000){const end=Date.now()+timeout;while(Date.now()<end){const value=await check();if(value)return value;await delay(40);}throw Error('Timed out waiting for a test resource');}
+async function wait(check,timeout=8000){const end=performance.now()+timeout;while(performance.now()<end){const value=await check();if(value)return value;await delay(40);}throw Error('Timed out waiting for a test resource');}
 function fixture(root){
   try {
     const config=JSON.parse(fs.readFileSync(path.join(root,'fixture.json'),'utf8'));
@@ -53,7 +54,7 @@ async function websocket(url,text){
   });
 }
 exports.activate=async context=>{
-  const report={schema:1,version:context.plugin.version,generation:context.plugin.generation,phase:'idle',checks:[],coverage:'synthetic plugin-owned operations'};
+  const report={schema:1,pluginId:context.plugin.id,version:context.plugin.version,generation:context.plugin.generation,runId:null,phase:'idle',checks:[],provenance:null};
   const ownership=fixture(context.root),s=context.services;
   const native={request:0,response:0,webSocket:0,clientFrames:0,serverFrames:0};
   state={context,report,ownership,alive:true,running:null,server:null,topic:null,native,nativeInterceptor:null,detached:new AsyncResource('codlet-functional-tests')};
@@ -77,9 +78,48 @@ exports.activate=async context=>{
   });
   return native;
   }
-  const save=()=>fs.writeFileSync(path.join(context.root,'host-report.json'),JSON.stringify(report,null,2));
-  async function check(id,fn){if(!owned.alive)throw Error('Test retired');const started=Date.now();try{const detail=await fn();report.checks.push({id,status:'passed',milliseconds:Date.now()-started,detail});}catch(error){report.checks.push({id,status:'failed',milliseconds:Date.now()-started,error:{code:error.code??'test_failed',message:error.message}});}if(owned.alive)save();}
-  const authorize=invocation=>assert(invocation.caller.pluginId===context.plugin.id,'Only the test plugin may invoke its Host');
+  const active=()=>owned.alive&&state===owned&&!context.signal?.aborted;
+  const ensureActive=()=>assert(active(),'Test retired');
+  const save=()=>{if(active())fs.writeFileSync(path.join(context.root,'host-report.json'),JSON.stringify(report,null,2));};
+  async function check(id,fn){ensureActive();const started=performance.now();try{const detail=await fn();ensureActive();report.checks.push({id,runId:report.runId,status:'passed',milliseconds:performance.now()-started,detail});}catch(error){ensureActive();report.checks.push({id,runId:report.runId,status:'failed',milliseconds:performance.now()-started,error:{code:error.code??'test_failed',message:error.message}});}save();}
+  const authorize=invocation=>{ensureActive();assert(invocation.caller.pluginId===context.plugin.id&&invocation.caller.generation===context.plugin.generation,'Only the test plugin generation may invoke its Host');assert(typeof invocation.caller.targetId==='string'&&invocation.caller.targetId&&Number.isSafeInteger(invocation.caller.documentEpoch)&&invocation.caller.documentEpoch>0,'Authenticated renderer identity is missing');};
+  const carrier=invocation=>({plugin:{...context.plugin},caller:{...invocation.caller}});
+  function beginRun(invocation){
+    report.pluginId=context.plugin.id;report.version=context.plugin.version;report.generation=context.plugin.generation;report.runId=crypto.randomUUID();report.phase='running';report.checks=[];report.provenance=null;report.carrier=carrier(invocation);delete report.historical;delete report.error;
+  }
+  async function captureIdentity(invocation){
+    ensureActive();
+    let snapshot;
+    try{snapshot=await context.rpc.request({name:'codlet.runtime.manage',api:1,scope:'runtime'},'list',null);}catch{}
+    ensureActive();report.provenance=coverage.identity(context,snapshot,{runId:report.runId,caller:invocation.caller});
+    return snapshot;
+  }
+  async function managementChecks(snapshot){
+    let traffic;
+    await check('management.read-and-resources',async()=>{
+      snapshot??=await context.rpc.request({name:'codlet.runtime.manage',api:1,scope:'runtime'},'list',null);
+      assert(snapshot,'Management list missing');
+      const resources=await s.resources.list(),diagnostics=await s.diagnostics.read();
+      assert(Number.isSafeInteger(diagnostics.cursor),'Diagnostic cursor invalid');
+      traffic=await context.traffic.inspect();
+      return {level:'read',managed:true,resourceGroups:Object.keys(resources),nativeTrafficVerified:false};
+    });
+    ensureActive();report.checks.push(...coverage.sourceChecks(traffic).map(check=>({...check,runId:report.runId})));
+  }
+  context.rpc.provide(capability,'readonly',async(_args,invocation)=>{
+    authorize(invocation);assert(!owned.running,'Functional checks are running');
+    beginRun(invocation);
+    const task=owned.detached.runInAsyncScope(()=>Promise.resolve().then(async()=>{
+      try{await managementChecks(await captureIdentity(invocation));ensureActive();report.phase=report.checks.some(item=>item.status==='failed')?'failed':'complete';}
+      catch(error){ensureActive();report.phase='failed';report.error=error.message;}
+      save();return {report,provenance:report.provenance};
+    }));
+    owned.running=task;
+    try{return await task;}finally{if(owned.running===task)owned.running=null;}
+  });
+  context.rpc.provide(capability,'coverage',(args,invocation)=>{
+    authorize(invocation);return coverage.project(args?.report??report,carrier(invocation));
+  });
   context.rpc.provide(capability,'native.begin',async(_args,invocation)=>{authorize(invocation);return beginNative();});
   context.rpc.provide(capability,'native.end',async(_args,invocation)=>{
     authorize(invocation);assert(!owned.running&&['complete','failed'].includes(report.phase),'Functional checks must settle before fixture traffic is released');
@@ -88,11 +128,12 @@ exports.activate=async context=>{
     await interceptor.close();if(owned.nativeInterceptor===interceptor)owned.nativeInterceptor=null;
     return {released:true};
   });
-  context.rpc.provide(capability,'inspect',(_args,invocation)=>{authorize(invocation);return {fixture:ownership,report,native};});
+  context.rpc.provide(capability,'inspect',(_args,invocation)=>{authorize(invocation);return {fixture:ownership,report,native,coverage:coverage.project(report,carrier(invocation))};});
   context.rpc.provide(capability,'save-report',(args,invocation)=>{
     authorize(invocation);const result=args?.report;
-    assert(result?.schema===1&&result.version===context.plugin.version&&result.generation===context.plugin.generation&&['complete','failed'].includes(result.phase),'Only this generation may save a completed report');
-    const text=JSON.stringify(result,null,2);assert(Buffer.byteLength(text)<=65536,'Functional report exceeds its size limit');
+    assert(result?.schema===1&&result.pluginId===context.plugin.id&&['complete','failed'].includes(result.phase)&&(result.historical===true||result.version===context.plugin.version&&result.generation===context.plugin.generation),'Only this generation may save a completed report');
+    const completed={...result,carrier:carrier(invocation)};completed.coverage=coverage.project(completed);
+    const text=JSON.stringify(completed,null,2);assert(Buffer.byteLength(text)<=512*1024,'Functional report exceeds its size limit');
     fs.writeFileSync(path.join(context.root,'functional-report.json'),text+'\n');return {saved:true};
   });
   context.rpc.provide(capability,'echo',(args,invocation)=>{authorize(invocation);return {value:args.value,hostGeneration:context.plugin.generation};});
@@ -101,11 +142,14 @@ exports.activate=async context=>{
     await s.events.publish({topic:owned.topic.topic,event:{marker:'host-to-renderer'}});return owned.topic;
   });
   context.rpc.provide(capability,'run',async(_args,invocation)=>{
-    authorize(invocation);if(owned.running)return report;
-    report.phase='running';report.checks=[];
+    authorize(invocation);assert(!owned.running,'Functional checks are running');
+    assert(!owned.nativeInterceptor||owned.nativeInterceptor.inspect().exchanges===0,'Accepted fixture traffic must settle before a new run');
+    for(const key of Object.keys(native))native[key]=0;
+    beginRun(invocation);
     // Detach work from the short observing RPC: tasks and network streams retain
     // their own bounded lifetimes when the page leaves or the RPC returns.
     owned.running=owned.detached.runInAsyncScope(()=>new Promise(resolve=>setTimeout(resolve,0)).then(async()=>{
+      await captureIdentity(invocation);
       await check('host.system',async()=>{const info=await context.system.info();assert(info.logicalCpus>0,'Missing system information');return {os:info.os,architecture:info.architecture};});
       await check('storage.transaction-and-conflict',async()=>{
         const before=await s.storage.snapshot(),key='test-'+crypto.randomUUID();
@@ -174,14 +218,10 @@ exports.activate=async context=>{
         try{const response=await fetch(source.endpoint+'/echo'),body=await response.text();assert(response.status===201&&body==='codlet-intercepted-response',`HTTP interceptor did not execute (${response.status}, ${body.slice(0,80)})`);const text=await websocket(source.endpoint.replace('http:','ws:')+'/echo','frame');assert(text==='intercepted frame transformed','WebSocket transforms did not execute');return {http:true,websocket:true,nativeCoverage:'reported separately'};}
         finally{await source.close();await interceptor.close();}
       });
-      await check('management.read-and-resources',async()=>{
-        const snapshot=await context.rpc.request({name:'codlet.runtime.manage',api:1,scope:'runtime'},'list',null);assert(snapshot,'Management list missing');
-        const resources=await s.resources.list(),diagnostics=await s.diagnostics.read();assert(Number.isSafeInteger(diagnostics.cursor),'Diagnostic cursor invalid');
-        const traffic=await context.traffic.inspect();return {managed:true,resourceGroups:Object.keys(resources),traffic:{attached:traffic.attached,activatedSources:traffic.activatedSources?.map(item=>({id:item.id,protocols:item.protocols})),unsupportedSources:traffic.unsupportedSources}};
-      });
+      await managementChecks();
       if(owned.server){owned.server.closeAllConnections();await new Promise(resolve=>owned.server.close(resolve));owned.server=null;}
-      report.phase=report.checks.some(item=>item.status==='failed')?'failed':'complete';save();owned.running=null;
-    })).catch(error=>{report.phase='failed';report.error=error.message;save();owned.running=null;});
+      ensureActive();report.phase=report.checks.some(item=>item.status==='failed')?'failed':'complete';save();owned.running=null;
+    })).catch(error=>{if(active()){report.phase='failed';report.error=error.message;save();}owned.running=null;});
     return report;
   });
   save();
@@ -192,7 +232,9 @@ exports.deactivate=async()=>{
   if(owned.nativeInterceptor)await owned.nativeInterceptor.close().catch(()=>{});
   if(owned.server){owned.server.closeAllConnections();owned.server.close();}
   owned.detached.emitDestroy();
-  fs.writeFileSync(path.join(owned.context.root,'cleanup.json'),JSON.stringify({generation:owned.context.plugin.generation,retired:true}));
+  const cleanup=JSON.stringify({generation:owned.context.plugin.generation,retired:true});
+  fs.writeFileSync(path.join(owned.context.root,'cleanup-'+owned.context.plugin.generation+'.json'),cleanup);
+  if(!state)fs.writeFileSync(path.join(owned.context.root,'cleanup.json'),cleanup);
 };
 // Only explicit completed observations transfer. Live servers, streams, async
 // work and synthetic model operations are recreated only by an explicit run.
@@ -203,6 +245,6 @@ exports.saveState=()=>{
 exports.restoreState=(snapshot)=>{
   assert(state&&snapshot?.schema===1&&snapshot.value?.report?.schema===1,'Unsupported functional Host state');
   assert(['idle','complete','failed'].includes(snapshot.value.report.phase),'Running checks are not transferable');
-  Object.assign(state.report,snapshot.value.report,{version:state.context.plugin.version,generation:state.context.plugin.generation});
+  Object.assign(state.report,snapshot.value.report,{historical:true,carrier:{plugin:{...state.context.plugin},caller:null}});
   Object.assign(state.native,snapshot.value.native??{});
 };

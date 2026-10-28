@@ -8,6 +8,7 @@ import {randomUUID} from 'node:crypto';
 import {createRequire} from 'node:module';
 const require=createRequire(import.meta.url);
 const host=require('./fixtures/runtime-compatibility/consumer/host.cjs');
+const invocation=(generation=1,pluginId='compatibility.acceptance')=>({caller:{pluginId,generation,targetId:'fixture-target',documentEpoch:1}});
 
 test('functional fixture never enables native model interception outside its owned loopback profile',async()=>{
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'codlet-functional-guard-'));
@@ -27,12 +28,12 @@ test('functional fixture never enables native model interception outside its own
         rpc:{provide:(_cap,method,handler)=>methods.set(method,handler)},
         traffic:{registerInterceptor:async()=>{registrations++;return {close:async()=>{closed++;}};}}});
       try{
-        const inspect=methods.get('inspect'),report=inspect(null,{caller:{pluginId:'compatibility.acceptance'}});
+        const inspect=methods.get('inspect'),report=inspect(null,invocation());
         assert.equal(report.fixture.autorun,item.expected);
         assert.equal(report.report.phase,'idle');assert.equal(registrations,0);
-        assert.throws(()=>inspect(null,{caller:{pluginId:'foreign.plugin'}}),/Only the test plugin/);
-        if(item.expected)await methods.get('native.begin')(null,{caller:{pluginId:'compatibility.acceptance'}});
-        else await assert.rejects(()=>methods.get('native.begin')(null,{caller:{pluginId:'compatibility.acceptance'}}),/owned loopback/);
+        assert.throws(()=>inspect(null,invocation(1,'foreign.plugin')),/Only the test plugin/);
+        if(item.expected)await methods.get('native.begin')(null,invocation());
+        else await assert.rejects(()=>methods.get('native.begin')(null,invocation()),/owned loopback/);
         assert.equal(registrations,Number(item.expected));
       }finally{await host.deactivate();}
       assert.equal(closed,Number(item.expected));
@@ -43,7 +44,7 @@ test('functional fixture never enables native model interception outside its own
 
 function draftOpener(){
   let now=0;
-  const sandbox=vm.createContext({module:{exports:{}},Date:{now:()=>now},setTimeout:(callback,delay)=>{now+=delay;queueMicrotask(callback);}});
+  const sandbox=vm.createContext({module:{exports:{}},performance:{now:()=>now},setTimeout:(callback,delay)=>{now+=delay;queueMicrotask(callback);}});
   const source=fs.readFileSync(new URL('./fixtures/runtime-compatibility/consumer/renderer.js',import.meta.url),'utf8');
   vm.runInContext(source,sandbox);
   return vm.runInContext('openDraftWhenReady',sandbox);
@@ -83,15 +84,17 @@ test('draft navigation waits end at their deadline and at generation retirement'
 test('complete reports can only be saved by the owning plugin generation and remain bounded',async()=>{
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'codlet-functional-report-'));
   assert.equal(path.dirname(root),path.resolve(os.tmpdir()));
-  const methods=new Map(),caller={caller:{pluginId:'compatibility.acceptance'}};
+  const methods=new Map(),caller=invocation(4);
   try{
     await host.activate({root,plugin:{id:'compatibility.acceptance',version:'0.0.3',generation:4},services:{},rpc:{provide:(_cap,method,handler)=>methods.set(method,handler)}});
-    const save=methods.get('save-report'),report={schema:1,version:'0.0.3',generation:4,phase:'complete',checks:[{id:'native.editable-draft',status:'passed'},{id:'desktop.model-operations',status:'manual'}]};
-    assert.throws(()=>save({report},{caller:{pluginId:'foreign.plugin'}}),/Only the test plugin/);
+    const save=methods.get('save-report'),report={schema:1,pluginId:'compatibility.acceptance',version:'0.0.3',generation:4,phase:'complete',checks:[{id:'native.editable-draft',status:'passed'},{id:'desktop.model-operations',status:'manual'}]};
+    assert.throws(()=>save({report},invocation(1,'foreign.plugin')),/Only the test plugin/);
     assert.throws(()=>save({report:{...report,generation:3}},caller),/this generation/);
-    assert.throws(()=>save({report:{...report,padding:'x'.repeat(65536)}},caller),/size limit/);
+    assert.throws(()=>save({report:{...report,padding:'x'.repeat(512*1024)}},caller),/size limit/);
     assert.deepEqual(save({report},caller),{saved:true});
-    assert.deepEqual(JSON.parse(fs.readFileSync(path.join(root,'functional-report.json'),'utf8')),report);
+    const stored=JSON.parse(fs.readFileSync(path.join(root,'functional-report.json'),'utf8'));
+    assert.deepEqual(stored.checks,report.checks);assert.equal(stored.coverage.counts['operation-verified'],0);
+    assert.ok(stored.coverage.total>200);
     assert.equal(methods.get('inspect')(null,caller).fixture.autorun,false);
   }finally{await host.deactivate();fs.rmSync(root,{recursive:true});}
 });
@@ -104,8 +107,8 @@ test('functional Host state carries observations and never reconstructs live mod
     const snapshot=host.saveState();assert.equal(snapshot.schema,1);assert.equal(snapshot.value.report.phase,'idle');assert.doesNotMatch(JSON.stringify(snapshot),/detached|nativeInterceptor|baseUrl|"server":/);
     await host.deactivate();methods.clear();await host.activate({...context,plugin:{...context.plugin,generation:2}});
     host.restoreState(snapshot);
-    const observed=methods.get('inspect')(null,{caller:{pluginId:'compatibility.acceptance'}});
-    assert.equal(observed.report.generation,2);assert.equal(observed.report.phase,'idle');assert.equal(observed.native.request,0);
+    const observed=methods.get('inspect')(null,invocation(2));
+    assert.equal(observed.report.generation,1);assert.equal(observed.report.historical,true);assert.equal(observed.report.phase,'idle');assert.equal(observed.native.request,0);
     assert.throws(()=>host.restoreState({schema:1,value:{report:{schema:1,phase:'running'}}}),/not transferable/);
   }finally{await host.deactivate();fs.rmSync(root,{recursive:true});}
 });
@@ -115,15 +118,16 @@ test('settled consumer explicitly releases only idle owned fixture traffic and k
   const pluginRoot=path.join(root,'fixture-plugins','compatibility.acceptance');fs.mkdirSync(pluginRoot,{recursive:true});
   fs.writeFileSync(path.join(root,'owner.txt'),'codlet-desktop-acceptance\n');
   fs.writeFileSync(path.join(pluginRoot,'fixture.json'),JSON.stringify({baseUrl:'http://127.0.0.1:12345/v1',autorun:true}));
-  const methods=new Map(),caller={caller:{pluginId:'compatibility.acceptance'}};let closed=0,exchanges=1;
+  const methods=new Map(),caller=invocation(2);let closed=0,exchanges=1;
   try{
     await host.activate({root:pluginRoot,plugin:{id:'compatibility.acceptance',version:'1.0.0-rc.1',generation:2},services:{},rpc:{provide:(_cap,method,handler)=>methods.set(method,handler)},
       traffic:{registerInterceptor:async()=>({inspect:()=>({exchanges}),close:async()=>{closed++;}})}});
     await methods.get('native.begin')(null,caller);
-    await assert.rejects(()=>methods.get('native.end')(null,{caller:{pluginId:'foreign.plugin'}}),/Only the test plugin/);
+    await assert.rejects(()=>methods.get('native.end')(null,invocation(1,'foreign.plugin')),/Only the test plugin/);
     await assert.rejects(()=>methods.get('native.end')(null,caller),/must settle/);
     const snapshot=host.saveState();snapshot.value.report.phase='complete';snapshot.value.report.checks=[{id:'synthetic',status:'passed'}];host.restoreState(snapshot);
     await assert.rejects(()=>methods.get('native.end')(null,caller),/Accepted fixture traffic must settle/);assert.equal(closed,0);
+    await assert.rejects(()=>methods.get('run')(null,caller),/Accepted fixture traffic must settle before a new run/);
     exchanges=0;assert.deepEqual(await methods.get('native.end')(null,caller),{released:true});assert.equal(closed,1);
     assert.deepEqual(await methods.get('native.end')(null,caller),{released:true});assert.equal(closed,1);
     assert.equal(host.saveState().value.report.checks[0].id,'synthetic');
@@ -131,7 +135,7 @@ test('settled consumer explicitly releases only idle owned fixture traffic and k
   assert.equal(closed,1,'retirement does not replay an explicitly completed close');
 });
 
-test('full readonly consumer activates its own page before each draft and preserves Core active-page admission',async()=>{
+test('explicit interaction consumer activates its own page before each draft and preserves Core active-page admission',async()=>{
   let pageActive=false,action=null,activations=0,drafts=0,saved;
   const order=[],source=fs.readFileSync(new URL('./fixtures/runtime-compatibility/consumer/renderer.js',import.meta.url),'utf8');
   const document={body:{append(){}},createElement(){return{dataset:{},remove(){}};},querySelector(selector){
@@ -152,12 +156,13 @@ test('full readonly consumer activates its own page before each draft and preser
     }},
     services:{storage:{snapshot:async()=>({schema:1})},events:{subscribe:async()=>({subscription:'fixture'}),read:async()=>({events:[{value:{marker:'host-to-renderer'}}]}),close:async()=>{}}},
     codex:{api:1,compatibility:{waitReady:async()=>({available:true})},backend:{read:async()=>({threads:[],models:[],directories:[],providers:[]})},
+      workspace:{connect:async()=>({getSnapshot:()=>({api:1,available:true,features:{}}),dispose(){},prepare:async({features})=>({features:Object.fromEntries(features.map(feature=>[feature,{available:true}]))})})},
       navigation:{page:async()=>({path:'/fixture',dispose(){}}),async newTaskDraft(){
         if(!pageActive)throw Object.assign(Error('A new task draft requires this caller’s active page'),{code:'invalid_owner'});
         order.push('draft');drafts++;pageActive=false;return{opened:true,submitted:false};
       }},composer:{async registerAction(_options,callback){action=callback;return{async unregister(){action=null;}};}}},
   };
-  const sandbox=vm.createContext({module:{exports:{}},document,innerWidth:1000,innerHeight:800,crypto:{randomUUID},setTimeout,clearTimeout});
+  const sandbox=vm.createContext({module:{exports:{}},document,innerWidth:1000,innerHeight:800,crypto:{randomUUID},setTimeout,clearTimeout,performance,AbortController,URL});
   vm.runInContext(source,sandbox);const plugin=sandbox.module.exports;
   try{
     await plugin.activate(context);await vm.runInContext('globalThis[SYMBOL]',sandbox).run();
