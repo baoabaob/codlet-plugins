@@ -22,6 +22,7 @@ test('functional page availability follows the Native window contract and leaves
       rpc:{async request(_cap,method){requests++;assert.equal(method,'inspect');return{fixture:{autorun:false}};}}};
     try{
       await plugin.activate(context);assert.equal(pages,1,'a narrow main window still registers its page');
+      await vm.runInContext('globalThis[SYMBOL]?.ready',sandbox);
       const snapshot=plugin.saveState();assert.equal(snapshot.value.phase,'idle');
       plugin.restoreState(snapshot);assert.equal(plugin.saveState().value.phase,'idle');
       assert.equal(requests,pagePath===null?0:1);assert.equal(nodes.size,pagePath===null?0:1);
@@ -29,6 +30,56 @@ test('functional page availability follows the Native window contract and leaves
     }finally{plugin.deactivate();}
     assert.equal(nodes.size,0);assert.equal(disposed,1);
   }
+});
+
+function pendingFunctionalPage({restoring=false,autorun=false}={}){
+  let resolve,reject,disposed=0,requests=0,pagePath='/pending';
+  const ready=new Promise((accept,fail)=>{resolve=accept;reject=fail;}),nodes=new Set();
+  const document={body:{append(node){nodes.add(node);}},createElement(){return{dataset:{},remove(){nodes.delete(this);}};}};
+  const sandbox=vm.createContext({module:{exports:{}},document,AbortController,performance,setTimeout,clearTimeout});
+  vm.runInContext(fs.readFileSync(new URL('./fixtures/runtime-compatibility/consumer/renderer.js',import.meta.url),'utf8'),sandbox);
+  const context={pluginId:'compatibility.acceptance',version:'1.0.0-rc.3',generation:1,restoringState:restoring,i18n:{locale:'en'},onDeactivate(){},
+    codex:{api:1,navigation:{async page(){return{get path(){return pagePath;},ready,dispose(){disposed++;}};}}},
+    rpc:{async request(_cap,method){requests++;assert.equal(method,'inspect');return{fixture:{autorun},coverage:{initial:true}};}}};
+  return{plugin:sandbox.module.exports,context,nodes,get api(){return vm.runInContext('globalThis[SYMBOL]',sandbox);},get disposed(){return disposed;},get requests(){return requests;},
+    resolve(value={available:true,path:pagePath}){pagePath=value.path;resolve(value);},reject};
+}
+
+test('functional activation returns its readiness handle before Native settles and preserves restored observations',async()=>{
+  const f=pendingFunctionalPage({restoring:true,autorun:true});
+  try{
+    await f.plugin.activate(f.context);const api=f.api;assert.ok(api.ready);assert.equal(f.requests,0);assert.equal(api.pagePath,'/pending');
+    const snapshot=f.plugin.saveState();snapshot.value.checks=[{id:'historical',status:'passed'}];f.plugin.restoreState(snapshot);
+    f.context.restoringState=false;f.resolve();await api.ready;await new Promise(resolve=>setTimeout(resolve,0));
+    assert.equal(f.requests,1,'asynchronous readiness must retain activation-time restoring state');
+    assert.equal(api.inspect().phase,'idle');assert.equal(api.inspect().historical,true);assert.equal(api.inspect().coverage,null);
+    assert.equal(api.inspect().checks[0].id,'historical');
+  }finally{f.plugin.deactivate();}
+});
+
+test('functional pending page failures reject readiness and remain inspectable without reporting successful activation as page readiness',async()=>{
+  const f=pendingFunctionalPage();
+  try{
+    await f.plugin.activate(f.context);const api=f.api,failure=Object.assign(Error('Native toolbar changed'),{code:'ui_build_drift'});
+    const rejected=assert.rejects(api.ready,error=>error===failure);f.reject(failure);await rejected;
+    assert.equal(api.inspect().phase,'failed');assert.equal(api.inspect().error.code,'ui_build_drift');assert.equal(f.requests,0);
+    await assert.rejects(api.readonly(),error=>error===failure);assert.equal(f.requests,0);
+  }finally{f.plugin.deactivate();}
+});
+
+test('functional auxiliary readiness retires its temporary report and leaves idle state transferable',async()=>{
+  const f=pendingFunctionalPage();
+  try{
+    await f.plugin.activate(f.context);const api=f.api;f.resolve({available:false,path:null});const ready=await api.ready;
+    assert.equal(ready.available,false);assert.equal(api.pagePath,null);assert.equal(f.api,undefined);assert.equal(f.nodes.size,0);assert.equal(f.disposed,1);assert.equal(f.requests,0);
+    assert.equal(f.plugin.saveState().value.phase,'idle');
+  }finally{f.plugin.deactivate();}
+});
+
+test('functional retirement cancels a pending initialization before it can inspect the host',async()=>{
+  const f=pendingFunctionalPage();await f.plugin.activate(f.context);const api=f.api;
+  const rejected=assert.rejects(api.ready,/Test retired/);f.plugin.deactivate();f.resolve();await rejected;
+  assert.equal(f.requests,0);assert.equal(f.nodes.size,0);assert.equal(f.disposed,1);assert.equal(f.api,undefined);
 });
 
 test('functional fixture never enables native model interception outside its owned loopback profile',async()=>{

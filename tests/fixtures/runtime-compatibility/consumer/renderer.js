@@ -28,6 +28,7 @@ module.exports.restoreState=snapshot=>{assert(transfer&&snapshot?.schema===1,'Un
 module.exports.activate=async context=>{
   cleanup?.();
   assert(context.codex?.api===1,'Core Codex SDK API 1 is required');
+  const restoring=context.restoringState===true;
   let alive=true,running=false,page,fixtureThread,resolveThread,api;
   const disposals=[],listeners=new Set(),nodes=[],abort=new AbortController();
   const state={schema:1,pluginId:context.pluginId,version:context.version,generation:context.generation,runId:null,phase:'idle',checks:[],host:null,fixture:null,provenance:null,coverage:null,carrier:null};
@@ -75,11 +76,22 @@ module.exports.activate=async context=>{
   page=await context.codex.navigation.page({label,icon:'CodeSquareSlash',toolbar:true,render:({ui})=>ui.React.createElement(Panel,{ui})});
   if(!alive){page.dispose();return;}
   if(page.path===null){retire();return;}
-  api={inspect:()=>state,pagePath:page.path,run,readonly:()=>run('readonly'),prepareFixture:()=>ask('compatibility.acceptance.host','native.begin'),
+  api={inspect:()=>state,get pagePath(){return page.path;},run,readonly:()=>run('readonly'),prepareFixture:()=>ask('compatibility.acceptance.host','native.begin'),
     releaseFixtureTraffic(){assert(!running&&['complete','failed'].includes(state.phase),'Functional checks must settle before fixture traffic is released');return ask('compatibility.acceptance.host','native.end');},
     supplyFixtureThread(id){if(state.fixture?.autorun&&typeof id==='string'){fixtureThread=id;resolveThread?.(id);return true;}return false;}};
   globalThis[SYMBOL]=api;
+  api.ready=(async()=>{
+    const ready=page.ready?await page.ready:{available:page.path!==null,path:page.path};
+    assert(alive,'Test retired');
+    if(!ready.available||ready.path===null){retire();return ready;}
+    const initial=await ask('compatibility.acceptance.host','inspect');assert(alive,'Test retired');
+    state.fixture=initial.fixture;if(!state.historical)state.coverage=initial.coverage??null;save();return ready;
+  })();
+  api.ready.then(ready=>{if(alive&&ready.available&&state.fixture.autorun&&!restoring)void run();},error=>{
+    if(!alive)return;state.error={code:error.code??'test_failed',message:error.message};state.phase='failed';save();
+  });
   async function activateTestPage(){
+    await api.ready;assert(alive,'Test retired');
     const entry=await wait(()=>document.querySelector('[data-codlet-navigation-entry="'+context.pluginId+'"]'));entry.click();
     await wait(()=>document.querySelector('[data-functional-test-panel]'));
     assert(document.querySelector('[data-codlet-page-toolbar]'),'Native toolbar missing');
@@ -173,6 +185,7 @@ module.exports.activate=async context=>{
     return result;
   }
   async function run(mode='interactive'){
+    await api.ready;
     if(running||!alive)return;running=true;state.phase='running';state.mode=mode;state.checks=[];state.host=null;state.error=null;state.coverage=null;state.provenance=null;state.runId=null;state.carrier=null;delete state.historical;delete state.observedOwner;delete state.reportSaveError;save();
     try{
       const inspection=await ask('compatibility.acceptance.host','inspect');state.fixture=inspection.fixture;
@@ -219,6 +232,4 @@ module.exports.activate=async context=>{
       running=false;save();
     }
   }
-  const initial=await ask('compatibility.acceptance.host','inspect');state.fixture=initial.fixture;state.coverage=initial.coverage??null;save();
-  if(initial.fixture.autorun&&!context.restoringState)void run();
 };

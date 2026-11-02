@@ -1,4 +1,4 @@
-# Codlet 功能测试 1.0.0-rc.2
+# Codlet 功能测试 1.0.0-rc.3
 
 导入完整插件目录或发行 ZIP，启用后从侧栏打开“功能测试”。
 需要 Core 的 Codex SDK API 1；覆盖目录由当前 Core rc.20 的公开类型生成。
@@ -62,6 +62,10 @@ Native 不兼容。Core 原始方法名与高层 SDK 包装分别核对，例如
 `tests/functional_coverage.test.mjs`。运行结果按具体构建记录，跨平台、
 真实登录刷新、外部模型提供方和安装器升级均有独立待验证项。
 这些模拟回归不提供新的 Native 运行、物理按键或跨平台验收结论。
+
+自动探针先等待 `globalThis[Symbol.for('codlet.functional.acceptance')].ready`，
+再核对导航入口、打开后的页面和 Native 工具栏。插件激活只等待 Core
+接收页面注册；冷启动中的 Native 就绪由独立 Promise 表示。
 
 测试夹具使用 `host.raw` Node Host、主世界及 Native DOM 访问，需审核这些
 权限。Core 的 broker 授权不能把原始 Node Host 变成恶意代码沙箱。

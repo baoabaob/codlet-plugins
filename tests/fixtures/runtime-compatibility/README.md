@@ -1,4 +1,4 @@
-# Functional acceptance consumer 1.0.0-rc.2
+# Functional acceptance consumer 1.0.0-rc.3
 
 Extends the complete 0.0.3 consumer and retains its functional checks. The v1
 candidate uses Core's `context.codex` semantic SDK and requires no installed
@@ -74,6 +74,11 @@ interceptor, because live plugin traffic makes online activation defer to next s
 ## Read-only mount and evidence
 
 Keep `fixture.json.autorun` false (or omit the file) for an inspection-only mount.
+Await `globalThis[Symbol.for('codlet.functional.acceptance')].ready` before a
+probe depends on Native registration. Activation returns after Core accepts the
+page lease; readiness independently waits for the route, toolbar and initial
+Host inspection. Assert the owned navigation entry, open the page and assert its
+panel and Native toolbar separately when checking visible page loading.
 Use **Read-only checks** or the mounted object's `readonly()` action to inspect
 Core/Native status and prepare workspace interfaces. It never opens a draft,
 mounts a transcript/composer or submits model work. It does write observation
