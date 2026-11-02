@@ -19,7 +19,7 @@ function report(checks=[]){
 
 test('coverage separates reads, interfaces, operations and unexecuted Native lifecycle',()=>{
   const result=coverage.project(report([{id:'management.read-and-resources',status:'passed'},...coverage.sourceChecks({attached:false,activatedSources:[],unsupportedSources:[{id:'desktop-main-http',reason:'hook_unavailable'}]}),{id:'workspace.interface.navigation',status:'passed'}]));
-  assert.equal(result.total,220);assert.equal(coverage.catalog.coreVersion,'1.0.0-rc.20');
+  assert.equal(result.total,220);assert.equal(coverage.catalog.coreVersion,'1.0.0-rc.23');
   assert.equal(find(result,'management.list').status,'read-verified');
   assert.equal(find(result,'native.traffic.desktop-main-http').status,'unavailable');
   assert.equal(find(result,'native.traffic.model-transform').status,'not-verified');
