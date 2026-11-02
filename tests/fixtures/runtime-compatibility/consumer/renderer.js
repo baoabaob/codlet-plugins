@@ -74,6 +74,7 @@ module.exports.activate=async context=>{
   }
   page=await context.codex.navigation.page({label,icon:'CodeSquareSlash',toolbar:true,render:({ui})=>ui.React.createElement(Panel,{ui})});
   if(!alive){page.dispose();return;}
+  if(page.path===null){retire();return;}
   api={inspect:()=>state,pagePath:page.path,run,readonly:()=>run('readonly'),prepareFixture:()=>ask('compatibility.acceptance.host','native.begin'),
     releaseFixtureTraffic(){assert(!running&&['complete','failed'].includes(state.phase),'Functional checks must settle before fixture traffic is released');return ask('compatibility.acceptance.host','native.end');},
     supplyFixtureThread(id){if(state.fixture?.autorun&&typeof id==='string'){fixtureThread=id;resolveThread?.(id);return true;}return false;}};

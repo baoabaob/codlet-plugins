@@ -10,6 +10,27 @@ const require=createRequire(import.meta.url);
 const host=require('./fixtures/runtime-compatibility/consumer/host.cjs');
 const invocation=(generation=1,pluginId='compatibility.acceptance')=>({caller:{pluginId,generation,targetId:'fixture-target',documentEpoch:1}});
 
+test('functional page availability follows the Native window contract and leaves auxiliary idle state transferable',async()=>{
+  const source=fs.readFileSync(new URL('./fixtures/runtime-compatibility/consumer/renderer.js',import.meta.url),'utf8');
+  for(const pagePath of ['/functional',null]){
+    const nodes=new Set();let pages=0,disposed=0,requests=0;
+    const document={body:{append(node){nodes.add(node);}},createElement(){return{dataset:{},remove(){nodes.delete(this);}};}};
+    const sandbox=vm.createContext({module:{exports:{}},document,innerWidth:200,innerHeight:100,AbortController,performance,setTimeout,clearTimeout});
+    vm.runInContext(source,sandbox);const plugin=sandbox.module.exports;
+    const context={pluginId:'compatibility.acceptance',version:'1.0.0-rc.3',generation:1,i18n:{locale:'en'},onDeactivate(){},
+      codex:{api:1,navigation:{async page(options){pages++;assert.equal(options.toolbar,true);return{path:pagePath,dispose(){disposed++;}};}}},
+      rpc:{async request(_cap,method){requests++;assert.equal(method,'inspect');return{fixture:{autorun:false}};}}};
+    try{
+      await plugin.activate(context);assert.equal(pages,1,'a narrow main window still registers its page');
+      const snapshot=plugin.saveState();assert.equal(snapshot.value.phase,'idle');
+      plugin.restoreState(snapshot);assert.equal(plugin.saveState().value.phase,'idle');
+      assert.equal(requests,pagePath===null?0:1);assert.equal(nodes.size,pagePath===null?0:1);
+      assert.equal(disposed,pagePath===null?1:0);
+    }finally{plugin.deactivate();}
+    assert.equal(nodes.size,0);assert.equal(disposed,1);
+  }
+});
+
 test('functional fixture never enables native model interception outside its owned loopback profile',async()=>{
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'codlet-functional-guard-'));
   assert.equal(path.dirname(root),path.resolve(os.tmpdir()));
