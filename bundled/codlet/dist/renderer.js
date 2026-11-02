@@ -1084,6 +1084,9 @@ var Manager = class {
     const suspension = plugin.temporarilyDisabled ? plugin.reloadAvailable ? "Temporarily disabled. Update or reload its provider to retry. Enabled preferences and grants are preserved." : "Temporarily disabled for this launch. Update the adapter and restart Codlet to retry. Enabled preferences and grants are preserved." : "", renderer = plugin.renderer;
     return [...new Set([suspension, plugin.execution?.error, !suspension && plugin.validation?.error?.message, renderer?.error?.message, ...Array.isArray(renderer?.diagnostics) ? renderer.diagnostics.filter((item) => item.level === "error").map((item) => item.message) : []].filter((value) => typeof value === "string" && value))];
   }
+  pluginPagePending(plugin) {
+    return Array.isArray(plugin.renderer?.diagnostics) && plugin.renderer.diagnostics.some((item) => item.level === "info" && item.code === "ui_page_registration_pending");
+  }
   pluginRuntimeStatus(plugin) {
     if (plugin.registered === false) return plugin.loaded ? "Registration removed; still loaded" : "";
     if (plugin.temporarilyDisabled) return "Temporarily disabled";
@@ -1091,7 +1094,7 @@ var Manager = class {
     if (plugin.enabled === true) {
       if (plugin.execution?.state === "failed" || plugin.renderer?.lifecycle === "failed") return "Plugin failed to run";
       if (plugin.execution?.state === "stopping" || plugin.renderer?.lifecycle === "stopping") return "Stopping plugin...";
-      if (plugin.execution?.state === "starting" || ["activating", "ready"].includes(plugin.renderer?.lifecycle)) return "Loading plugin...";
+      if ((plugin.execution?.state === "starting" || ["activating", "ready"].includes(plugin.renderer?.lifecycle) || this.pluginPagePending(plugin)) && !this.pluginRuntimeIssues(plugin).length) return "Loading plugin...";
       if (plugin.active === false || plugin.renderer?.active === false || plugin.execution?.rendererActive === false) return "Enabled, not running";
     }
     return plugin.validation?.status === "not_loaded" ? "Registered, not loaded" : "";
@@ -1175,7 +1178,7 @@ var Manager = class {
   }
   pluginSummary() {
     const plugins = this.state.plugins.filter((p) => p.registered !== false);
-    const healthy = (p) => p.enabled === true && p.active === true && p.validation?.status === "ok" && !this.pluginRuntimeIssues(p).length && p.renderer?.active !== false && p.execution?.rendererActive !== false;
+    const healthy = (p) => p.enabled === true && p.active === true && p.validation?.status === "ok" && !this.pluginRuntimeIssues(p).length && !this.pluginPagePending(p) && p.renderer?.active !== false && p.execution?.rendererActive !== false;
     return {
       total: plugins.length,
       healthy: plugins.filter(healthy).length,
@@ -2876,11 +2879,25 @@ async function activate(context) {
   deactivate();
   const current = epoch;
   context.onDeactivate(deactivate);
+  const failed = (error) => {
+    if (current === epoch) {
+      try {
+        ui?.dispose();
+      } finally {
+        manager?.dispose();
+        manager = null;
+        releaseView();
+      }
+      context.reportDiagnostic?.({ code: "gui_ui_unavailable", message: String(error?.message ?? error) });
+    }
+  };
   try {
     if (context.codex?.api !== 1 || context.ui?.api !== 2) throw new Error("Update Codlet for the Core Codex SDK");
     manager = new Manager(context);
     const owned = manager;
+    const live = () => current === epoch && manager === owned && owned.alive;
     const options = { label: "Codlet", icon: "Codlet", toolbar: false, render: ({ ui: activeUI }) => {
+      if (!live()) return null;
       ui = activeUI ?? ui;
       ({ React, components: C, icons: I } = ui);
       h = React.createElement;
@@ -2892,23 +2909,25 @@ async function activate(context) {
       PermissionSummary = createPermissionSummary({ React, C, I, t });
       ({ Marketplace, MarketplaceDetails, Compatibility } = createMarketplaceView({ React, C, I, manager, t, Copy, Back, PluginTags }));
       return /* @__PURE__ */ h(App, null);
-    }, onActivate: () => owned.open(document.visibilityState !== "hidden"), onDeactivate: () => {
-      owned.close();
-      if (context.ui.page) releaseView();
+    }, onActivate: () => {
+      if (live()) return owned.open(document.visibilityState !== "hidden");
+    }, onDeactivate: () => {
+      if (live()) {
+        owned.close();
+        if (context.ui.page) releaseView();
+      }
     } };
     const page = await context.codex.navigation.page(options);
-    if (current === epoch && page.path) owned.trackUpdates(page, document);
+    if (!live()) return;
+    const ready = page.ready;
+    if (ready === void 0) {
+      if (live() && page.path) owned.trackUpdates(page, document);
+    } else void ready.then((registration) => {
+      if (live() && registration.available === true) owned.trackUpdates(page, document);
+    }, () => {
+    }).catch(failed);
   } catch (error) {
-    if (current === epoch) {
-      try {
-        ui?.dispose();
-      } finally {
-        manager?.dispose();
-        manager = null;
-        releaseView();
-      }
-      context.reportDiagnostic?.({ code: "gui_ui_unavailable", message: String(error?.message ?? error) });
-    }
+    failed(error);
   }
 }
 

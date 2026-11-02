@@ -78,6 +78,7 @@ export class Manager {
     const suspension=plugin.temporarilyDisabled?(plugin.reloadAvailable?'Temporarily disabled. Update or reload its provider to retry. Enabled preferences and grants are preserved.':'Temporarily disabled for this launch. Update the adapter and restart Codlet to retry. Enabled preferences and grants are preserved.'):'',renderer=plugin.renderer;
     return [...new Set([suspension,plugin.execution?.error,!suspension&&plugin.validation?.error?.message,renderer?.error?.message,...(Array.isArray(renderer?.diagnostics)?renderer.diagnostics.filter(item=>item.level==='error').map(item=>item.message):[])].filter(value=>typeof value==='string'&&value))];
   }
+  pluginPagePending(plugin){return Array.isArray(plugin.renderer?.diagnostics)&&plugin.renderer.diagnostics.some(item=>item.level==='info'&&item.code==='ui_page_registration_pending');}
   pluginRuntimeStatus(plugin){
     if(plugin.registered===false)return plugin.loaded?'Registration removed; still loaded':'';
     if(plugin.temporarilyDisabled)return 'Temporarily disabled';
@@ -85,7 +86,7 @@ export class Manager {
     if(plugin.enabled===true){
       if(plugin.execution?.state==='failed'||plugin.renderer?.lifecycle==='failed')return 'Plugin failed to run';
       if(plugin.execution?.state==='stopping'||plugin.renderer?.lifecycle==='stopping')return 'Stopping plugin...';
-      if(plugin.execution?.state==='starting'||['activating','ready'].includes(plugin.renderer?.lifecycle))return 'Loading plugin...';
+      if((plugin.execution?.state==='starting'||['activating','ready'].includes(plugin.renderer?.lifecycle)||this.pluginPagePending(plugin))&&!this.pluginRuntimeIssues(plugin).length)return 'Loading plugin...';
       if(plugin.active===false||plugin.renderer?.active===false||plugin.execution?.rendererActive===false)return 'Enabled, not running';
     }
     return plugin.validation?.status==='not_loaded'?'Registered, not loaded':'';
@@ -129,7 +130,7 @@ export class Manager {
   pluginUpdateErrors(){return this.githubPlugins().map(plugin=>this.pluginUpdateError(plugin)).filter(Boolean);}
   pluginSummary(){
     const plugins=this.state.plugins.filter(p=>p.registered!==false);
-    const healthy=p=>p.enabled===true&&p.active===true&&p.validation?.status==='ok'&&!this.pluginRuntimeIssues(p).length&&p.renderer?.active!==false&&p.execution?.rendererActive!==false;
+    const healthy=p=>p.enabled===true&&p.active===true&&p.validation?.status==='ok'&&!this.pluginRuntimeIssues(p).length&&!this.pluginPagePending(p)&&p.renderer?.active!==false&&p.execution?.rendererActive!==false;
     return {total:plugins.length,healthy:plugins.filter(healthy).length,disabled:plugins.filter(p=>p.enabled===false).length,
       attention:plugins.filter(p=>p.enabled===true&&!healthy(p)).length};
   }

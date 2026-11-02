@@ -323,19 +323,25 @@ export function saveState(){return manager?.saveViewState()??{schema:1,value:{op
 export async function restoreState(snapshot){if(!manager)throw Error('Codlet GUI is not active');const wasOpen=manager.restoreViewState(snapshot);if(wasOpen)await manager.open(document.visibilityState!=='hidden');}
 export async function activate(context){
     deactivate();const current=epoch;context.onDeactivate(deactivate);
+    const failed=error=>{if(current===epoch){try{ui?.dispose();}finally{manager?.dispose();manager=null;releaseView();}context.reportDiagnostic?.({code:'gui_ui_unavailable',message:String(error?.message??error)});}};
     try{
       if(context.codex?.api!==1||context.ui?.api!==2)throw new Error('Update Codlet for the Core Codex SDK');
       manager=new Manager(context);
       const owned=manager;
+      const live=()=>current===epoch&&manager===owned&&owned.alive;
       const options={label:'Codlet',icon:'Codlet',toolbar:false,render:({ui:activeUI})=>{
+        if(!live())return null;
         ui=activeUI??ui;({React,components:C,icons:I}=ui);h=React.createElement;I={...createCodletIcons(React,I),NativeDownload:I.Download};
         Settings=createSettingsView({React,C,I,manager,t,Copy,mutationBusy});CodletIcon=createCodletIcon(React);ProjectLinks=createProjectLinks({React,C,I,t});
         ({UpdateNotice,CombinedUpdateDialog}=createUpdatesView({React,C,I,manager,t,Copy,mutationBusy}));
         PermissionSummary=createPermissionSummary({React,C,I,t});
         ({Marketplace,MarketplaceDetails,Compatibility}=createMarketplaceView({React,C,I,manager,t,Copy,Back,PluginTags}));
         return <App/>;
-      },onActivate:()=>owned.open(document.visibilityState!=='hidden'),onDeactivate:()=>{owned.close();if(context.ui.page)releaseView();}};
+      },onActivate:()=>{if(live())return owned.open(document.visibilityState!=='hidden');},onDeactivate:()=>{if(live()){owned.close();if(context.ui.page)releaseView();}}};
       const page=await context.codex.navigation.page(options);
-      if(current===epoch&&page.path)owned.trackUpdates(page,document);
-    }catch(error){if(current===epoch){try{ui?.dispose();}finally{manager?.dispose();manager=null;releaseView();}context.reportDiagnostic?.({code:'gui_ui_unavailable',message:String(error?.message??error)});}}
+      if(!live())return;
+      const ready=page.ready;
+      if(ready===undefined){if(live()&&page.path)owned.trackUpdates(page,document);}
+      else void ready.then(registration=>{if(live()&&registration.available===true)owned.trackUpdates(page,document);},()=>{}).catch(failed);
+    }catch(error){failed(error);}
 }

@@ -69,6 +69,15 @@ test('an active plugin diagnostic stays with its row and details until a fresh h
   const list=await f.demo.request(null,'list');list.plugins.find(p=>p.id==='local.notes').renderer.diagnosticsTruncated=true;f.overrides.set('list',()=>list);await f.click('刷新插件');
   assert.equal(row().querySelector('summary').textContent,'插件诊断');assert.equal(row().querySelector('.codlet-plugin-issue').getAttribute('role'),'status');assert.match(row().textContent,/部分插件诊断未显示/);
 });
+test('an active renderer with an accepted page stays loading until readiness and shows a real error instead of pending',async t=>{
+  const f=await fixture(t,'zh'),pending={code:'ui_page_registration_pending',level:'info',message:'Waiting for the page owner'};let diagnostics=[pending];
+  f.overrides.set('list',async()=>{const list=await f.demo.request(null,'list');Object.assign(list.plugins.find(p=>p.id==='local.notes'),{enabled:true,active:true,renderer:{lifecycle:'active',active:true,error:null,diagnostics}});return list;});
+  await f.open();const row=()=>f.document.querySelector('[data-codlet-plugin="local.notes"]');
+  assert.match(row().textContent,/正在加载插件/);assert.equal(row().querySelector('[role=switch]').getAttribute('aria-checked'),'true');assert.equal(row().querySelector('.codlet-plugin-issue'),null);
+  diagnostics=[pending,{code:'ui_page_registration_failed',level:'error',message:'Native page registration failed'}];await f.click('刷新插件');
+  assert.doesNotMatch(row().textContent,/正在加载插件/);assert.equal(row().querySelector('summary').textContent,'插件运行异常');
+  diagnostics=[];await f.click('刷新插件');assert.equal(row().querySelector('.codlet-plugin-feedback'),null);
+});
 test('a reload failure is expandable under that plugin and another plugin success does not clear it',async t=>{
   const f=await fixture(t);f.demo.state.pluginAction='reload-failure';await f.open();await f.click('Reload Local Notes');
   const row=()=>f.document.querySelector('[data-codlet-plugin="local.notes"]');

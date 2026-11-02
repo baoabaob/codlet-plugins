@@ -247,6 +247,15 @@ test('runtime feedback distinguishes incomplete activation from active plugins w
   f.m.set({plugins:[{...base,renderer:{lifecycle:'active',active:true,diagnostics:[],diagnosticsTruncated:true}}]});
   assert.deepEqual(f.m.pluginSummary(),{total:1,healthy:1,disabled:0,attention:0});
 });
+test('only the explicit page registration diagnostic makes an active plugin pending and real errors take precedence',async t=>{
+  const f=await setup(t),pending={code:'ui_page_registration_pending',level:'info',message:'Waiting for the page owner'},base={id:'sample',enabled:true,active:true,validation:{status:'ok'},renderer:{lifecycle:'active',active:true,error:null,diagnostics:[]}};
+  const observe=diagnostics=>{const plugin={...base,renderer:{...base.renderer,diagnostics}};f.m.set({plugins:[plugin]});return plugin;};
+  let plugin=observe([pending]);assert.equal(f.m.pluginRuntimeStatus(plugin),'Loading plugin...');assert.equal(f.m.pluginSummary().healthy,0);assert.equal(plugin.active,true);
+  plugin=observe([{code:'plugin_progress',level:'info',message:'Still initializing'}]);assert.equal(f.m.pluginRuntimeStatus(plugin),'');assert.equal(f.m.pluginSummary().healthy,1);
+  plugin=observe([pending,{code:'ui_page_registration_failed',level:'error',message:'Native page registration failed'}]);assert.equal(f.m.pluginRuntimeStatus(plugin),'');assert.deepEqual(f.m.pluginRuntimeIssues(plugin),['Native page registration failed']);assert.equal(f.m.pluginSummary().healthy,0);
+  plugin=observe([]);assert.equal(f.m.pluginRuntimeStatus(plugin),'');assert.equal(f.m.pluginSummary().healthy,1);
+  const failed={...base,active:false,renderer:{...base.renderer,lifecycle:'failed',active:false,error:{code:'activation_failed',message:'Activation failed'},diagnostics:[pending]}};assert.equal(f.m.pluginRuntimeStatus(failed),'Plugin failed to run');
+});
 test('overlapping lists and old generations cannot publish stale success or errors',async t=>{
   const f=await setup(t),old=deferred();f.overrides.set('list',()=>old.promise);const first=f.m.refresh();f.m.close();f.overrides.set('list',()=>({plugins:[{id:'fresh'}]}));await f.m.open();old.resolve({plugins:[{id:'stale'}]});await first;assert.deepEqual(f.m.state.plugins,[{id:'fresh'}]);
   const late=deferred();f.overrides.set('list',()=>late.promise);const next=f.m.refresh();f.m.dispose();late.reject(Error('old error'));await next;assert.equal(f.m.state.error,'');

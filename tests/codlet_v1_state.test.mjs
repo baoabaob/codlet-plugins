@@ -4,7 +4,7 @@ import {createRequire} from 'node:module';
 import {fileURLToPath} from 'node:url';
 import {Manager,portableManagerView} from '../frontend/src/codlet/controller.js';
 import {createPreviewRuntime} from '../scripts/preview-runtime.mjs';
-import {uiFixture,tick} from './support/ui-fixture.mjs';
+import {uiFixture,tick,deferred} from './support/ui-fixture.mjs';
 import {coreProvidedRepository} from '../frontend/src/codlet/marketplace-model.js';
 import {validUpdate,updateStatusText,versionWarnings} from '../frontend/src/codlet/versions.js';
 import {createMessages} from '../frontend/src/codlet/messages.js';
@@ -42,6 +42,43 @@ test('fresh GUI source rejects a missing Core facade before navigation or list a
   assert.equal(fixture.document.querySelector('[data-codlet-panel]'),null);
   assert.equal(fixture.calls.length,0);
   assert.equal(fixture.errors[0]?.code,'gui_ui_unavailable');assert.match(fixture.errors[0]?.message,/Core Codex SDK/);
+});
+
+function readinessFixture(t){
+  const demo=createPreviewRuntime(),fixture=uiFixture({request:demo.request}),plugin=fixture.loadSource(source),registrations=[];
+  let visibilityObservers=0;const add=fixture.document.addEventListener.bind(fixture.document);
+  fixture.document.addEventListener=(type,...args)=>{if(type==='visibilitychange')visibilityObservers++;return add(type,...args);};
+  fixture.context.codex.navigation.page=options=>{const ready=deferred(),page={path:'/reserved/codlet-gui',ready:ready.promise};registrations.push({options,ready,page});return page;};
+  t.after(()=>{plugin.deactivate();fixture.dispose();});
+  return {...fixture,plugin,registrations,visibilityObservers:()=>visibilityObservers,versionReads:()=>fixture.calls.filter(call=>call.method==='versionStatus').length};
+}
+test('GUI activation accepts a pending page without waiting and starts update tracking only after readiness',async t=>{
+  const f=readinessFixture(t);let activated=false;const activation=f.plugin.activate(f.context).then(()=>{activated=true;});await tick();
+  assert.equal(activated,true);assert.equal(f.visibilityObservers(),0);assert.equal(f.versionReads(),0);
+  const entry=f.registrations[0];Object.defineProperty(entry.page,'path',{get(){throw Error('The reserved path is not readiness evidence');}});
+  entry.ready.resolve({available:true,path:'/codlet/codlet-gui'});await activation;await tick();
+  assert.equal(f.visibilityObservers(),1);assert.equal(f.versionReads(),1);assert.equal(f.errors.length,0);
+});
+test('declined and failed page readiness never starts tracking or duplicates the SDK diagnostic',async t=>{
+  for(const outcome of ['declined','failed']){
+    const f=readinessFixture(t);await f.plugin.activate(f.context);const entry=f.registrations[0];
+    if(outcome==='declined')entry.ready.resolve({available:false,path:null});
+    else {f.context.reportDiagnostic({code:'ui_page_registration_failed',level:'error',message:'Native page registration failed'});entry.ready.reject(Error('Native page registration failed'));}
+    await tick();assert.equal(f.visibilityObservers(),0);assert.equal(f.versionReads(),0);assert.equal(f.errors.length,outcome==='failed'?1:0);
+    assert.equal(f.errors.some(error=>error.code==='gui_ui_unavailable'),false);
+  }
+});
+test('a closed and retired page cannot track updates or call a replaced GUI manager when its old readiness arrives',async t=>{
+  const f=readinessFixture(t);await f.plugin.activate(f.context);const old=f.registrations[0];
+  old.options.onDeactivate();f.plugin.deactivate();await f.plugin.activate(f.context);const current=f.registrations[1];
+  old.ready.resolve({available:true,path:'/codlet/codlet-gui'});await tick();
+  assert.equal(f.visibilityObservers(),0);assert.equal(f.versionReads(),0);
+  await old.options.onActivate();old.options.onDeactivate();assert.equal(old.options.render({ui:null}),null);assert.equal(f.versionReads(),0);
+  current.ready.resolve({available:true,path:'/codlet/codlet-gui'});await tick();assert.equal(f.visibilityObservers(),1);assert.equal(f.versionReads(),1);assert.equal(f.errors.length,0);
+});
+test('legacy Core page leases without ready retain path-based update tracking',async t=>{
+  const f=readinessFixture(t);f.context.codex.navigation.page=()=>({path:'/codlet/codlet-gui'});
+  await f.plugin.activate(f.context);await tick();assert.equal(f.visibilityObservers(),1);assert.equal(f.versionReads(),1);assert.equal(f.errors.length,0);
 });
 
 test('ordinary downloaded Core update has an apply confirmation without a restart prompt',async t=>{
