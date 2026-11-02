@@ -2,7 +2,7 @@
 
 ## Current Core integration
 
-The GUI and complete functional consumer use Core's `context.codex` SDK and explicit state hooks. Current Windows integration is recorded in [Core rc.19 validation](https://github.com/baoabaob/codlet/blob/main/docs/releases/1.0.0-rc.19/validation.md). The [first v1 candidate record](https://github.com/baoabaob/codlet/blob/main/docs/releases/1.0.0-rc.1/validation.md) retains its original package identities and isolated Windows Native evidence.
+GUI **1.0.0-rc.7** and the complete functional consumer use Core's `context.codex` SDK and explicit state hooks. Passed Windows page and health integration is recorded in [Core rc.23 validation](https://github.com/baoabaob/codlet/blob/v1.0.0-rc.23/docs/releases/1.0.0-rc.23/validation.md). The final separate Split cold-start matrix was not executed after the test VM failed; focused regressions and live Native comparisons are recorded separately. The [rc.19 record](https://github.com/baoabaob/codlet/blob/main/docs/releases/1.0.0-rc.19/validation.md) and [first v1 candidate record](https://github.com/baoabaob/codlet/blob/main/docs/releases/1.0.0-rc.1/validation.md) retain their original package identities and acceptance scope.
 
 SDK declarations, runtime availability and verified platform behavior are different claims. Native DOM/main-world access and raw Node remain trusted-code boundaries. Whole-Core restoration transfers settled JSON; an active functional test rejects checkpointing so its effects are not replayed.
 

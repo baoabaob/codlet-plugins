@@ -1,6 +1,6 @@
 # Codlet official plugins
 
-Source for ordinary first-party Codlet plugins and the complete functional acceptance consumer. [Codlet Core](https://github.com/baoabaob/codlet) owns the UI/Desktop implementations, Native profiles and `context.codex` SDK. The current GUI source version is **1.0.0-rc.6**, included in [Core rc.19 validation](https://github.com/baoabaob/codlet/blob/main/docs/releases/1.0.0-rc.19/validation.md).
+Source for ordinary first-party Codlet plugins and the complete functional acceptance consumer. [Codlet Core](https://github.com/baoabaob/codlet) owns the UI/Desktop implementations, Native profiles and `context.codex` SDK. The current GUI source version is **1.0.0-rc.7**. [Core rc.23 validation](https://github.com/baoabaob/codlet/blob/v1.0.0-rc.23/docs/releases/1.0.0-rc.23/validation.md) records the passed production Windows upgrade and page/health checks, plus the completed and unexecuted Split checks. The [rc.19 record](https://github.com/baoabaob/codlet/blob/main/docs/releases/1.0.0-rc.19/validation.md) retains the earlier GUI integration evidence.
 
 | Package ID | Distribution repository | Dependency |
 | --- | --- | --- |
