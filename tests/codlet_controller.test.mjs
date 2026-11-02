@@ -5,6 +5,7 @@ import {createPreviewRuntime} from '../scripts/preview-runtime.mjs';
 import {deferred} from './support/ui-fixture.mjs';
 async function setup(t){const demo=createPreviewRuntime(),calls=[],overrides=new Map(),context={pluginId:'codlet-gui',i18n:{locale:'en'},rpc:{async request(cap,method,args){calls.push({method,args});return overrides.has(method)?overrides.get(method)(args):demo.request(cap,method,args);}}};context.codex={api:1,navigation:{newTaskDraft:params=>context.rpc.request({name:'codex.ui.navigation.page',api:1,scope:'target'},'newTaskDraft',params)}};const m=new Manager(context);t.after(()=>m.dispose());await m.open();await Promise.resolve();return {m,calls,overrides,demo,context};}
 const count=(f,method)=>f.calls.filter(c=>c.method===method).length;
+const pluginErrors=(f,id='local.notes')=>f.m.pluginActionErrors({id}).join('\n');
 
 test('verified installer channels join checks and update-all while same-name locals stay excluded',async t=>{
   const f=await setup(t);f.m.setVisible(false);
@@ -162,7 +163,7 @@ test('malformed previews and unknown permissions never expose usable grants',asy
   assert.equal(count(f,'submit'),0);
 });
 test('server prepare identity must match before any receipt can be submitted',async t=>{
-  for(const request of [{action:'remove',plugin_id:'local.notes'},{action:'enable',plugin_id:'other'}]){const f=await setup(t);f.overrides.set('prepare',()=>({status:'prepared',operation:{operation_id:'wrong',request}}));await f.m.mutate('local.notes','enable');assert.equal(count(f,'submit'),0);assert.match(f.m.state.error,/prepared/);}
+  for(const request of [{action:'remove',plugin_id:'local.notes'},{action:'enable',plugin_id:'other'}]){const f=await setup(t);f.overrides.set('prepare',()=>({status:'prepared',operation:{operation_id:'wrong',request}}));await f.m.mutate('local.notes','enable');assert.equal(count(f,'submit'),0);assert.match(pluginErrors(f),/prepared/);assert.equal(f.m.state.error,'');}
 });
 test('leaving the page while preparing abandons that unsubmitted receipt',async t=>{
   const f=await setup(t),late=deferred();f.overrides.set('prepare',()=>late.promise);const action=f.m.mutate('local.notes','enable');f.m.close();late.resolve({status:'prepared',operation:{operation_id:'late',request:{action:'enable',plugin_id:'local.notes'}}});await action;assert.equal(count(f,'submit'),0);assert.equal(f.m.pending,null);
@@ -174,7 +175,7 @@ test('lost submit responses only query the issued receipt; refresh never repeats
   f.overrides.set('operation',()=>({status:'completed',operation:{...operation,completion:{kind:'report',report:{outcome:'applied',message:'Enabled'}}}}));await f.m.checkMutation();assert.equal(f.m.pending,null);assert.equal(f.m.state.error,'');
 });
 test('mismatched and expired operation replies cannot complete a receipt or enable a second action',async t=>{
-  const f=await setup(t);f.overrides.set('operation',()=>({status:'completed',operation:{operation_id:'different',request:{action:'enable',plugin_id:'local.notes'},completion:{kind:'report',report:{outcome:'applied'}}}}));await f.m.mutate('local.notes','enable');assert.ok(f.m.pending);assert.match(f.m.state.error,/no longer available/);
+  const f=await setup(t);f.overrides.set('operation',()=>({status:'completed',operation:{operation_id:'different',request:{action:'enable',plugin_id:'local.notes'},completion:{kind:'report',report:{outcome:'applied'}}}}));await f.m.mutate('local.notes','enable');assert.ok(f.m.pending);assert.match(pluginErrors(f),/no longer available/);assert.equal(f.m.state.error,'');
   f.overrides.set('operation',()=>({status:'expired'}));await f.m.refresh();await f.m.mutate('local.notes','remove');assert.equal(count(f,'submit'),1);assert.equal(count(f,'prepare'),1);
 });
 test('a successful mutation cannot erase a failed list refresh or resubmit against stale values',async t=>{
@@ -188,9 +189,63 @@ test('a successful mutation cannot erase a failed list refresh or resubmit again
 });
 test('operation errors and list errors remain independent across refresh and the next operation',async t=>{
   const f=await setup(t);f.overrides.set('prepare',()=>({error:'Operation rejected'}));f.demo.state.failure=true;
-  await f.m.mutate('local.notes','enable');assert.match(f.m.state.error,/Operation rejected/);assert.match(f.m.state.error,/Displayed values may be out of date/);
-  f.demo.state.failure=false;await f.m.refresh();assert.equal(f.m.state.error,'Operation rejected');assert.equal(f.m.state.listError,'');
-  f.overrides.delete('prepare');await f.m.mutate('local.notes','enable');assert.equal(f.m.state.error,'');
+  await f.m.mutate('local.notes','enable');assert.equal(pluginErrors(f),'Operation rejected');assert.match(f.m.state.error,/Displayed values may be out of date/);assert.doesNotMatch(f.m.state.error,/Operation rejected/);
+  f.demo.state.failure=false;await f.m.refresh();assert.equal(pluginErrors(f),'Operation rejected');assert.equal(f.m.state.error,'');assert.equal(f.m.state.listError,'');
+  f.overrides.delete('prepare');await f.m.mutate('local.notes','enable');assert.equal(pluginErrors(f),'');assert.equal(f.m.state.error,'');
+});
+test('plugin failures survive other plugins and only that plugin retry replaces its operation error',async t=>{
+  const f=await setup(t),rejections=new Map([['local.notes','Cannot reload notes'],['managed.notes','Cannot reload managed notes']]);
+  f.overrides.set('prepare',args=>rejections.has(args.plugin_id)?{status:'rejected',error:rejections.get(args.plugin_id)}:f.demo.request(null,'prepare',args));
+  await f.m.mutate('local.notes','reload');await f.m.mutate('managed.notes','reload');
+  assert.equal(pluginErrors(f),'Cannot reload notes');assert.equal(pluginErrors(f,'managed.notes'),'Cannot reload managed notes');assert.equal(f.m.state.error,'');
+  assert.equal(f.m.pluginActionIssues({id:'local.notes'})[0].summary,'Reload failed');
+  rejections.delete('managed.notes');await f.m.mutate('managed.notes','reload');
+  assert.equal(pluginErrors(f),'Cannot reload notes');assert.equal(pluginErrors(f,'managed.notes'),'');
+  rejections.delete('local.notes');await f.m.mutate('local.notes','reload');
+  assert.equal(pluginErrors(f),'');assert.equal(count(f,'submit'),2);
+});
+test('a missing plugin retains an identified error until its row exists, including failed imports',async t=>{
+  const f=await setup(t);f.overrides.set('prepare',()=>({status:'rejected',error:'Package activation failed'}));
+  await f.m.mutate('new.plugin','import',{},'New plugin');
+  assert.deepEqual(f.m.orphanedPluginErrors(),[{id:'new.plugin',name:'New plugin',error:'Package activation failed'}]);
+  const plugins=[...f.m.state.plugins,{id:'new.plugin',name:'New plugin',enabled:true,active:false}];f.overrides.set('list',()=>({plugins}));await f.m.refresh();
+  assert.deepEqual(f.m.orphanedPluginErrors(),[]);assert.equal(pluginErrors(f,'new.plugin'),'Package activation failed');
+  assert.equal(f.m.state.error,'');assert.equal(count(f,'submit'),0);
+});
+test('a failed status read remains with its plugin and recovers only through the original receipt',async t=>{
+  const f=await setup(t);f.m.setVisible(false);f.demo.state.pluginAction='receipt-recovery';
+  f.m.setPluginError('managed.notes','Earlier independent error','operation','GitHub Notes','reload');
+  await f.m.mutate('local.notes','reload');const receipt=f.m.pending.id;
+  assert.match(pluginErrors(f),/Action status unavailable/);assert.equal(f.m.state.error,'');
+  await f.m.refresh();assert.equal(f.m.pending.id,receipt);assert.equal(pluginErrors(f),'');
+  await f.m.checkMutation();assert.equal(f.m.pending,null);assert.equal(pluginErrors(f,'managed.notes'),'Earlier independent error');
+  assert.equal(count(f,'prepare'),1);assert.equal(count(f,'submit'),1);assert.ok(f.calls.filter(c=>c.method==='operation').every(c=>c.args.operationId===receipt));
+});
+test('single update request errors belong to the plugin while batch failures remain global',async t=>{
+  const f=await setup(t);f.m.setVisible(false);const plugin=f.m.state.plugins.find(p=>p.id==='managed.notes'),other={...plugin,id:'managed.other'};
+  f.m.set({plugins:[plugin,other]});f.overrides.set('updatePlugins',()=>{throw Error('Update reply was lost');});
+  await f.m.updatePlugins([plugin]);assert.equal(pluginErrors(f,plugin.id),'Update reply was lost');assert.equal(f.m.state.pluginInstallError,'');
+  const prior=await f.demo.request(null,'versionStatus');f.overrides.set('versionStatus',()=>({...prior,pluginInstall:{id:17,running:false,items:[{pluginId:plugin.id,versionKey:plugin.managedVersionKey,phase:'updated',version:plugin.version}]}}));
+  f.m.visible=true;await f.m.pollVersions();f.m.setVisible(false);
+  assert.equal(pluginErrors(f,plugin.id),'Update reply was lost','an unrelated historical batch cannot resolve an unidentified request');
+  await f.m.updatePlugins([other]);assert.equal(pluginErrors(f,plugin.id),'Update reply was lost');assert.equal(pluginErrors(f,other.id),'Update reply was lost');
+  f.m.visible=true;await f.m.pollVersions();f.m.setVisible(false);await f.m.updatePlugins([plugin,other]);
+  assert.equal(f.m.state.pluginInstallError,'Update reply was lost');assert.equal(f.m.state.error,'');assert.equal(count(f,'updatePlugins'),3);
+});
+test('runtime feedback distinguishes incomplete activation from active plugins with an error diagnostic',async t=>{
+  const f=await setup(t),base={id:'sample',enabled:true,active:true,validation:{status:'ok'}};
+  const loading={...base,active:false,renderer:{lifecycle:'activating',active:false,error:null,diagnostics:[]}};
+  const failed={...base,active:false,renderer:{lifecycle:'failed',active:false,error:{code:'page_failed',message:'Page registration failed'},diagnostics:[]}};
+  const degraded={...base,renderer:{lifecycle:'active',active:true,error:null,diagnostics:[{code:'progress',level:'info',message:'Observed startup'},{code:'page_failed',level:'error',message:'Page registration failed'}]}};
+  assert.equal(f.m.pluginRuntimeStatus(loading),'Loading plugin...');assert.equal(f.m.pluginRuntimeStatus(failed),'Plugin failed to run');
+  assert.equal(f.m.pluginRuntimeStatus({...loading,renderer:{...loading.renderer,lifecycle:'ready'}}),'Loading plugin...');
+  assert.equal(f.m.pluginRuntimeStatus(degraded),'');assert.deepEqual(f.m.pluginRuntimeIssues(degraded),['Page registration failed']);
+  assert.equal(f.m.pluginRuntimeStatus({...base,active:false}),'Enabled, not running');assert.equal(f.m.pluginRuntimeStatus({...base,enabled:false,active:false}),'');
+  f.m.set({plugins:[degraded]});assert.deepEqual(f.m.pluginSummary(),{total:1,healthy:0,disabled:0,attention:1});
+  f.m.set({plugins:[{...degraded,renderer:{...degraded.renderer,diagnostics:[{code:'progress',level:'info',message:'Observed startup'}]}}]});
+  assert.deepEqual(f.m.pluginSummary(),{total:1,healthy:1,disabled:0,attention:0});
+  f.m.set({plugins:[{...base,renderer:{lifecycle:'active',active:true,diagnostics:[],diagnosticsTruncated:true}}]});
+  assert.deepEqual(f.m.pluginSummary(),{total:1,healthy:1,disabled:0,attention:0});
 });
 test('overlapping lists and old generations cannot publish stale success or errors',async t=>{
   const f=await setup(t),old=deferred();f.overrides.set('list',()=>old.promise);const first=f.m.refresh();f.m.close();f.overrides.set('list',()=>({plugins:[{id:'fresh'}]}));await f.m.open();old.resolve({plugins:[{id:'stale'}]});await first;assert.deepEqual(f.m.state.plugins,[{id:'fresh'}]);
@@ -270,7 +325,7 @@ test('replace grants only reviewed permissions and does not inherit executable s
   const f=await setup(t);await local(f);f.m.set({preview:{...f.m.state.preview,existingRegistration:{grants:['ui.dom','host.process.spawn'],brokerPolicy:{executables:['C:/old.exe'],cwdRoots:['C:/old'],envKeys:['OLD']}}}});trust(f.m);assert.equal(f.m.importReady(),false);f.m.set({installMode:'replace'});f.m.submitImport();await f.m.confirmImport();const request=f.calls.find(c=>c.method==='prepare').args.local_import;assert.equal(request.mode,'replace');assert.deepEqual(request.grants,['ui.dom']);assert.deepEqual(request.brokerPolicy,{clientPermissions:true});
 });
 test('failed activation keeps target failure details and never offers source deletion',async t=>{
-  const f=await setup(t);let operation;f.overrides.set('prepare',args=>({status:'prepared',operation:operation={operation_id:'failed-import',request:args}}));f.overrides.set('submit',()=>({status:'queued'}));f.overrides.set('operation',()=>({status:'completed',operation:{...operation,completion:{kind:'report',report:{outcome:'rolled_back',message:'Previous version restored',target_failures:[{error:'Activation rejected by the Host'}]}}}}));await local(f);trust(f.m);f.m.submitImport();await f.m.confirmImport();assert.equal(f.m.state.installationComplete,null);assert.match(f.m.state.operationError,/Activation rejected by the Host/);assert.equal(count(f,'completeImport'),0);
+  const f=await setup(t);let operation;f.overrides.set('prepare',args=>({status:'prepared',operation:operation={operation_id:'failed-import',request:args}}));f.overrides.set('submit',()=>({status:'queued'}));f.overrides.set('operation',()=>({status:'completed',operation:{...operation,completion:{kind:'report',report:{outcome:'rolled_back',message:'Previous version restored',target_failures:[{error:'Activation rejected by the Host'}]}}}}));await local(f);trust(f.m);f.m.submitImport();await f.m.confirmImport();assert.equal(f.m.state.installationComplete,null);assert.match(pluginErrors(f),/Activation rejected by the Host/);assert.equal(f.m.state.operationError,'');assert.equal(count(f,'completeImport'),0);
 });
 test('managed details use the current source without requesting retained version history',async t=>{
   const f=await setup(t),plugin=f.m.state.plugins.find(p=>p.id==='managed.notes');

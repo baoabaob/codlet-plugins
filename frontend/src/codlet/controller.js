@@ -28,7 +28,7 @@ export class Manager {
     this.listeners = new Set(); this.timers = new Map(); this.sequence = { list:0, page:0, market:0, removal:0, update:0, version:0, settings:0 };
     this.visible=true;
     this.alive = true; this.job = null; this.marketJob=null; this.pending = null; this.updateCommand = null;this.settingsWrite=null;
-    this.state = { open:false, page:'plugins', plugins:[], query:'', filter:'all', loading:false, error:'', operationError:'', listError:'', listStale:false, operationStatus:'',
+    this.state = { open:false, page:'plugins', plugins:[], pluginErrors:{}, query:'', filter:'all', loading:false, error:'', operationError:'', listError:'', listStale:false, operationStatus:'',
       runtimeVersion:'', clientStatus:null, localManagement:null, githubAvailable:false, runtimeSkill:null, confirmation:null,createBusy:false,
       mode:'local', importOperation:'install', importPreviousPage:'plugins', target:null, path:'', url:'', catalog:null, release:'', asset:'',
       preview:null, importBusy:false, importStatus:'', importError:'', importWarning:null, importReviewError:'', grants:[], trusted:false, enableAfter:false,
@@ -56,6 +56,40 @@ export class Manager {
   }
   rememberScroll(page,top){if(viewPages.has(page)&&!Object.hasOwn(this.pendingScroll,page))this.scrollOffsets[page]=scrollValue(top);}
   set(patch) { if (!this.alive) return; this.state = {...this.state,...patch}; this.state.error=[this.state.operationError,this.state.listError].filter(Boolean).join('\n'); this.updateBadge?.(); for (const fn of this.listeners) fn(); }
+  setPluginError(pluginId,error,source='operation',name,action){
+    const previous=this.state.pluginErrors[pluginId]??{},entry={...previous,name:name||previous.name||this.messages.name(this.state.plugins.find(p=>p.id===pluginId)??{id:pluginId}),[source]:error,...(source==='operation'?{action}: {})};
+    const pluginErrors={...this.state.pluginErrors};
+    if(entry.operation||entry.update)pluginErrors[pluginId]=entry;else delete pluginErrors[pluginId];
+    this.set({pluginErrors});
+  }
+  pluginActionErrors(plugin){const entry=this.state.pluginErrors[plugin.id];return [...new Set([entry?.operation,entry?.update].filter(Boolean))];}
+  pluginActionIssues(plugin){
+    const entry=this.state.pluginErrors[plugin.id];
+    return [entry?.operation&&{source:'operation',message:entry.operation,summary:({reload:'Reload failed',enable:'Could not enable plugin',disable:'Could not disable plugin',remove:'Could not remove plugin',revoke:'Could not revoke permission',import:'Plugin import failed',update:'Update failed',rollback:'Could not roll back plugin'})[entry.action]??'Plugin operation failed'},entry?.update&&{source:'update',message:entry.update,summary:'Update request failed'}].filter(Boolean);
+  }
+  orphanedPluginErrors(){
+    const present=new Set(this.state.plugins.map(p=>p.id)),errors=new Map(),add=(id,name,error)=>{if(!present.has(id)&&error){const previous=errors.get(id);errors.set(id,{id,name:previous?.name??name,error:[...new Set([previous?.error,error].filter(Boolean))].join('\n')});}};
+    for(const [id,entry] of Object.entries(this.state.pluginErrors))add(id,entry.name,[...new Set([entry.operation,entry.update].filter(Boolean))].join('\n'));
+    if(!this.checkingPlugins())for(const [id,result] of Object.entries(this.state.pluginUpdates?.plugins??{}))add(id,id,result.error);
+    for(const item of this.state.pluginInstall?.items??[])if(item.phase==='failed')add(item.pluginId,item.pluginId,item.message||'Update failed');
+    return [...errors.values()];
+  }
+  pluginRuntimeIssues(plugin){
+    const suspension=plugin.temporarilyDisabled?(plugin.reloadAvailable?'Temporarily disabled. Update or reload its provider to retry. Enabled preferences and grants are preserved.':'Temporarily disabled for this launch. Update the adapter and restart Codlet to retry. Enabled preferences and grants are preserved.'):'',renderer=plugin.renderer;
+    return [...new Set([suspension,plugin.execution?.error,!suspension&&plugin.validation?.error?.message,renderer?.error?.message,...(Array.isArray(renderer?.diagnostics)?renderer.diagnostics.filter(item=>item.level==='error').map(item=>item.message):[])].filter(value=>typeof value==='string'&&value))];
+  }
+  pluginRuntimeStatus(plugin){
+    if(plugin.registered===false)return plugin.loaded?'Registration removed; still loaded':'';
+    if(plugin.temporarilyDisabled)return 'Temporarily disabled';
+    if(plugin.validation?.status==='failed')return 'Plugin validation failed';
+    if(plugin.enabled===true){
+      if(plugin.execution?.state==='failed'||plugin.renderer?.lifecycle==='failed')return 'Plugin failed to run';
+      if(plugin.execution?.state==='stopping'||plugin.renderer?.lifecycle==='stopping')return 'Stopping plugin...';
+      if(plugin.execution?.state==='starting'||['activating','ready'].includes(plugin.renderer?.lifecycle))return 'Loading plugin...';
+      if(plugin.active===false||plugin.renderer?.active===false||plugin.execution?.rendererActive===false)return 'Enabled, not running';
+    }
+    return plugin.validation?.status==='not_loaded'?'Registered, not loaded':'';
+  }
   rpc(method, params = null) { return this.context.rpc.request(capability, method, params); }
   createPlugin(){return this.openSkillTask('create');}
   quickStart(){return this.openSkillTask('help');}
@@ -81,21 +115,21 @@ export class Manager {
   available() { return this.alive && this.state.open && !this.state.listStale && !this.pending && !this.state.confirmation && !this.state.combinedConfirmation && !this.combiningUpdates() && !this.installingPlugins(); }
   installingPlugins(){return this.state.pluginInstallBusy||this.state.pluginInstallUncertain||this.state.pluginInstall?.running===true;}
   checkingPlugins(){return this.state.pluginUpdateBusy||this.state.pluginUpdates?.phase==='checking';}
-  githubPlugins(){return this.state.plugins.filter(p=>p.registered!==false&&(p.updateSource===undefined?p.ownership==='core-managed-github':p.updateSource?.kind==='github'));}
+  hasUpdateChannel(plugin){return plugin.registered!==false&&(plugin.updateSource===undefined?plugin.ownership==='core-managed-github':plugin.updateSource?.kind==='github');}
+  githubPlugins(){return this.state.plugins.filter(plugin=>this.hasUpdateChannel(plugin));}
   updateCandidates(){return this.githubPlugins().filter(p=>this.pluginUpdate(p)?.status==='available');}
-  pluginUpdateErrors(){
-    if(this.checkingPlugins())return [];
-    return this.githubPlugins().flatMap(plugin=>{
-      const result=this.pluginUpdate(plugin);
-      return result?.error?[{id:plugin.id,name:this.messages.name(plugin),error:result.error,
-        ...(Number.isSafeInteger(result.checkedAt)&&result.checkedAt>0?{checkedAt:result.checkedAt}:{}),
-        ...(Number.isSafeInteger(result.nextCheckAt)&&result.nextCheckAt>Date.now()?{nextCheckAt:result.nextCheckAt}:{}),
-      }]:[];
-    });
+  pluginUpdateError(plugin){
+    if(this.checkingPlugins()||!this.hasUpdateChannel(plugin))return null;
+    const result=this.pluginUpdate(plugin);
+    return result?.error?{id:plugin.id,name:this.messages.name(plugin),error:result.error,
+      ...(Number.isSafeInteger(result.checkedAt)&&result.checkedAt>0?{checkedAt:result.checkedAt}:{}),
+      ...(Number.isSafeInteger(result.nextCheckAt)&&result.nextCheckAt>Date.now()?{nextCheckAt:result.nextCheckAt}:{}),
+    }:null;
   }
+  pluginUpdateErrors(){return this.githubPlugins().map(plugin=>this.pluginUpdateError(plugin)).filter(Boolean);}
   pluginSummary(){
     const plugins=this.state.plugins.filter(p=>p.registered!==false);
-    const healthy=p=>p.enabled===true&&p.active===true&&p.validation?.status==='ok'&&!p.execution?.error;
+    const healthy=p=>p.enabled===true&&p.active===true&&p.validation?.status==='ok'&&!this.pluginRuntimeIssues(p).length&&p.renderer?.active!==false&&p.execution?.rendererActive!==false;
     return {total:plugins.length,healthy:plugins.filter(healthy).length,disabled:plugins.filter(p=>p.enabled===false).length,
       attention:plugins.filter(p=>p.enabled===true&&!healthy(p)).length};
   }
@@ -113,10 +147,12 @@ export class Manager {
   installState(plugin){const item=this.state.pluginInstall?.items.find(item=>item.pluginId===plugin.id);if(!item)return null;if(item.phase==='updated')return item.version===plugin.version?item:null;return !this.state.pluginInstall.running&&item.versionKey!==(plugin.updateSource?.versionKey??plugin.managedVersionKey)?null:item;}
   async updatePlugins(plugins=null){
     if(!this.available()||this.checkingPlugins()||!(plugins??this.updateCandidates()).length)return;
+    const selected=plugins??this.updateCandidates(),single=selected.length===1?selected[0]:null;
     this.sequence.version++;this.clearTimer('version');
-    this.set({pluginInstallBusy:true,pluginInstallError:''});
-    try{const reply=await this.rpc('updatePlugins',{pluginIds:(plugins??this.updateCandidates()).map(p=>p.id)});if(!validPluginInstall(reply))throw Error('Plugin update status is unavailable.');this.set({pluginInstall:reply,pluginInstallUncertain:false});if(!reply.running)void this.refresh();}
-    catch(error){this.set({pluginInstallError:message(error),pluginInstallUncertain:true});}
+    for(const plugin of selected)this.setPluginError(plugin.id,'','update');
+    this.set({pluginInstallBusy:true,...(!single?{pluginInstallError:''}:{})});
+    try{const reply=await this.rpc('updatePlugins',{pluginIds:selected.map(p=>p.id)});if(!validPluginInstall(reply))throw Error('Plugin update status is unavailable.');this.set({pluginInstall:reply,pluginInstallUncertain:false});if(!reply.running)void this.refresh();}
+    catch(error){if(single)this.setPluginError(single.id,message(error),'update',this.messages.name(single));else this.set({pluginInstallError:message(error)});this.set({pluginInstallUncertain:true});}
     finally{this.set({pluginInstallBusy:false});if((this.state.open||this.versionTracking)&&this.visible)void this.pollVersions();}
   }
   async reviewPluginUpdate(plugin){
@@ -281,7 +317,7 @@ export class Manager {
     if (!this.available()) return;
     const expected={pluginId,action,name:name||this.messages.name(this.state.plugins.find(p=>p.id===pluginId)??{id:pluginId}),id:null,checking:false,deleteSource:!!extra.remove_source};
     expected.installation=installation;
-    this.pending=expected; this.set({operationError:'',operationStatus:`${expected.name}: preparing...`});
+    this.pending=expected;this.setPluginError(pluginId,'','operation',expected.name,expected.action);this.set({operationStatus:`${expected.name}: preparing...`});
     try {
       const prepared=await this.rpc('prepare',{action,plugin_id:pluginId,...extra});
       if (!this.alive || this.pending!==expected) return;
@@ -306,7 +342,7 @@ export class Manager {
       if(!this.alive || this.pending!==expected) return;
       const operation=reply?.operation;
       if(operation?.operation_id!==expected.id || operation.request?.plugin_id!==expected.pluginId || operation.request?.action!==expected.action) {
-        this.set({operationError:reply?.error||'Action status is no longer available. The action has not been repeated.'}); return;
+        this.setPluginError(expected.pluginId,reply?.error||'Action status is no longer available. The action has not been repeated.','operation',expected.name,expected.action); return;
       }
       if(reply.status==='completed') {
         const result=operation.completion, report=result?.kind==='report'?result.report:null;
@@ -318,15 +354,16 @@ export class Manager {
         const details=(report?.target_failures??[]).map(failure=>failure.error).filter(Boolean).join('\n');
         return this.finishMutation(expected,success?deletionWarning:[result?.error?.message||report?.message||'The action finished with an error. Refresh for the current state.',details].filter(Boolean).join('\n'),success);
       }
-      if(!['queued','running'].includes(reply.status)) {this.set({operationError:reply?.error||'The action was not confirmed. Refresh checks the same action without repeating it.'});return;}
+      if(!['queued','running'].includes(reply.status)) {this.setPluginError(expected.pluginId,reply?.error||'The action was not confirmed. Refresh checks the same action without repeating it.','operation',expected.name,expected.action);return;}
+      this.setPluginError(expected.pluginId,'','operation',expected.name,expected.action);
       this.set({operationStatus:`${expected.name}: ${reply.status==='queued'?'waiting':'updating'}...`});
       if(this.state.open) this.after('mutation',250,()=>this.checkMutation(expected));
-    } catch { if(this.alive && this.pending===expected) this.set({operationError:'Action status unavailable. Refresh to check again.'}); }
+    } catch { if(this.alive && this.pending===expected) this.setPluginError(expected.pluginId,'Action status unavailable. Refresh to check again.','operation',expected.name,expected.action); }
     finally { expected.checking=false; }
   }
   async finishMutation(expected,error='',success=false) {
     if(this.pending!==expected) return;
-    this.pending=null; this.clearTimer('mutation'); this.set({operationStatus:'',operationError:error});
+    this.pending=null;this.clearTimer('mutation');this.setPluginError(expected.pluginId,error,'operation',expected.name,expected.action);this.set({operationStatus:''});
     if(success&&expected.installation)this.set({installationComplete:{...expected.installation,pluginId:expected.pluginId,name:expected.name,deleteSource:true,busy:false,error:''}});
     if(this.state.open) await this.refresh();
   }

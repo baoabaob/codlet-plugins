@@ -51,6 +51,38 @@ test('browser preview context mounts the production GUI through actual Core page
 test('rows show names, adjacent versions and descriptions without normal state labels or row tooltips',async t=>{
   const f=await fixture(t,'zh');await f.open();const row=f.document.querySelector('[data-codlet-plugin="codex.ui.adapter"]');assert.match(row.textContent,/Codex 界面适配器0\.1\.0/);assert.match(row.textContent,/将插件页面接入 Codex 主导航/);assert.equal(row.hasAttribute('title'),false);assert.doesNotMatch(row.textContent,/running|运行正常|not active/i);
 });
+for(const [locale,failedLabel,detailsLabel] of [['en','Plugin failed to run','Error details'],['zh','插件运行失败','错误详情']])test(`failed renderer activation is visible beside its enabled preference in ${locale}`,async t=>{
+  const f=await fixture(t,locale);f.demo.state.pluginState='failed';await f.open();
+  const row=f.document.querySelector('[data-codlet-plugin="local.notes"]'),details=row.querySelector('details');
+  assert.match(row.textContent,new RegExp(failedLabel));assert.equal(row.querySelector('[role=switch]').getAttribute('aria-checked'),'true');
+  assert.equal(details.querySelector('summary').textContent,detailsLabel);assert.equal(details.open,false);assert.match(details.textContent,/page registration failed/);
+  assert.equal(f.document.querySelector('.codlet-status.codlet-error'),null);assert.equal(f.document.querySelector('[data-codlet-plugin="managed.notes"] .codlet-plugin-feedback'),null);
+  details.querySelector('summary').click();assert.equal(details.open,true);
+});
+test('an active plugin diagnostic stays with its row and details until a fresh healthy list replaces it',async t=>{
+  const f=await fixture(t,'zh');f.demo.state.pluginState='diagnostic';await f.open();
+  const row=()=>f.document.querySelector('[data-codlet-plugin="local.notes"]');
+  assert.equal(row().querySelector('summary').textContent,'插件运行异常');assert.doesNotMatch(row().textContent,/尚未运行|运行失败/);assert.equal(row().querySelector('[role=switch]').getAttribute('aria-checked'),'true');
+  await f.click('Local Notes 的详情');assert.equal(f.document.querySelector('.codlet-plugin-feedback summary').textContent,'插件运行异常');
+  await f.click('返回');f.demo.state.pluginState='healthy';await f.click('刷新插件');
+  assert.equal(row().querySelector('.codlet-plugin-feedback'),null);assert.equal(row().querySelector('[role=switch]').getAttribute('aria-checked'),'true');
+  const list=await f.demo.request(null,'list');list.plugins.find(p=>p.id==='local.notes').renderer.diagnosticsTruncated=true;f.overrides.set('list',()=>list);await f.click('刷新插件');
+  assert.equal(row().querySelector('summary').textContent,'插件诊断');assert.equal(row().querySelector('.codlet-plugin-issue').getAttribute('role'),'status');assert.match(row().textContent,/部分插件诊断未显示/);
+});
+test('a reload failure is expandable under that plugin and another plugin success does not clear it',async t=>{
+  const f=await fixture(t);f.demo.state.pluginAction='reload-failure';await f.open();await f.click('Reload Local Notes');
+  const row=()=>f.document.querySelector('[data-codlet-plugin="local.notes"]');
+  assert.equal(row().querySelector('summary').textContent,'Reload failed');assert.equal(row().querySelector('details').open,false);assert.match(row().textContent,/State preflight failed/);assert.equal(f.document.querySelector('.codlet-status.codlet-error'),null);
+  await f.click('Reload Codex Desktop Adapter');assert.match(row().textContent,/State preflight failed/);assert.equal(f.document.querySelector('[data-codlet-plugin="codex.desktop.adapter"] .codlet-plugin-issue'),null);
+  await f.click('Details for Local Notes');assert.equal(f.document.querySelector('.codlet-plugin-feedback summary').textContent,'Reload failed');await f.click('Back');
+  await f.click('Reload Local Notes');assert.equal(row().querySelector('.codlet-plugin-issue'),null);assert.equal(f.calls.filter(c=>c.method==='submit').length,3);
+});
+test('per-plugin update failures are inline while an unavailable list remains a page error',async t=>{
+  const f=await fixture(t);f.demo.state.pluginUpdates={phase:'completed',checkedAt:Date.now(),error:null,plugins:{'managed.notes':{versionKey:'v2',status:'failed',error:'The plugin update feed could not be read.'}}};await f.open();
+  const row=f.document.querySelector('[data-codlet-plugin="managed.notes"]');assert.equal(row.querySelector('summary').textContent,'Update check failed');assert.match(row.textContent,/update feed could not be read/);
+  assert.equal([...f.document.querySelectorAll('[role=alert]')].filter(el=>el.textContent.includes('update feed could not be read')&&!el.closest('[data-codlet-plugin]')).length,0);
+  f.demo.state.failure=true;await f.click('Refresh plugins');assert.match(f.document.querySelector('.codlet-status.codlet-error').textContent,/Displayed values may be out of date/);assert.match(row.textContent,/update feed could not be read/);
+});
 
 test('startup suspension keeps the enabled preference visible while preventing an ineffective reload',async t=>{
   const f=await fixture(t,'zh'),list=await f.demo.request(null,'list',null);
