@@ -1,20 +1,20 @@
 {
   "schema": 1,
   "kind": "codlet-compatibility-coverage",
-  "coreVersion": "1.0.0-rc.20",
+  "coreVersion": "1.0.0-rc.23",
   "scope": "Published Core service, Codex operation, runtime management and workspace handle contracts, plus explicit Native lifecycle scenarios",
   "files": [
     {
       "path": "types/core-services.d.ts",
-      "sha256": "d3f8615994055485ffd0609045d12927d33f49592a4b9df255d356d75df57051"
+      "sha256": "c21af406a44319d531db3abe6efd9746d9916caf520b52874fceb83a0dd4ccb8"
     },
     {
       "path": "types/plugin-storage.d.ts",
-      "sha256": "4528d9776b51648df40b4d0b280b176ee833a0e134bc522711f25a756401b423"
+      "sha256": "188d6168ef26e0ca9bca99dad98a9501799facf6feaa6c3159c870e62a73c239"
     },
     {
       "path": "types/core-resources.d.ts",
-      "sha256": "892b8079b018db9e10cad232a0c61081b510a8a1b128f18b6d1318528d140149"
+      "sha256": "ec5625e2d7c1221262ecd346cf3f877a41316a419445c6e4df8641ee85057ef4"
     },
     {
       "path": "types/codex-desktop.d.ts",
@@ -26,7 +26,7 @@
     },
     {
       "path": "types/codex-workspace.d.ts",
-      "sha256": "4d5f735d92fa8fa5bd53b6630f0b9d9c941d210cf3eb950ec0ada8af687676a4"
+      "sha256": "0f9c1e66b83e938beb1f883a5aaefb8f9b419f5288b3bb020a5556cae99463b3"
     },
     {
       "path": "types/codex.d.ts",
@@ -1080,357 +1080,357 @@
       "group": "workspace",
       "declaration": "WorkspaceSession",
       "source": "types/codex-workspace.d.ts",
-      "line": 96
+      "line": 102
     },
     {
       "id": "workspace.acquireSelectionPresentation",
       "group": "workspace",
       "declaration": "WorkspaceSession",
       "source": "types/codex-workspace.d.ts",
-      "line": 95
+      "line": 101
     },
     {
       "id": "workspace.acquireSurface",
       "group": "workspace",
       "declaration": "WorkspaceSession",
       "source": "types/codex-workspace.d.ts",
-      "line": 85
+      "line": 91
     },
     {
       "id": "workspace.action.dispose",
       "group": "workspace.action",
       "declaration": "NativeActionHandle",
       "source": "types/codex-workspace.d.ts",
-      "line": 59
+      "line": 65
     },
     {
       "id": "workspace.action.update",
       "group": "workspace.action",
       "declaration": "NativeActionHandle",
       "source": "types/codex-workspace.d.ts",
-      "line": 59
+      "line": 65
     },
     {
       "id": "workspace.captureLocation",
       "group": "workspace",
       "declaration": "WorkspaceSession",
       "source": "types/codex-workspace.d.ts",
-      "line": 94
+      "line": 100
     },
     {
       "id": "workspace.composer.activate",
       "group": "workspace.composer",
       "declaration": "ComposerHandle",
       "source": "types/codex-workspace.d.ts",
-      "line": 35
+      "line": 41
     },
     {
       "id": "workspace.composer.bind",
       "group": "workspace.composer",
       "declaration": "ComposerHandle",
       "source": "types/codex-workspace.d.ts",
-      "line": 40
+      "line": 46
     },
     {
       "id": "workspace.composer.close",
       "group": "workspace.composer",
       "declaration": "ComposerHandle",
       "source": "types/codex-workspace.d.ts",
-      "line": 41
+      "line": 47
     },
     {
       "id": "workspace.composer.deactivate",
       "group": "workspace.composer",
       "declaration": "ComposerHandle",
       "source": "types/codex-workspace.d.ts",
-      "line": 37
+      "line": 43
     },
     {
       "id": "workspace.composer.dispose",
       "group": "workspace.composer",
       "declaration": "ComposerHandle",
       "source": "types/codex-workspace.d.ts",
-      "line": 38
+      "line": 44
     },
     {
       "id": "workspace.composer.focus",
       "group": "workspace.composer",
       "declaration": "ComposerHandle",
       "source": "types/codex-workspace.d.ts",
-      "line": 38
+      "line": 44
     },
     {
       "id": "workspace.createNavigation",
       "group": "workspace",
       "declaration": "WorkspaceSession",
       "source": "types/codex-workspace.d.ts",
-      "line": 91
+      "line": 97
     },
     {
       "id": "workspace.createSlot",
       "group": "workspace",
       "declaration": "WorkspaceSession",
       "source": "types/codex-workspace.d.ts",
-      "line": 84
+      "line": 90
     },
     {
       "id": "workspace.createViewport",
       "group": "workspace",
       "declaration": "WorkspaceSession",
       "source": "types/codex-workspace.d.ts",
-      "line": 98
+      "line": 104
     },
     {
       "id": "workspace.dispose",
       "group": "workspace",
       "declaration": "WorkspaceSession",
       "source": "types/codex-workspace.d.ts",
-      "line": 89
+      "line": 95
     },
     {
       "id": "workspace.getSnapshot",
       "group": "workspace",
       "declaration": "WorkspaceSession",
       "source": "types/codex-workspace.d.ts",
-      "line": 78
+      "line": 84
     },
     {
       "id": "workspace.getSurface",
       "group": "workspace",
       "declaration": "WorkspaceSession",
       "source": "types/codex-workspace.d.ts",
-      "line": 79
+      "line": 85
     },
     {
       "id": "workspace.hasBlockingOverlay",
       "group": "workspace",
       "declaration": "WorkspaceSession",
       "source": "types/codex-workspace.d.ts",
-      "line": 83
+      "line": 89
     },
     {
       "id": "workspace.location.dispose",
       "group": "workspace.location",
       "declaration": "WorkspaceLocationHandle",
       "source": "types/codex-workspace.d.ts",
-      "line": 107
+      "line": 113
     },
     {
       "id": "workspace.location.exportState",
       "group": "workspace.location",
       "declaration": "WorkspaceLocationHandle",
       "source": "types/codex-workspace.d.ts",
-      "line": 104
+      "line": 110
     },
     {
       "id": "workspace.location.restore",
       "group": "workspace.location",
       "declaration": "WorkspaceLocationHandle",
       "source": "types/codex-workspace.d.ts",
-      "line": 105
+      "line": 111
     },
     {
       "id": "workspace.mountComposer",
       "group": "workspace",
       "declaration": "WorkspaceSession",
       "source": "types/codex-workspace.d.ts",
-      "line": 88
+      "line": 94
     },
     {
       "id": "workspace.mountTranscript",
       "group": "workspace",
       "declaration": "WorkspaceSession",
       "source": "types/codex-workspace.d.ts",
-      "line": 87
+      "line": 93
     },
     {
       "id": "workspace.navigation.dispose",
       "group": "workspace.navigation",
       "declaration": "NavigationSession",
       "source": "types/codex-workspace.d.ts",
-      "line": 70
+      "line": 76
     },
     {
       "id": "workspace.navigation.focus",
       "group": "workspace.navigation",
       "declaration": "NavigationSession",
       "source": "types/codex-workspace.d.ts",
-      "line": 69
+      "line": 75
     },
     {
       "id": "workspace.navigation.open",
       "group": "workspace.navigation",
       "declaration": "NavigationSession",
       "source": "types/codex-workspace.d.ts",
-      "line": 67
+      "line": 73
     },
     {
       "id": "workspace.permissions.dispose",
       "group": "workspace.permissions",
       "declaration": "ComposerControlHandle",
       "source": "types/codex-workspace.d.ts",
-      "line": 110
+      "line": 116
     },
     {
       "id": "workspace.permissions.updateBinding",
       "group": "workspace.permissions",
       "declaration": "ComposerControlHandle",
       "source": "types/codex-workspace.d.ts",
-      "line": 110
+      "line": 116
     },
     {
       "id": "workspace.prepare",
       "group": "workspace",
       "declaration": "WorkspaceSession",
       "source": "types/codex-workspace.d.ts",
-      "line": 93
+      "line": 99
     },
     {
       "id": "workspace.registerAction",
       "group": "workspace",
       "declaration": "WorkspaceSession",
       "source": "types/codex-workspace.d.ts",
-      "line": 90
+      "line": 96
     },
     {
       "id": "workspace.registerShortcut",
       "group": "workspace",
       "declaration": "WorkspaceSession",
       "source": "types/codex-workspace.d.ts",
-      "line": 89
+      "line": 95
     },
     {
       "id": "workspace.resolveThreadInteraction",
       "group": "workspace",
       "declaration": "WorkspaceSession",
       "source": "types/codex-workspace.d.ts",
-      "line": 81
+      "line": 87
     },
     {
       "id": "workspace.resolveThreadReference",
       "group": "workspace",
       "declaration": "WorkspaceSession",
       "source": "types/codex-workspace.d.ts",
-      "line": 79
+      "line": 85
     },
     {
       "id": "workspace.selection.dispose",
       "group": "workspace.selection",
       "declaration": "SelectionPresentationHandle",
       "source": "types/codex-workspace.d.ts",
-      "line": 109
+      "line": 115
     },
     {
       "id": "workspace.selection.update",
       "group": "workspace.selection",
       "declaration": "SelectionPresentationHandle",
       "source": "types/codex-workspace.d.ts",
-      "line": 109
+      "line": 115
     },
     {
       "id": "workspace.shortcut.dispose",
       "group": "workspace.shortcut",
       "declaration": "ShortcutHandle",
       "source": "types/codex-workspace.d.ts",
-      "line": 54
+      "line": 60
     },
     {
       "id": "workspace.shortcut.getSnapshot",
       "group": "workspace.shortcut",
       "declaration": "ShortcutHandle",
       "source": "types/codex-workspace.d.ts",
-      "line": 54
+      "line": 60
     },
     {
       "id": "workspace.shortcut.update",
       "group": "workspace.shortcut",
       "declaration": "ShortcutHandle",
       "source": "types/codex-workspace.d.ts",
-      "line": 54
+      "line": 60
     },
     {
       "id": "workspace.subscribe",
       "group": "workspace",
       "declaration": "WorkspaceSession",
       "source": "types/codex-workspace.d.ts",
-      "line": 78
+      "line": 84
     },
     {
       "id": "workspace.transcript.dispose",
       "group": "workspace.transcript",
       "declaration": "TranscriptHandle",
       "source": "types/codex-workspace.d.ts",
-      "line": 22
+      "line": 28
     },
     {
       "id": "workspace.transcript.getScrollPosition",
       "group": "workspace.transcript",
       "declaration": "TranscriptHandle",
       "source": "types/codex-workspace.d.ts",
-      "line": 23
+      "line": 29
     },
     {
       "id": "workspace.transcript.scrollToLatest",
       "group": "workspace.transcript",
       "declaration": "TranscriptHandle",
       "source": "types/codex-workspace.d.ts",
-      "line": 25
+      "line": 31
     },
     {
       "id": "workspace.transcript.setScrollPosition",
       "group": "workspace.transcript",
       "declaration": "TranscriptHandle",
       "source": "types/codex-workspace.d.ts",
-      "line": 23
+      "line": 29
     },
     {
       "id": "workspace.transcript.update",
       "group": "workspace.transcript",
       "declaration": "TranscriptHandle",
       "source": "types/codex-workspace.d.ts",
-      "line": 22
+      "line": 28
     },
     {
       "id": "workspace.viewport.bind",
       "group": "workspace.viewport",
       "declaration": "IndependentViewportHandle",
       "source": "types/codex-workspace.d.ts",
-      "line": 119
+      "line": 125
     },
     {
       "id": "workspace.viewport.close",
       "group": "workspace.viewport",
       "declaration": "IndependentViewportHandle",
       "source": "types/codex-workspace.d.ts",
-      "line": 122
+      "line": 128
     },
     {
       "id": "workspace.viewport.dispose",
       "group": "workspace.viewport",
       "declaration": "IndependentViewportHandle",
       "source": "types/codex-workspace.d.ts",
-      "line": 122
+      "line": 128
     },
     {
       "id": "workspace.viewport.getSnapshot",
       "group": "workspace.viewport",
       "declaration": "IndependentViewportHandle",
       "source": "types/codex-workspace.d.ts",
-      "line": 115
+      "line": 121
     },
     {
       "id": "workspace.viewport.subscribe",
       "group": "workspace.viewport",
       "declaration": "IndependentViewportHandle",
       "source": "types/codex-workspace.d.ts",
-      "line": 117
+      "line": 123
     },
     {
       "id": "workspace.viewport.update",
       "group": "workspace.viewport",
       "declaration": "IndependentViewportHandle",
       "source": "types/codex-workspace.d.ts",
-      "line": 120
+      "line": 126
     }
   ]
 }

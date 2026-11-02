@@ -89,7 +89,7 @@ also opens an unsent draft and mutates only the documented synthetic test resour
 Model operations require an exact owned-root `owner.txt`, `autorun:true`, and an
 HTTP `127.0.0.1` base URL. `context.restoringState` suppresses autorun during restore.
 
-The coverage catalog is generated from Core rc.20 public declarations. Each row
+The coverage catalog is generated from Core rc.23 public declarations. Each row
 keeps interface, read and operation observations separate; missing operations
 remain unverified. Current counts require a bound run/plugin generation/Core
 binary identity and an authenticated caller target/document epoch. Native rows
