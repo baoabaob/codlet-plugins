@@ -209,6 +209,7 @@ function Details({s}){
   const p=s.details;
   return <section className="codlet-page"><Back/>
     {s.detailsError&&<Copy error role="alert">{t(s.detailsError)}</Copy>}
+    {s.listError&&<Copy error role="alert">{t(s.listError)}</Copy>}
     {s.detailsBusy?<Copy role="status">{t('Loading permissions...')}</Copy>:p&&<>
       <div className="codlet-details-identity"><div className="codlet-details-heading"><h2>{name(p)}</h2>{p.version&&<span className="codlet-version">{p.version}</span>}{p.source!=='bundled'&&<IconAction icon={I.FolderOpen} label="Open plugin folder" onClick={()=>manager.openFolder()}/>}</div>
         <Copy>{p.id}</Copy>{description(p)&&<Copy>{description(p)}</Copy>}</div>

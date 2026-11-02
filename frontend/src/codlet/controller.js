@@ -27,7 +27,7 @@ export class Manager {
     this.context = context; this.messages = createMessages(context);
     this.listeners = new Set(); this.timers = new Map(); this.sequence = { list:0, page:0, market:0, removal:0, update:0, version:0, settings:0 };
     this.visible=true;
-    this.alive = true; this.job = null; this.marketJob=null; this.pending = null; this.updateCommand = null;this.settingsWrite=null;
+    this.alive = true; this.job = null; this.marketJob=null; this.pending = null; this.updateCommand = null;this.settingsWrite=null;this.backgroundList=null;
     this.state = { open:false, page:'plugins', plugins:[], pluginErrors:{}, query:'', filter:'all', loading:false, error:'', operationError:'', listError:'', listStale:false, operationStatus:'',
       runtimeVersion:'', clientStatus:null, localManagement:null, githubAvailable:false, runtimeSkill:null, confirmation:null,createBusy:false,
       mode:'local', importOperation:'install', importPreviousPage:'plugins', target:null, path:'', url:'', catalog:null, release:'', asset:'',
@@ -55,7 +55,7 @@ export class Manager {
     return restored.open;
   }
   rememberScroll(page,top){if(viewPages.has(page)&&!Object.hasOwn(this.pendingScroll,page))this.scrollOffsets[page]=scrollValue(top);}
-  set(patch) { if (!this.alive) return; this.state = {...this.state,...patch}; this.state.error=[this.state.operationError,this.state.listError].filter(Boolean).join('\n'); this.updateBadge?.(); for (const fn of this.listeners) fn(); }
+  set(patch) { if (!this.alive) return; this.state = {...this.state,...patch}; this.state.error=[this.state.operationError,this.state.listError].filter(Boolean).join('\n');if(this.backgroundList&&(!this.canPollPlugins()||this.backgroundList.page!==this.state.page||this.backgroundList.pageSequence!==this.sequence.page))this.cancelBackgroundList(); this.updateBadge?.(); for (const fn of this.listeners) fn(); }
   setPluginError(pluginId,error,source='operation',name,action){
     const previous=this.state.pluginErrors[pluginId]??{},entry={...previous,name:name||previous.name||this.messages.name(this.state.plugins.find(p=>p.id===pluginId)??{id:pluginId}),[source]:error,...(source==='operation'?{action}: {})};
     const pluginErrors={...this.state.pluginErrors};
@@ -90,7 +90,7 @@ export class Manager {
     }
     return plugin.validation?.status==='not_loaded'?'Registered, not loaded':'';
   }
-  rpc(method, params = null) { return this.context.rpc.request(capability, method, params); }
+  rpc(method, params = null, options) { return this.context.rpc.request(capability, method, params, options); }
   createPlugin(){return this.openSkillTask('create');}
   quickStart(){return this.openSkillTask('help');}
   reviewImport(){return this.openSkillTask('review',this.state.preview);}
@@ -187,20 +187,26 @@ export class Manager {
     if (!this.alive) return;
     this.versionTracking=false;this.updateBadge=null;this.unsubscribeVisibility?.();this.close(); this.alive=false; this.unsubscribeLocale?.(); this.listeners.clear();
   }
-  async refresh() {
+  canPollPlugins(){return this.alive&&this.state.open&&this.visible&&['plugins','details'].includes(this.state.page)&&!this.state.loading&&!this.pending&&!this.state.confirmation&&!this.state.combinedConfirmation&&!this.settingsWrite&&!this.state.settingsBusy&&!this.state.createBusy&&!this.state.updateBusy&&!this.updateCommand&&!this.combiningUpdates()&&!this.installingPlugins()&&!this.state.installationComplete?.busy;}
+  cancelBackgroundList(){const request=this.backgroundList;this.backgroundList=null;request?.controller.abort();}
+  async refresh({background=false}={}) {
     if (!this.alive || !this.state.open) return;
-    if (this.pending) return this.pending.id ? this.checkMutation() : undefined;
-    const sequence=++this.sequence.list; this.set({loading:true,listError:''});
+    if(background){if(!this.canPollPlugins()||this.backgroundList)return;}
+    else {this.cancelBackgroundList();if(this.pending)return this.pending.id?this.checkMutation():undefined;}
+    const sequence=background?this.sequence.list:++this.sequence.list;
+    const request=background?{controller:new AbortController(),page:this.state.page,pageSequence:this.sequence.page}:null;
+    if(background)this.backgroundList=request;else this.set({loading:true,listError:''});
+    const current=()=>this.current('list',sequence)&&(!background||this.backgroundList===request&&!request.controller.signal.aborted&&this.canPollPlugins()&&request.page===this.state.page&&request.pageSequence===this.sequence.page);
     try {
-      const reply=await this.rpc('list');
-      if (!this.current('list',sequence)) return;
+      const reply=await this.rpc('list',null,request?{signal:request.controller.signal}:undefined);
+      if (!current()) return;
       if (!Array.isArray(reply?.plugins) || reply.plugins.some(p=>!p || typeof p.id!=='string' || !p.id) || new Set(reply.plugins.map(p=>p.id)).size!==reply.plugins.length) throw new Error('Plugin list unavailable');
-      this.set({plugins:reply.plugins,listStale:false,localManagement:reply.localManagement??null,githubAvailable:reply.githubManagement?.available===true,deviceCompatibility:reply.deviceCompatibility??null,
+      this.set({plugins:reply.plugins,listStale:false,listError:'',localManagement:reply.localManagement??null,githubAvailable:reply.githubManagement?.available===true,deviceCompatibility:reply.deviceCompatibility??null,
         runtimeVersion:reply.runtimeVersion??'',runtimeSkill:reply.runtimeSkill??null});
       const completed=reply.plugins.find(plugin=>plugin.importCompletion&&digest(plugin.importCompletion.contentDigest)&&typeof plugin.importCompletion.path==='string');
       if(completed&&!this.state.installationComplete)this.set({installationComplete:{...completed.importCompletion,pluginId:completed.id,name:this.messages.name(completed),deleteSource:true,busy:false,error:''}});
-    } catch(error) { if(this.current('list',sequence)) this.set({listStale:true,listError:'Plugin state could not be refreshed. Displayed values may be out of date.\n'+(error?.code==='rpc_timeout'?'Plugin list timed out. Refresh to try again.':message(error))}); }
-    finally { if(this.current('list',sequence)) this.set({loading:false}); }
+    } catch(error) { if(current()) this.set({listStale:true,listError:'Plugin state could not be refreshed. Displayed values may be out of date.\n'+(error?.code==='rpc_timeout'?'Plugin list timed out. Refresh to try again.':message(error))}); }
+    finally { if(background){if(this.backgroundList===request)this.backgroundList=null;}else if(current())this.set({loading:false}); }
   }
   filtered() {
     const terms=this.state.query.trim().toLowerCase().split(/\s+/).filter(Boolean);
@@ -578,6 +584,7 @@ export class Manager {
     if(!this.available()) return;
     this.invalidateImport();const sequence=this.sequence.page;
     this.set({page:'details',details:plugin,detailsPermission:null,detailsBusy:true,detailsError:''});
+    void this.refresh({background:true});
     try{
       const reply=plugin.source==='bundled'?{pluginId:plugin.id,registration:{path:'',grants:plugin.grants??[]}}:await this.rpc('permissions',{pluginId:plugin.id});
       if(!this.current('page',sequence,'details')) return;
@@ -643,6 +650,7 @@ export class Manager {
     if(!this.alive||(!this.state.open&&!this.versionTracking)||!this.visible)return;
     this.clearTimer('version');
     if(this.updateCommand?.inFlight||this.state.pluginInstallBusy||this.state.pluginUpdateBusy){this.after('version',1000,()=>this.pollVersions());return;}
+    void this.refresh({background:true});
     const sequence=++this.sequence.version;this.set({versionLoading:true});
     try{
       const reply=await this.rpc('versionStatus');

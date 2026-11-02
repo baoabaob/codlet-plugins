@@ -3,7 +3,7 @@ import test from 'node:test';
 import {Manager} from '../frontend/src/codlet/controller.js';
 import {createPreviewRuntime} from '../scripts/preview-runtime.mjs';
 import {deferred} from './support/ui-fixture.mjs';
-async function setup(t){const demo=createPreviewRuntime(),calls=[],overrides=new Map(),context={pluginId:'codlet-gui',i18n:{locale:'en'},rpc:{async request(cap,method,args){calls.push({method,args});return overrides.has(method)?overrides.get(method)(args):demo.request(cap,method,args);}}};context.codex={api:1,navigation:{newTaskDraft:params=>context.rpc.request({name:'codex.ui.navigation.page',api:1,scope:'target'},'newTaskDraft',params)}};const m=new Manager(context);t.after(()=>m.dispose());await m.open();await Promise.resolve();return {m,calls,overrides,demo,context};}
+async function setup(t){const demo=createPreviewRuntime(),calls=[],overrides=new Map(),context={pluginId:'codlet-gui',i18n:{locale:'en'},rpc:{async request(cap,method,args,options){calls.push({method,args,options});return overrides.has(method)?overrides.get(method)(args,options):demo.request(cap,method,args);}}};context.codex={api:1,navigation:{newTaskDraft:params=>context.rpc.request({name:'codex.ui.navigation.page',api:1,scope:'target'},'newTaskDraft',params)}};const m=new Manager(context);t.after(()=>m.dispose());await m.open();await Promise.resolve();return {m,calls,overrides,demo,context};}
 const count=(f,method)=>f.calls.filter(c=>c.method===method).length;
 const pluginErrors=(f,id='local.notes')=>f.m.pluginActionErrors({id}).join('\n');
 
@@ -348,10 +348,55 @@ test('enabled filters combine with search and exclude unknown flags from confirm
   const f=await setup(t);f.m.set({plugins:[{id:'yes',enabled:true,name:'notes'},{id:'no',enabled:false,name:'notes'},{id:'unknown',name:'notes'},{id:'other',enabled:true,name:'other'}]});
   f.m.setQuery('notes');f.m.setFilter('enabled');assert.deepEqual(f.m.filtered().map(p=>p.id),['yes']);f.m.setFilter('disabled');assert.deepEqual(f.m.filtered().map(p=>p.id),['no']);f.m.setFilter('all');assert.equal(f.m.filtered().length,3);
 });
-test('version reads observe client changes without refreshing lists even on an unconfigured build',async t=>{
-  const f=await setup(t),lists=count(f,'list');assert.equal(f.m.state.update.configured,false);f.demo.state.client='unmatched';await f.m.pollVersions();assert.equal(f.m.state.clientStatus.matchesRunningClient,false);assert.equal(count(f,'list'),lists);assert.ok(f.m.timers.has('version'));
+test('visible version polling also refreshes plugin health on an unconfigured build',async t=>{
+  const f=await setup(t),lists=count(f,'list');assert.equal(f.m.state.update.configured,false);f.demo.state.client='unmatched';await f.m.pollVersions();assert.equal(f.m.state.clientStatus.matchesRunningClient,false);assert.equal(count(f,'list'),lists+1);assert.ok(f.m.timers.has('version'));
   f.m.setVisible(false);const reads=count(f,'versionStatus');await f.m.pollVersions();assert.equal(count(f,'versionStatus'),reads);assert.equal(f.m.timers.has('version'),false);
   f.m.setVisible(true);await f.m.pollVersions();assert.ok(count(f,'versionStatus')>reads);f.m.close();assert.equal(f.m.timers.has('version'),false);
+});
+test('periodic health reads observe activation, asynchronous errors and resolution without loading flashes',async t=>{
+  const f=await setup(t);f.m.setVisible(false);t.mock.timers.enable({apis:['setTimeout']});
+  const flush=()=>new Promise(resolve=>setImmediate(resolve)),row=()=>f.m.state.plugins.find(p=>p.id==='local.notes'),loading=[];
+  f.m.subscribe(()=>loading.push(f.m.state.loading));f.m.setPluginError('managed.notes','Earlier reload failure','operation','GitHub Notes','reload');
+  f.demo.state.pluginState='loading';f.m.setVisible(true);await flush();assert.equal(f.m.pluginRuntimeStatus(row()),'Loading plugin...');
+  for(const state of ['healthy','diagnostic','healthy']){f.demo.state.pluginState=state;t.mock.timers.tick(5000);await flush();assert.equal(row().active,true);assert.equal(f.m.pluginRuntimeIssues(row()).length,state==='diagnostic'?1:0);}
+  assert.equal(loading.includes(true),false);assert.equal(pluginErrors(f,'managed.notes'),'Earlier reload failure');
+  const reads=count(f,'list');f.m.setVisible(false);t.mock.timers.tick(15000);await flush();assert.equal(count(f,'list'),reads);assert.equal(f.m.timers.has('version'),false);
+  f.m.close();f.m.setVisible(true);t.mock.timers.tick(15000);await flush();assert.equal(count(f,'list'),reads);
+  await f.m.open();assert.ok(count(f,'list')>reads);
+});
+test('manual refresh supersedes an in-flight health read and cannot be superseded by background polling',async t=>{
+  const f=await setup(t),background=deferred(),manual=deferred();let signal;
+  f.overrides.set('list',(_args,options)=>{signal=options.signal;return background.promise;});const polling=f.m.refresh({background:true});assert.equal(f.m.state.loading,false);
+  f.overrides.set('list',()=>manual.promise);const refreshing=f.m.refresh(),sequence=f.m.sequence.list,reads=count(f,'list');
+  assert.equal(signal.aborted,true);await f.m.refresh({background:true});assert.equal(count(f,'list'),reads);assert.equal(f.m.sequence.list,sequence);
+  background.resolve({plugins:[{id:'stale'}]});await polling;assert.equal(f.m.state.loading,true);assert.equal(f.m.state.plugins.some(p=>p.id==='stale'),false);
+  manual.resolve({plugins:[{id:'fresh'}]});await refreshing;assert.deepEqual(f.m.state.plugins,[{id:'fresh'}]);assert.equal(f.m.state.loading,false);
+});
+test('health reads retire on view and write ownership changes without querying or replaying a pending mutation',async t=>{
+  const f=await setup(t),read=deferred();let signal,operation;
+  f.overrides.set('list',(_args,options)=>{signal=options.signal;return read.promise;});const polling=f.m.refresh({background:true});
+  f.overrides.set('prepare',args=>({status:'prepared',operation:operation={operation_id:'single-receipt',request:args}}));f.overrides.set('submit',()=>({status:'queued'}));f.overrides.set('operation',()=>({status:'running',operation}));
+  await f.m.mutate('local.notes','reload');assert.equal(signal.aborted,true);const lists=count(f,'list'),operations=count(f,'operation');await f.m.pollVersions();
+  assert.equal(count(f,'list'),lists);assert.equal(count(f,'operation'),operations);assert.equal(count(f,'prepare'),1);assert.equal(count(f,'submit'),1);
+  read.reject(Error('Retired read'));await polling;assert.equal(f.m.state.listStale,false);assert.equal(f.m.state.listError,'');
+  f.m.close();assert.equal(f.m.backgroundList,null);assert.equal(f.m.timers.has('version'),false);
+  const g=await setup(t);
+  for(const change of ['confirmation','settings','page','hidden','closed']){
+    const late=deferred();let abort;g.overrides.set('list',(_args,options)=>{abort=options.signal;return late.promise;});const pending=g.m.refresh({background:true});
+    if(change==='confirmation')g.m.set({confirmation:{kind:'disable'}});
+    else if(change==='settings'){g.m.settingsWrite={};g.m.set({settingsBusy:true});}
+    else if(change==='page')g.m.set({page:'details'});
+    else if(change==='hidden')g.m.setVisible(false);
+    else g.m.close();
+    assert.equal(abort.aborted,true,change);late.resolve({plugins:[{id:'stale-'+change}]});await pending;assert.equal(g.m.state.plugins.some(p=>p.id==='stale-'+change),false);
+    g.m.settingsWrite=null;g.m.visible=true;g.m.set({open:true,page:'plugins',confirmation:null,settingsBusy:false});
+  }
+});
+test('background list failure stays stale until a successful list read and does not clear operation errors',async t=>{
+  const f=await setup(t);f.m.setPluginError('managed.notes','Reload failure','operation','GitHub Notes','reload');f.m.set({operationError:'Draft could not be opened'});
+  f.demo.state.failure=true;await f.m.refresh({background:true});assert.equal(f.m.state.listStale,true);assert.match(f.m.state.listError,/Displayed values may be out of date/);
+  await f.m.pollVersions();assert.equal(f.m.state.listStale,true);assert.match(f.m.state.listError,/Displayed values may be out of date/);
+  f.demo.state.failure=false;await f.m.refresh({background:true});assert.equal(f.m.state.listStale,false);assert.equal(f.m.state.listError,'');assert.equal(pluginErrors(f,'managed.notes'),'Reload failure');assert.equal(f.m.state.operationError,'Draft could not be opened');
 });
 test('tag queries match exact case-insensitive labels while plain text includes tags and combines filters',async t=>{
   const {m}=await setup(t);m.set({plugins:[{id:'one',name:'Notes',tags:['UI','Tool'],enabled:true},{id:'two',name:'Notes',tags:['UI','Adapter'],enabled:false},{id:'three',name:'UI Notes',tags:['UIish'],enabled:true},{id:'legacy',name:'UI Notes',enabled:true}]});

@@ -951,6 +951,7 @@ var Manager = class {
     this.pending = null;
     this.updateCommand = null;
     this.settingsWrite = null;
+    this.backgroundList = null;
     this.state = {
       open: false,
       page: "plugins",
@@ -1048,6 +1049,7 @@ var Manager = class {
     if (!this.alive) return;
     this.state = { ...this.state, ...patch };
     this.state.error = [this.state.operationError, this.state.listError].filter(Boolean).join("\n");
+    if (this.backgroundList && (!this.canPollPlugins() || this.backgroundList.page !== this.state.page || this.backgroundList.pageSequence !== this.sequence.page)) this.cancelBackgroundList();
     this.updateBadge?.();
     for (const fn of this.listeners) fn();
   }
@@ -1094,8 +1096,8 @@ var Manager = class {
     }
     return plugin.validation?.status === "not_loaded" ? "Registered, not loaded" : "";
   }
-  rpc(method, params = null) {
-    return this.context.rpc.request(capability, method, params);
+  rpc(method, params = null, options) {
+    return this.context.rpc.request(capability, method, params, options);
   }
   createPlugin() {
     return this.openSkillTask("create");
@@ -1299,18 +1301,35 @@ var Manager = class {
     this.unsubscribeLocale?.();
     this.listeners.clear();
   }
-  async refresh() {
+  canPollPlugins() {
+    return this.alive && this.state.open && this.visible && ["plugins", "details"].includes(this.state.page) && !this.state.loading && !this.pending && !this.state.confirmation && !this.state.combinedConfirmation && !this.settingsWrite && !this.state.settingsBusy && !this.state.createBusy && !this.state.updateBusy && !this.updateCommand && !this.combiningUpdates() && !this.installingPlugins() && !this.state.installationComplete?.busy;
+  }
+  cancelBackgroundList() {
+    const request = this.backgroundList;
+    this.backgroundList = null;
+    request?.controller.abort();
+  }
+  async refresh({ background = false } = {}) {
     if (!this.alive || !this.state.open) return;
-    if (this.pending) return this.pending.id ? this.checkMutation() : void 0;
-    const sequence = ++this.sequence.list;
-    this.set({ loading: true, listError: "" });
+    if (background) {
+      if (!this.canPollPlugins() || this.backgroundList) return;
+    } else {
+      this.cancelBackgroundList();
+      if (this.pending) return this.pending.id ? this.checkMutation() : void 0;
+    }
+    const sequence = background ? this.sequence.list : ++this.sequence.list;
+    const request = background ? { controller: new AbortController(), page: this.state.page, pageSequence: this.sequence.page } : null;
+    if (background) this.backgroundList = request;
+    else this.set({ loading: true, listError: "" });
+    const current = () => this.current("list", sequence) && (!background || this.backgroundList === request && !request.controller.signal.aborted && this.canPollPlugins() && request.page === this.state.page && request.pageSequence === this.sequence.page);
     try {
-      const reply = await this.rpc("list");
-      if (!this.current("list", sequence)) return;
+      const reply = await this.rpc("list", null, request ? { signal: request.controller.signal } : void 0);
+      if (!current()) return;
       if (!Array.isArray(reply?.plugins) || reply.plugins.some((p) => !p || typeof p.id !== "string" || !p.id) || new Set(reply.plugins.map((p) => p.id)).size !== reply.plugins.length) throw new Error("Plugin list unavailable");
       this.set({
         plugins: reply.plugins,
         listStale: false,
+        listError: "",
         localManagement: reply.localManagement ?? null,
         githubAvailable: reply.githubManagement?.available === true,
         deviceCompatibility: reply.deviceCompatibility ?? null,
@@ -1320,9 +1339,11 @@ var Manager = class {
       const completed = reply.plugins.find((plugin) => plugin.importCompletion && digest(plugin.importCompletion.contentDigest) && typeof plugin.importCompletion.path === "string");
       if (completed && !this.state.installationComplete) this.set({ installationComplete: { ...completed.importCompletion, pluginId: completed.id, name: this.messages.name(completed), deleteSource: true, busy: false, error: "" } });
     } catch (error) {
-      if (this.current("list", sequence)) this.set({ listStale: true, listError: "Plugin state could not be refreshed. Displayed values may be out of date.\n" + (error?.code === "rpc_timeout" ? "Plugin list timed out. Refresh to try again." : message(error)) });
+      if (current()) this.set({ listStale: true, listError: "Plugin state could not be refreshed. Displayed values may be out of date.\n" + (error?.code === "rpc_timeout" ? "Plugin list timed out. Refresh to try again." : message(error)) });
     } finally {
-      if (this.current("list", sequence)) this.set({ loading: false });
+      if (background) {
+        if (this.backgroundList === request) this.backgroundList = null;
+      } else if (current()) this.set({ loading: false });
     }
   }
   filtered() {
@@ -1910,6 +1931,7 @@ Check the same task again, or cancel. No new download or installation is started
     this.invalidateImport();
     const sequence = this.sequence.page;
     this.set({ page: "details", details: plugin, detailsPermission: null, detailsBusy: true, detailsError: "" });
+    void this.refresh({ background: true });
     try {
       const reply = plugin.source === "bundled" ? { pluginId: plugin.id, registration: { path: "", grants: plugin.grants ?? [] } } : await this.rpc("permissions", { pluginId: plugin.id });
       if (!this.current("page", sequence, "details")) return;
@@ -2054,6 +2076,7 @@ Check the same task again, or cancel. No new download or installation is started
       this.after("version", 1e3, () => this.pollVersions());
       return;
     }
+    void this.refresh({ background: true });
     const sequence = ++this.sequence.version;
     this.set({ versionLoading: true });
     try {
@@ -2730,7 +2753,7 @@ function ImportNotice({ s, submitLabel, submitText }) {
 }
 function Details({ s }) {
   const p = s.details;
-  return /* @__PURE__ */ h("section", { className: "codlet-page" }, /* @__PURE__ */ h(Back, null), s.detailsError && /* @__PURE__ */ h(Copy, { error: true, role: "alert" }, t(s.detailsError)), s.detailsBusy ? /* @__PURE__ */ h(Copy, { role: "status" }, t("Loading permissions...")) : p && /* @__PURE__ */ h(React.Fragment, null, /* @__PURE__ */ h("div", { className: "codlet-details-identity" }, /* @__PURE__ */ h("div", { className: "codlet-details-heading" }, /* @__PURE__ */ h("h2", null, name(p)), p.version && /* @__PURE__ */ h("span", { className: "codlet-version" }, p.version), p.source !== "bundled" && /* @__PURE__ */ h(IconAction, { icon: I.FolderOpen, label: "Open plugin folder", onClick: () => manager.openFolder() })), /* @__PURE__ */ h(Copy, null, p.id), description(p) && /* @__PURE__ */ h(Copy, null, description(p))), /* @__PURE__ */ h(PluginFeedback, { plugin: s.plugins.find((plugin) => plugin.id === p.id) ?? p }), p.ownership === "core-managed-github" && /* @__PURE__ */ h(Source, { source: p.managedSource, metadata: p.metadata }), p.updateSource && p.ownership !== "core-managed-github" && /* @__PURE__ */ h(Copy, null, t("Installer update channel"), ": ", p.updateSource.repositoryUrl), /* @__PURE__ */ h(Compatibility, { metadata: p.metadata, device: p.deviceCompatibility ?? s.deviceCompatibility, clientStatus: s.clientStatus }), p.grants?.length > 0 && /* @__PURE__ */ h("h2", null, t("Granted permissions")), /* @__PURE__ */ h(PermissionSummary, { key: p.id, pluginId: p.id, permissions: p.grants ?? [], expandedPermission: s.detailsPermission, onRevoke: p.source !== "bundled" ? (permission) => {
+  return /* @__PURE__ */ h("section", { className: "codlet-page" }, /* @__PURE__ */ h(Back, null), s.detailsError && /* @__PURE__ */ h(Copy, { error: true, role: "alert" }, t(s.detailsError)), s.listError && /* @__PURE__ */ h(Copy, { error: true, role: "alert" }, t(s.listError)), s.detailsBusy ? /* @__PURE__ */ h(Copy, { role: "status" }, t("Loading permissions...")) : p && /* @__PURE__ */ h(React.Fragment, null, /* @__PURE__ */ h("div", { className: "codlet-details-identity" }, /* @__PURE__ */ h("div", { className: "codlet-details-heading" }, /* @__PURE__ */ h("h2", null, name(p)), p.version && /* @__PURE__ */ h("span", { className: "codlet-version" }, p.version), p.source !== "bundled" && /* @__PURE__ */ h(IconAction, { icon: I.FolderOpen, label: "Open plugin folder", onClick: () => manager.openFolder() })), /* @__PURE__ */ h(Copy, null, p.id), description(p) && /* @__PURE__ */ h(Copy, null, description(p))), /* @__PURE__ */ h(PluginFeedback, { plugin: s.plugins.find((plugin) => plugin.id === p.id) ?? p }), p.ownership === "core-managed-github" && /* @__PURE__ */ h(Source, { source: p.managedSource, metadata: p.metadata }), p.updateSource && p.ownership !== "core-managed-github" && /* @__PURE__ */ h(Copy, null, t("Installer update channel"), ": ", p.updateSource.repositoryUrl), /* @__PURE__ */ h(Compatibility, { metadata: p.metadata, device: p.deviceCompatibility ?? s.deviceCompatibility, clientStatus: s.clientStatus }), p.grants?.length > 0 && /* @__PURE__ */ h("h2", null, t("Granted permissions")), /* @__PURE__ */ h(PermissionSummary, { key: p.id, pluginId: p.id, permissions: p.grants ?? [], expandedPermission: s.detailsPermission, onRevoke: p.source !== "bundled" ? (permission) => {
     manager.set({ detailsPermission: permission });
     manager.requestRemoval(p, permission);
   } : null }), p.source !== "bundled" && /* @__PURE__ */ h(React.Fragment, null, /* @__PURE__ */ h(C.Button, { color: "danger", variant: "soft", size: "md", "data-codlet-focus-key": `remove:${p.id}`, "aria-label": t(`Remove ${name(p)}`), disabled: mutationBusy(s) || s.localManagement?.installationLifecycle !== true, onClick: () => manager.requestRemoval(p) }, t("Remove plugin")), s.localManagement?.installationLifecycle !== true && /* @__PURE__ */ h(Copy, null, t("Update Codlet Core to use the current installation and uninstall features."))), (p.updateSource === void 0 ? p.ownership === "core-managed-github" : p.updateSource?.kind === "github") && /* @__PURE__ */ h(React.Fragment, null, /* @__PURE__ */ h(C.Button, { color: "secondary", variant: "soft", size: "md", "aria-label": t("Check GitHub versions"), onClick: () => manager.importPage("github", p) }, t("Check GitHub versions")))));

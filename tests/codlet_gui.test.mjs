@@ -188,6 +188,13 @@ test('plugin tag visibility is enabled by default, persists through settings, an
 test('details show actual grants without the raw source path; folder opening passes only plugin ID',async t=>{
   const f=await fixture(t);await f.open();await f.click('Details for Local Notes');const panel=f.document.querySelector('[data-codlet-panel]');assert.match(panel.textContent,/ui.dom/);assert.doesNotMatch(panel.textContent,/C:\/Projects\/Local Notes/);assert.doesNotMatch(panel.textContent,/Allowed network origins/);await f.click('Open plugin folder');assert.deepEqual(f.calls.find(c=>c.method==='openFolder').args,{pluginId:'local.notes'});
 });
+test('details show stale health separately from a permission read failure and refresh health on return',async t=>{
+  const f=await fixture(t);await f.open();f.demo.state.failure=true;f.overrides.set('permissions',()=>{throw Error('Permission details could not be read');});
+  await f.click('Details for Local Notes');let panel=f.document.querySelector('[data-codlet-panel]');
+  assert.match(panel.textContent,/Displayed values may be out of date/);assert.match(panel.textContent,/Permission details could not be read/);
+  f.demo.state.failure=false;await f.click('Back');await f.click('Details for Local Notes');panel=f.document.querySelector('[data-codlet-panel]');
+  assert.doesNotMatch(panel.textContent,/Displayed values may be out of date/);assert.match(panel.textContent,/Permission details could not be read/);
+});
 test('remove immediately submits uninstall and returns to the plugin list',async t=>{
   const f=await fixture(t);await f.open();await f.click('Details for Local Notes');await f.click('Remove Local Notes');assert.equal(f.control('Delete source files'),undefined);assert.equal(f.calls.filter(c=>c.method==='submit').length,1);assert.equal(f.document.querySelector('[data-codlet-plugin="local.notes"]'),null);assert.ok(f.control('Search plugins'));
 });
